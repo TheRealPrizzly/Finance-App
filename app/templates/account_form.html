@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Edit account · Portfolio Manager{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a class="back" href="{{ url_for('views.accounts') }}">← Accounts</a>
+    <h1>Edit account</h1>
+  </div>
+</div>
+<form method="post" class="card form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="form-grid">
+    <label>Account number <input name="number" value="{{ request.form.number or account.number }}" required></label>
+    <label>Type
+      <input name="type" value="{{ request.form.type or account.type }}" list="account-types">
+      <datalist id="account-types"><option value="TFSA"><option value="RRSP"><option value="FHSA"><option value="RESP"><option value="Margin"><option value="Cash"><option value="LIRA"></datalist>
+    </label>
+    <label>Nickname <input name="name" value="{{ request.form.name or account.name }}"></label>
+  </div>
+  <div class="form-actions">
+    <button class="btn btn-primary" type="submit">Save</button>
+    <a class="btn btn-ghost" href="{{ url_for('views.accounts') }}">Cancel</a>
+  </div>
+</form>
+<form method="post" action="{{ url_for('views.delete_account', account_id=account.id) }}" class="danger-zone"
+      onsubmit="return confirm('Delete this account and ALL of its transactions? This cannot be undone.')">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button class="btn btn-danger" type="submit">Delete account and its transactions</button>
+</form>
+{% endblock %}

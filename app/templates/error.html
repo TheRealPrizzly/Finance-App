@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}{{ error.code }} · Portfolio Manager{% endblock %}
+{% block content %}
+<section class="empty card">
+  <h1>{{ error.code }} · {{ error.name }}</h1>
+  <p class="muted">{{ error.description }}</p>
+  <a class="btn btn-primary" href="{{ url_for('views.dashboard') }}">Back to dashboard</a>
+</section>
+{% endblock %}

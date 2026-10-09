@@ -1,0 +1,13 @@
+<form method="get" class="account-filter">
+  {% for key, value in request.args.items() if key not in ('account', 'page') %}
+    <input type="hidden" name="{{ key }}" value="{{ value }}">
+  {% endfor %}
+  <label class="sr-only" for="account-select">Account</label>
+  <select id="account-select" name="account" onchange="this.form.submit()">
+    <option value="">All accounts</option>
+    {% for a in accounts %}
+      <option value="{{ a.id }}" {% if a.id == account_id %}selected{% endif %}>{{ a.name or a.type or 'Account' }} · {{ a.number }}</option>
+    {% endfor %}
+  </select>
+  <noscript><button class="btn btn-secondary btn-sm" type="submit">Apply</button></noscript>
+</form>

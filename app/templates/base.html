@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Portfolio Manager{% endblock %}</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232457d6'/%3E%3Cpath d='M7 22l6-7 5 4 7-9' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body data-page="{% block page %}{% endblock %}">
+{% if g.user %}
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="{{ url_for('views.dashboard') }}">
+        <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="var(--accent)"/><path d="M7 22l6-7 5 4 7-9" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Portfolio Manager
+      </a>
+      {% set ep = request.endpoint or '' %}
+      <nav class="nav" aria-label="Main">
+        <a href="{{ url_for('views.dashboard') }}" {% if ep in ('views.dashboard', 'views.position') %}aria-current="page"{% endif %}>Dashboard</a>
+        <a href="{{ url_for('views.transactions') }}" {% if 'transaction' in ep %}aria-current="page"{% endif %}>Transactions</a>
+        <a href="{{ url_for('views.accounts') }}" {% if 'account' in ep %}aria-current="page"{% endif %}>Accounts</a>
+        <a href="{{ url_for('views.import_export') }}" {% if ep == 'views.import_export' %}aria-current="page"{% endif %}>Import / Export</a>
+      </nav>
+      <div class="user">
+        {% if g.user.picture %}<img class="avatar" src="{{ g.user.picture }}" alt="" referrerpolicy="no-referrer">{% endif %}
+        <span class="user-name">{{ g.user.name or g.user.email }}</span>
+        <form method="post" action="{{ url_for('auth.logout') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-ghost btn-sm" type="submit">Sign out</button>
+        </form>
+      </div>
+    </div>
+  </header>
+{% endif %}
+<main class="container">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="alert alert-{{ category }}" role="{{ 'alert' if category == 'error' else 'status' }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</main>
+{% block scripts %}{% endblock %}
+</body>
+</html>

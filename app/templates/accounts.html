@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Accounts · Portfolio Manager{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Accounts</h1>
+    <p class="muted">Each brokerage account works as its own portfolio. Pick one from the dashboard to view it on its own.</p>
+  </div>
+</div>
+
+{% if rows %}
+<section class="card flush">
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr><th>Account</th><th>Number</th><th>Type</th><th class="num">Transactions</th><th class="num">Cash</th><th><span class="sr-only">Actions</span></th></tr>
+      </thead>
+      <tbody>
+        {% for a in rows %}
+        <tr>
+          <td><a href="{{ url_for('views.dashboard', account=a.id) }}">{{ a.name or a.type or 'Account' }}</a></td>
+          <td>{{ a.number }}</td>
+          <td>{{ a.type or '—' }}</td>
+          <td class="num">{{ a.txn_count }}</td>
+          <td class="num nowrap">
+            {% for b in cash.get(a.id, []) %}<div class="{{ 'loss' if b.amount < 0 }}">{{ b.amount|money(b.currency) }}</div>{% else %}<span class="muted">—</span>{% endfor %}
+          </td>
+          <td class="row-actions">
+            <a class="btn btn-ghost btn-sm" href="{{ url_for('views.edit_account', account_id=a.id) }}">Edit</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+<form method="post" class="card form">
+  <h2>Add an account</h2>
+  <p class="hint">Accounts are also created automatically when you import a CSV.</p>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="form-grid">
+    <label>Account number <input name="number" required autocomplete="off"></label>
+    <label>Type
+      <input name="type" list="account-types" placeholder="TFSA, RRSP, FHSA, Margin…" autocomplete="off">
+      <datalist id="account-types"><option value="TFSA"><option value="RRSP"><option value="FHSA"><option value="RESP"><option value="Margin"><option value="Cash"><option value="LIRA"></datalist>
+    </label>
+    <label>Nickname (optional) <input name="name" placeholder="e.g. Long-term TFSA"></label>
+  </div>
+  <div class="form-actions"><button class="btn btn-primary" type="submit">Add account</button></div>
+</form>
+{% endblock %}

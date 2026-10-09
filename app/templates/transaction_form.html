@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if txn else 'Add' }} transaction · Portfolio Manager{% endblock %}
+{% block page %}txn-form{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a class="back" href="{{ url_for('views.transactions') }}">← Transactions</a>
+    <h1>{{ 'Edit transaction' if txn else 'Add transaction' }}</h1>
+  </div>
+</div>
+
+<form method="post" class="card form" id="txn-form" novalidate>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="form-grid">
+    <label>Type
+      <select name="kind" id="kind" required>
+        {% for key, label in kind_labels.items() %}
+          <option value="{{ key }}" {% if key == form.kind %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Date
+      <input type="date" name="date" value="{{ form.date }}" required>
+    </label>
+    <label>Account
+      <select name="account_id" required>
+        {% for a in accounts %}
+          <option value="{{ a.id }}" {% if a.id|string == form.account_id|string %}selected{% endif %}>{{ a.name or a.type or 'Account' }} · {{ a.number }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Currency
+      <input name="currency" value="{{ form.currency }}" maxlength="3" required autocomplete="off" class="upper" list="currencies">
+      <datalist id="currencies"><option value="CAD"><option value="USD"><option value="EUR"><option value="GBP"></datalist>
+    </label>
+    <label data-field="symbol">Symbol
+      <input name="symbol" value="{{ form.symbol or '' }}" placeholder="VFV.TO, AAPL, BTC-CAD" autocomplete="off" class="upper">
+      <span class="hint">Yahoo Finance symbol. TSX listings may omit “.TO” when the currency is CAD.</span>
+    </label>
+    <label data-field="trade">Quantity
+      <input name="quantity" id="quantity" inputmode="decimal" value="{{ form.quantity if form.quantity not in (None, 0, 0.0) else '' }}">
+    </label>
+    <label data-field="trade">Price per share
+      <input name="price" id="price" inputmode="decimal" value="{{ form.price if form.price not in (None, 0, 0.0) else '' }}">
+    </label>
+    <label data-field="trade">Costs (commission &amp; fees)
+      <input name="costs" id="costs" inputmode="decimal" value="{{ form.costs if form.costs not in (None, 0, 0.0) else '' }}">
+    </label>
+    <label>Net amount
+      <input name="net_amount" id="net_amount" inputmode="decimal" value="{{ form.net_amount if form.net_amount not in (None, '') else '' }}">
+      <span class="hint" id="net-hint">Cash effect on the account. Calculated for buys and sells when left blank.</span>
+    </label>
+  </div>
+  <div class="form-actions">
+    <button class="btn btn-primary" type="submit">{{ 'Save changes' if txn else 'Add transaction' }}</button>
+    <a class="btn btn-ghost" href="{{ url_for('views.transactions') }}">Cancel</a>
+  </div>
+</form>
+
+{% if txn %}
+<form method="post" action="{{ url_for('views.delete_transaction', txn_id=txn.id) }}" class="danger-zone" onsubmit="return confirm('Delete this transaction?')">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button class="btn btn-danger" type="submit">Delete transaction</button>
+</form>
+{% endif %}
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='app.js') }}"></script>{% endblock %}

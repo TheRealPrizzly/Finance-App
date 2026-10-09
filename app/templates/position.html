@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}{{ symbol }} · Portfolio Manager{% endblock %}
+{% block page %}position{% endblock %}
+{% block content %}
+<div id="app" data-position-api="{{ url_for('views.api_position', symbol=symbol, account=account_id or None) }}" data-base="{{ base_currency }}">
+  <div class="page-head">
+    <div>
+      <a class="back" href="{{ url_for('views.dashboard', account=account_id or None) }}">← Dashboard</a>
+      <h1>{{ symbol }} <span class="muted title-name" id="pos-name"></span></h1>
+      <p class="price-line" id="pos-price">Loading…</p>
+    </div>
+    {% if accounts %}<div class="head-actions">{% include "_account_filter.html" %}</div>{% endif %}
+  </div>
+  <div id="notices"></div>
+  <section class="kpis" id="kpis">{% for _ in range(6) %}<div class="kpi skeleton"></div>{% endfor %}</section>
+  <section class="card">
+    <div class="card-head"><h2>Price history</h2><span class="hint" id="price-currency"></span></div>
+    <div class="chart-box"><canvas id="price-chart" aria-label="Price history chart with trades" role="img"></canvas></div>
+    <p class="hint">Triangles mark your buys (▲) and sells (▼).</p>
+  </section>
+  <section class="card">
+    <h2>By account</h2>
+    <div class="table-wrap"><table class="table" id="pos-accounts"></table></div>
+  </section>
+  <section class="card">
+    <div class="card-head">
+      <h2>Transactions</h2>
+      <a class="btn btn-secondary btn-sm" href="{{ url_for('views.transactions', symbol=symbol, account=account_id or None) }}">Open in Transactions</a>
+    </div>
+    <div class="table-wrap"><table class="table" id="pos-txns"></table></div>
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% endblock %}

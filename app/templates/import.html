@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Import / Export · Portfolio Manager{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Import / Export</h1></div>
+</div>
+
+{% if result %}
+<section class="card result">
+  <h2>Import results · {{ result.filename }}</h2>
+  <ul class="stats">
+    <li><strong>{{ result.imported }}</strong> imported</li>
+    <li><strong>{{ result.duplicates }}</strong> already imported (skipped)</li>
+    <li><strong>{{ result.accounts_created }}</strong> new account{{ '' if result.accounts_created == 1 else 's' }}</li>
+    <li class="{{ 'loss' if result.errors }}"><strong>{{ result.errors|length }}</strong> row{{ '' if result.errors|length == 1 else 's' }} with errors</li>
+  </ul>
+  {% if result.errors %}
+  <details {% if not result.imported %}open{% endif %}>
+    <summary>Show errors</summary>
+    <ul class="error-list">
+      {% for line, message in result.errors[:200] %}<li>{% if line %}Line {{ line }}: {% endif %}{{ message }}</li>{% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+  {% if result.imported %}<a class="btn btn-primary" href="{{ url_for('views.dashboard') }}">View dashboard</a>{% endif %}
+</section>
+{% endif %}
+
+<div class="grid-2">
+  <form method="post" enctype="multipart/form-data" class="card form">
+    <h2>Import transactions</h2>
+    <p class="muted">Upload a CSV of your account activity. Accounts are created from the <em>Account #</em> column, and rows you've already imported are skipped.</p>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="file">CSV file
+      <input type="file" name="file" accept=".csv,text/csv" required>
+    </label>
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Import</button>
+      <a class="btn btn-ghost" href="{{ url_for('views.import_template') }}">Download template</a>
+    </div>
+    <details class="columns">
+      <summary>Expected columns</summary>
+      <ul class="pill-list">{% for c in columns %}<li>{{ c }}</li>{% endfor %}</ul>
+      <p class="hint">Required: Transaction Date, Action, Currency, Account #, plus Net Amount or Quantity and Price. Broker action codes such as Buy, Sell, DIV, CON/DEP, WDR, FCH, INT and FXT are recognized. Dates may be YYYY-MM-DD or MM/DD/YYYY.</p>
+    </details>
+  </form>
+
+  <form method="get" action="{{ url_for('views.export_csv') }}" class="card form">
+    <h2>Export transactions</h2>
+    <p class="muted">Download your transactions as a CSV in the same format, ready to re-import or open in a spreadsheet.</p>
+    <label>Account
+      <select name="account">
+        <option value="">All accounts</option>
+        {% for a in accounts %}<option value="{{ a.id }}">{{ a.name or a.type or 'Account' }} · {{ a.number }}</option>{% endfor %}
+      </select>
+    </label>
+    <div class="form-actions"><button class="btn btn-secondary" type="submit">Download CSV</button></div>
+  </form>
+</div>
+{% endblock %}

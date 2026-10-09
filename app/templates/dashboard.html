@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · Portfolio Manager{% endblock %}
+{% block page %}dashboard{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Portfolio</h1>
+    <p class="muted" id="as-of">{% if has_transactions %}Loading live prices…{% else %}No activity yet{% endif %}</p>
+  </div>
+  {% if accounts %}<div class="head-actions">{% include "_account_filter.html" %}</div>{% endif %}
+</div>
+
+{% if not has_transactions %}
+<section class="empty card">
+  <h2>Add your activity</h2>
+  <p class="muted">Import your broker's activity CSV or record transactions by hand. Holdings, cash balances and performance are all calculated from your transactions.</p>
+  <div class="actions">
+    <a class="btn btn-primary" href="{{ url_for('views.import_export') }}">Import a CSV</a>
+    <a class="btn btn-secondary" href="{{ url_for('views.new_transaction') }}">Add a transaction</a>
+  </div>
+</section>
+{% else %}
+<div id="app"
+     data-portfolio-url="{{ url_for('views.api_portfolio', account=account_id or None) }}"
+     data-history-url="{{ url_for('views.api_history', account=account_id or None) }}"
+     data-position-url="{{ url_for('views.position', symbol='__SYMBOL__', account=account_id or None) }}"
+     data-benchmark="{{ benchmark }}" data-base="{{ base_currency }}">
+
+  <div id="notices"></div>
+
+  <section class="kpis" id="kpis" aria-live="polite">
+    {% for _ in range(6) %}<div class="kpi skeleton"></div>{% endfor %}
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>Performance</h2>
+      <div class="toolbar">
+        <div class="seg" role="group" aria-label="Chart" id="chart-mode">
+          <button type="button" data-mode="growth" aria-pressed="true">Growth</button>
+          <button type="button" data-mode="returns" aria-pressed="false">Returns vs {{ benchmark }}</button>
+        </div>
+        <div class="seg" role="group" aria-label="Time range" id="chart-range">
+          {% for r in ('1M', '3M', '6M', 'YTD', '1Y', 'All') %}
+            <button type="button" data-range="{{ r }}" aria-pressed="{{ 'true' if r == 'All' else 'false' }}">{{ r }}</button>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <div class="chart-box">
+      <canvas id="perf-chart" aria-label="Portfolio performance chart" role="img"></canvas>
+      <div class="chart-status" id="perf-status">Building history…</div>
+    </div>
+    <p class="hint" id="perf-note"></p>
+    <div class="table-wrap"><table class="table compact" id="period-table"></table></div>
+  </section>
+
+  <div class="grid-2">
+    <section class="card">
+      <h2>Allocation by sector</h2>
+      <div class="alloc">
+        <div class="donut-box"><canvas id="sector-chart" aria-label="Sector allocation chart" role="img"></canvas></div>
+        <ul class="legend" id="sector-legend"></ul>
+      </div>
+      <p class="hint">ETFs are broken down by the sectors they hold.</p>
+    </section>
+    <section class="card">
+      <h2>Cash balances</h2>
+      <div class="table-wrap" id="cash"></div>
+    </section>
+  </div>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>Holdings</h2>
+      <a class="btn btn-secondary btn-sm" href="{{ url_for('views.new_transaction', account=account_id or None) }}">Add transaction</a>
+    </div>
+    <div class="table-wrap"><table class="table sortable" id="holdings"></table></div>
+  </section>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if has_transactions %}
+<script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% endif %}
+{% endblock %}
