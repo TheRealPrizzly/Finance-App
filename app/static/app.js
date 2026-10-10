@@ -96,7 +96,7 @@
     let mode = "growth";
     let range = "All";
     let perfChart = null;
-    let sectorChart = null;
+    const allocCharts = {};
     let holdings = [];
     let sort = { key: "market_value", dir: -1 };
     let lastSnapshot = null;
@@ -138,7 +138,11 @@
 
       holdings = p.holdings;
       renderHoldings();
-      renderSectors(p.sectors);
+      renderAllocation("sector", p.sectors.map((s) => ({ label: s.sector, value: s.value })));
+      renderAllocation("equity", [
+        ...p.holdings.map((h) => ({ label: h.symbol, value: h.market_value })),
+        { label: "Cash", value: p.holdings_only ? 0 : t.cash },
+      ]);
       renderCash(p.cash, p.holdings_only);
     }
 
@@ -199,22 +203,29 @@
       renderHoldings();
     });
 
-    function renderSectors(sectors) {
-      const colors = sectors.map((s, i) => (s.sector === "Cash" ? cssVar("--chart-3") : SECTOR_COLORS[i % SECTOR_COLORS.length]));
-      $("sector-legend").innerHTML = sectors.length
-        ? sectors.map((s, i) => `<li><span class="swatch" style="background:${colors[i]}"></span>
-            <span>${esc(s.sector)}</span><span class="pct">${pct(s.pct, { signed: false })}</span></li>`).join("")
+    // Doughnut + legend for "<name>-chart" / "<name>-legend". Items are {label, value}; slices
+    // that aren't positive (e.g. an overdrawn cash balance) are left out, largest first.
+    function renderAllocation(name, items) {
+      const shown = items.filter((s) => s.value > 0).sort((a, b) => b.value - a.value);
+      const total = shown.reduce((sum, s) => sum + s.value, 0);
+      shown.forEach((s) => { s.pct = s.value / total; });
+      const colors = shown.map((s, i) => (s.label === "Cash" ? cssVar("--chart-3") : SECTOR_COLORS[i % SECTOR_COLORS.length]));
+      $(`${name}-legend`).innerHTML = shown.length
+        ? shown.map((s, i) => `<li><span class="swatch" style="background:${colors[i]}"></span>
+            <span>${esc(s.label)}</span><span class="pct">${pct(s.pct, { signed: false })}</span></li>`).join("")
         : '<li class="muted">Nothing to show yet.</li>';
       const data = {
-        labels: sectors.map((s) => s.sector),
-        datasets: [{ data: sectors.map((s) => s.value), backgroundColor: colors, borderColor: cssVar("--surface"), borderWidth: 2 }],
+        labels: shown.map((s) => s.label),
+        datasets: [{ data: shown.map((s) => s.value), backgroundColor: colors, borderColor: cssVar("--surface"), borderWidth: 2 }],
       };
-      if (sectorChart) {
-        sectorChart.data = data;
-        sectorChart.update("none");
+      const chart = allocCharts[name];
+      if (chart) {
+        chart.$items = shown;
+        chart.data = data;
+        chart.update("none");
         return;
       }
-      sectorChart = new Chart($("sector-chart"), {
+      allocCharts[name] = new Chart($(`${name}-chart`), {
         type: "doughnut",
         data,
         options: {
@@ -222,10 +233,11 @@
           cutout: "62%",
           plugins: {
             legend: { display: false },
-            tooltip: { callbacks: { label: (c) => ` ${c.label}: ${money(c.parsed)} (${pct(sectors[c.dataIndex]?.pct, { signed: false })})` } },
+            tooltip: { callbacks: { label: (c) => ` ${c.label}: ${money(c.parsed)} (${pct(c.chart.$items[c.dataIndex]?.pct, { signed: false })})` } },
           },
         },
       });
+      allocCharts[name].$items = shown;
     }
 
     function renderCash(cash, holdingsOnly) {

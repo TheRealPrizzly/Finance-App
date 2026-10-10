@@ -65,10 +65,19 @@
       <p class="hint">ETFs are broken down by the sectors they hold.</p>
     </section>
     <section class="card">
-      <h2>Cash balances</h2>
-      <div class="table-wrap" id="cash"></div>
+      <h2>Allocation by equity</h2>
+      <div class="alloc">
+        <div class="donut-box"><canvas id="equity-chart" aria-label="Allocation by equity chart" role="img"></canvas></div>
+        <ul class="legend" id="equity-legend"></ul>
+      </div>
+      <p class="hint">Each position's share of total value, including cash.</p>
     </section>
   </div>
+
+  <section class="card">
+    <h2>Cash balances</h2>
+    <div class="table-wrap" id="cash"></div>
+  </section>
 
   <section class="card">
     <div class="card-head">
