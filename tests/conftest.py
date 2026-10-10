@@ -32,7 +32,7 @@ class FakeMarket:
                           "quote_type": "EQUITY"}
         return out
 
-    def history(self, symbol, start):
+    def history(self, symbol, start, as_traded=False):
         return self._history.get(symbol, (None, {}))
 
     def fx_rate(self, currency):

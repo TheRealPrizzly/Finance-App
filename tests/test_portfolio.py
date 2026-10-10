@@ -128,3 +128,15 @@ def test_compute_net_amount():
     assert pf.compute_net_amount(pf.WITHDRAWAL, amount=100) == -100
     assert pf.compute_net_amount(pf.DEPOSIT, amount=-100) == 100
     assert pf.compute_net_amount(pf.DIVIDEND, amount=-3) == -3  # withholding tax
+
+
+def test_unadjust_splits_restores_as_traded_prices():
+    from app.market import unadjust_splits
+
+    # 1:4 reverse split on 2026-05-05: Yahoo shows the 2023 close of 13.32 as 53.28
+    closes = {date(2023, 4, 19): 53.28, date(2026, 5, 4): 50.0, date(2026, 5, 5): 50.0}
+    out = unadjust_splits(closes, [(date(2026, 5, 5), 1 / 4)])
+    assert out == {date(2023, 4, 19): pytest.approx(13.32), date(2026, 5, 4): 12.5, date(2026, 5, 5): 50.0}
+    # splits compound: a close before both a 2:1 and a 1:4 split is scaled by 2 × 1/4
+    out = unadjust_splits({date(2020, 1, 1): 10.0}, [(date(2021, 1, 1), 2.0), (date(2026, 5, 5), 1 / 4)])
+    assert out[date(2020, 1, 1)] == pytest.approx(5.0)

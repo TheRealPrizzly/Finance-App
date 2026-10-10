@@ -51,6 +51,24 @@ def _major_unit(currency):
     return major, divisor
 
 
+def unadjust_splits(closes, splits):
+    """Undo Yahoo's split adjustment so each close is the price actually quoted that day.
+
+    Yahoo rescales every close before a split (a 1:4 reverse split multiplies earlier
+    closes by 4). Broker records hold the share counts of the day, so they need the
+    as-traded prices. ``splits`` is a list of (effective date, numerator / denominator).
+    """
+    if not splits:
+        return closes
+    out = {}
+    for d, close in closes.items():
+        for split_date, ratio in splits:
+            if d < split_date:
+                close *= ratio
+        out[d] = close
+    return out
+
+
 class YahooClient:
     """Thin HTTP client for the unofficial Yahoo Finance endpoints."""
 
@@ -96,16 +114,17 @@ class YahooClient:
         return ((data or {}).get("quoteResponse") or {}).get("result") or []
 
     def chart(self, symbol, start, end):
-        """Daily closes between two dates. Returns (currency, {date: close})."""
+        """Split-adjusted daily closes between two dates.
+        Returns (currency, {date: close}, [(split date, numerator / denominator)])."""
         p1 = int(datetime.combine(start, dtime.min, tzinfo=timezone.utc).timestamp())
         p2 = int(datetime.combine(end, dtime.min, tzinfo=timezone.utc).timestamp())
         data = self._get_json(
             f"{self.BASE1}/v8/finance/chart/{urlquote(symbol, safe='')}",
-            {"period1": p1, "period2": p2, "interval": "1d"},
+            {"period1": p1, "period2": p2, "interval": "1d", "events": "split"},
         )
         results = ((data or {}).get("chart") or {}).get("result") or []
         if not results:
-            return None, {}
+            return None, {}, []
         res = results[0]
         meta = res.get("meta") or {}
         offset = meta.get("gmtoffset") or 0
@@ -115,7 +134,12 @@ class YahooClient:
         for ts, close in zip(res.get("timestamp") or [], closes):
             if close is not None:
                 out[datetime.fromtimestamp(ts + offset, tz=timezone.utc).date()] = close / divisor
-        return currency, out
+        splits = [
+            (datetime.fromtimestamp(sp["date"] + offset, tz=timezone.utc).date(), sp["numerator"] / sp["denominator"])
+            for sp in ((res.get("events") or {}).get("splits") or {}).values()
+            if sp.get("date") and sp.get("numerator") and sp.get("denominator")
+        ]
+        return currency, out, splits
 
     def summary(self, symbol, modules):
         data = self._get_json(
@@ -136,7 +160,7 @@ class MarketData:
         self.client = client or YahooClient()
         self.base = base_currency
         self._quotes = {}  # yahoo symbol -> (fetched_at, quote)
-        self._history = {}  # yahoo symbol -> (fetched_at, start, currency, closes)
+        self._history = {}  # yahoo symbol -> (fetched_at, start, currency, closes, splits)
         self._lock = threading.Lock()
 
     # -- symbols ---------------------------------------------------------------
@@ -222,19 +246,26 @@ class MarketData:
 
     # -- history ---------------------------------------------------------------
 
-    def history(self, yahoo_symbol, start):
-        """Daily closes since ``start``. Returns (currency, {date: close})."""
+    def history(self, yahoo_symbol, start, as_traded=False):
+        """Daily closes since ``start``. Returns (currency, {date: close}).
+
+        Closes are split-adjusted, which suits return series like the benchmark. Pass
+        ``as_traded=True`` to value share counts from transactions, which are not.
+        """
         cached = self._history.get(yahoo_symbol)
-        if cached and cached[1] <= start and time.time() - cached[0] < HISTORY_TTL:
-            return cached[2], cached[3]
-        try:
-            currency, closes = self.client.chart(yahoo_symbol, start, date.today() + timedelta(days=1))
-        except requests.RequestException as exc:
-            log.warning("History request for %s failed: %s", yahoo_symbol, exc)
-            return (cached[2], cached[3]) if cached else (None, {})
-        with self._lock:
-            self._history[yahoo_symbol] = (time.time(), start, currency, closes)
-        return currency, closes
+        if not (cached and cached[1] <= start and time.time() - cached[0] < HISTORY_TTL):
+            try:
+                currency, closes, splits = self.client.chart(yahoo_symbol, start, date.today() + timedelta(days=1))
+            except requests.RequestException as exc:
+                log.warning("History request for %s failed: %s", yahoo_symbol, exc)
+                if not cached:
+                    return None, {}
+            else:
+                cached = (time.time(), start, currency, closes, splits)
+                with self._lock:
+                    self._history[yahoo_symbol] = cached
+        _, _, currency, closes, splits = cached
+        return currency, unadjust_splits(closes, splits) if as_traded else closes
 
     # -- FX --------------------------------------------------------------------
 

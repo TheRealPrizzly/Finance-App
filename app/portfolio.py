@@ -435,7 +435,7 @@ def history(txns, market, base="CAD", benchmark="VFV.TO", today=None):
     ysyms = dict(zip(symbols, _parallel_map(lambda s: market.resolve(s, currency_of[s]), symbols)))
 
     def fetch(sym):
-        return market.history(ysyms[sym], fetch_from) if ysyms[sym] else (None, {})
+        return market.history(ysyms[sym], fetch_from, as_traded=True) if ysyms[sym] else (None, {})
 
     fetched = dict(zip(symbols, _parallel_map(fetch, symbols)))
     prices = {s: Series(fetched[s][1]) for s in symbols}
@@ -551,7 +551,7 @@ def position_detail(txns, symbol, account_labels, market, base="CAD", today=None
 
     ysym = market.resolve(symbol, txns[0].currency)
     chart_start = min(txns[0].date, today - timedelta(days=365))
-    currency, closes = market.history(ysym, chart_start - timedelta(days=7)) if ysym else (None, {})
+    currency, closes = market.history(ysym, chart_start - timedelta(days=7), as_traded=True) if ysym else (None, {})
     quote = market.quotes([ysym]).get(ysym) if ysym else None
 
     return {
