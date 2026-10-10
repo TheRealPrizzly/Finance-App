@@ -212,7 +212,10 @@ class Lot:
 def build_lots(txns, fx):
     """Average-cost positions keyed by (account_id, symbol)."""
     lots = {}
-    for t in sorted(txns, key=lambda t: (t.date, t.id)):
+    # Within a day, apply shares received before shares removed: exports list same-day rows
+    # newest-first or oldest-first depending on the broker, and a sale can only come from
+    # shares already held.
+    for t in sorted(txns, key=lambda t: (t.date, qty_delta(t) < 0, t.id)):
         if not t.symbol or t.kind not in (BUY, SELL, TRANSFER, OTHER, DIVIDEND):
             continue
         key = (t.account_id, t.symbol)

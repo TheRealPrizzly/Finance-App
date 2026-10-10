@@ -28,6 +28,18 @@ def test_average_cost_and_realized_gain():
     assert lot.dividends_base == pytest.approx(12.5)
 
 
+def test_same_day_sell_listed_before_buy_uses_the_buy():
+    # newest-first export: the sell of 2 appears before the buy of 3 it was taken from
+    fx = pf.FxBook(FakeMarket(), "USD", date(2026, 1, 1))
+    lot = pf.build_lots([
+        txn(1, "2026-02-06", pf.SELL, "MSFT", -2, 400.45, 0, 800.90, "USD"),
+        txn(2, "2026-02-06", pf.BUY, "MSFT", 3, 400.255, 0, -1200.77, "USD"),
+    ], fx)[(1, "MSFT")]
+    assert lot.quantity == pytest.approx(1)
+    assert lot.cost_native == pytest.approx(1200.77 / 3)  # avg cost 400.26
+    assert lot.realized_base == pytest.approx(800.90 - 2 * 1200.77 / 3)
+
+
 def test_snapshot_totals():
     market = FakeMarket(quotes={"VFV.TO": (150.0, 148.0, "CAD")})
     snap = pf.snapshot(TRADES, {1: "TFSA · 1"}, market)
