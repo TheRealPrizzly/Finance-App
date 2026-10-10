@@ -78,11 +78,45 @@ def selected_account_id():
     return get_account_or_404(int(raw))["id"]
 
 
-def load_txns(account_id=None, symbol=None):
-    sql, params = "SELECT * FROM transactions WHERE user_id = ?", [g.user["id"]]
+def user_portfolios():
+    return get_db().execute("SELECT * FROM portfolios WHERE user_id = ? ORDER BY name", (g.user["id"],)).fetchall()
+
+
+def selected_portfolio_id():
+    raw = request.args.get("portfolio", "")
+    if not raw:
+        return None
+    if not raw.isdigit():
+        abort(400)
+    return get_portfolio_or_404(int(raw))["id"]
+
+
+def selected_account_ids():
+    """Accounts in view: the selected account, the selected portfolio's accounts, or None for all."""
+    account_id = selected_account_id()
     if account_id:
-        sql += " AND account_id = ?"
-        params.append(account_id)
+        return [account_id]
+    portfolio_id = selected_portfolio_id()
+    if portfolio_id:
+        return [r["account_id"] for r in get_db().execute(
+            "SELECT account_id FROM portfolio_accounts WHERE portfolio_id = ?", (portfolio_id,)
+        )]
+    return None
+
+
+def scope_template_args():
+    """What the dashboard and position pages need to render the account/portfolio picker."""
+    return {"accounts": user_accounts(), "portfolios": user_portfolios(),
+            "account_id": selected_account_id(), "portfolio_id": selected_portfolio_id()}
+
+
+def load_txns(account_ids=None, symbol=None):
+    if account_ids is not None and not account_ids:
+        return []
+    sql, params = "SELECT * FROM transactions WHERE user_id = ?", [g.user["id"]]
+    if account_ids is not None:
+        sql += f" AND account_id IN ({', '.join('?' * len(account_ids))})"
+        params.extend(account_ids)
     if symbol:
         sql += " AND symbol = ?"
         params.append(symbol)
@@ -101,8 +135,7 @@ def has_transactions():
 def dashboard():
     return render_template(
         "dashboard.html",
-        accounts=user_accounts(),
-        account_id=selected_account_id(),
+        **scope_template_args(),
         has_transactions=has_transactions(),
         benchmark=current_app.config["BENCHMARK_SYMBOL"],
     )
@@ -117,14 +150,14 @@ def position(symbol):
     ).fetchone()
     if not exists:
         abort(404)
-    return render_template("position.html", symbol=symbol, accounts=user_accounts(), account_id=selected_account_id())
+    return render_template("position.html", symbol=symbol, **scope_template_args())
 
 
 @bp.get("/api/portfolio")
 @login_required
 def api_portfolio():
     data = pf.snapshot(
-        load_txns(selected_account_id()), account_labels(), get_market(), current_app.config["BASE_CURRENCY"]
+        load_txns(selected_account_ids()), account_labels(), get_market(), current_app.config["BASE_CURRENCY"]
     )
     data["as_of"] = datetime.now().isoformat(timespec="seconds")
     return jsonify(data)
@@ -134,7 +167,7 @@ def api_portfolio():
 @login_required
 def api_history():
     return jsonify(pf.history(
-        load_txns(selected_account_id()), get_market(),
+        load_txns(selected_account_ids()), get_market(),
         current_app.config["BASE_CURRENCY"], current_app.config["BENCHMARK_SYMBOL"],
     ))
 
@@ -144,7 +177,7 @@ def api_history():
 def api_position(symbol):
     symbol = symbol.upper()
     data = pf.position_detail(
-        load_txns(selected_account_id(), symbol), symbol, account_labels(), get_market(),
+        load_txns(selected_account_ids(), symbol), symbol, account_labels(), get_market(),
         current_app.config["BASE_CURRENCY"],
     )
     if data is None:
@@ -154,7 +187,7 @@ def api_position(symbol):
            WHERE t.user_id = ? AND t.symbol = ? ORDER BY t.date DESC, t.id DESC""",
         (g.user["id"], symbol),
     ).fetchall()
-    account_id = selected_account_id()
+    account_ids = selected_account_ids()
     data["transactions"] = [
         {
             "id": r["id"], "date": r["date"], "kind": pf.KIND_LABELS.get(r["kind"], r["kind"]), "action": r["action"],
@@ -162,7 +195,7 @@ def api_position(symbol):
             "currency": r["currency"], "account": f"{r['name'] or r['type'] or 'Account'} · {r['number']}",
             "edit_url": url_for("views.edit_transaction", txn_id=r["id"]),
         }
-        for r in rows if not account_id or r["account_id"] == account_id
+        for r in rows if account_ids is None or r["account_id"] in account_ids
     ]
     return jsonify(data)
 

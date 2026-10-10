@@ -1,13 +1,23 @@
-<form method="get" class="account-filter">
-  {% for key, value in request.args.items() if key not in ('account', 'page') %}
-    <input type="hidden" name="{{ key }}" value="{{ value }}">
-  {% endfor %}
-  <label class="sr-only" for="account-select">Account</label>
-  <select id="account-select" name="account" onchange="this.form.submit()">
+<div class="account-filter">
+  <label class="sr-only" for="account-select">Account or portfolio</label>
+  {# Each option is "param:id"; picking one swaps the account/portfolio query parameter and reloads. #}
+  <select id="account-select"
+          onchange="const u = new URL(location.href), [k, v] = this.value.split(':');
+                    ['account', 'portfolio', 'page'].forEach((p) => u.searchParams.delete(p));
+                    if (v) u.searchParams.set(k, v);
+                    location.href = u.href;">
     <option value="">All accounts</option>
-    {% for a in accounts %}
-      <option value="{{ a.id }}" {% if a.id == account_id %}selected{% endif %}>{{ a.name or a.type or 'Account' }} · {{ a.number }}</option>
-    {% endfor %}
+    {% if portfolios %}
+    <optgroup label="Portfolios">
+      {% for p in portfolios %}
+        <option value="portfolio:{{ p.id }}" {% if p.id == portfolio_id and not account_id %}selected{% endif %}>{{ p.name }}</option>
+      {% endfor %}
+    </optgroup>
+    {% endif %}
+    <optgroup label="Accounts">
+      {% for a in accounts %}
+        <option value="account:{{ a.id }}" {% if a.id == account_id %}selected{% endif %}>{{ a.name or a.type or 'Account' }} · {{ a.number }}</option>
+      {% endfor %}
+    </optgroup>
   </select>
-  <noscript><button class="btn btn-secondary btn-sm" type="submit">Apply</button></noscript>
-</form>
+</div>

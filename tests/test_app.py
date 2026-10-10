@@ -140,10 +140,25 @@ def test_portfolios(app, client):
     assert "already have a portfolio named Retirement" in dup
 
     assert client.get("/portfolios/1/edit").status_code == 200
+    html = client.get("/?portfolio=1").get_data(as_text=True)
+    assert '<option value="portfolio:1" selected>Retirement</option>' in html
+    assert "portfolio=1" in html  # API URLs carry the selection
+    both = client.get("/api/portfolio?portfolio=1").get_json()
+    assert {h["symbol"] for h in both["holdings"]} == {"VFV.TO", "XEQT", "AAPL", "MSFT", "SHOP"}
+    assert client.get("/api/history?portfolio=1").get_json()["points"]
+    assert client.get("/position/AAPL?portfolio=1").status_code == 200
+    assert client.get("/api/portfolio?portfolio=x").status_code == 400
+    assert client.get("/api/portfolio?portfolio=99").status_code == 404
     client.post("/portfolios/1/edit", data={"csrf_token": token, "name": "RRSP only", "account_ids": ["2"]})
     from app.db import connect
     conn = connect(app.config["DATABASE"])
     assert [r[0] for r in conn.execute("SELECT account_id FROM portfolio_accounts")] == [2]
+    rrsp = client.get("/api/portfolio?portfolio=1").get_json()
+    assert {h["symbol"] for h in rrsp["holdings"]} == {"AAPL", "MSFT"}
+    assert {t["account"] for t in client.get("/api/position/AAPL?portfolio=1").get_json()["transactions"]} == {"RRSP · 51234568"}
+    client.post("/portfolios/1/edit", data={"csrf_token": token, "name": "Empty"})
+    empty = client.get("/api/portfolio?portfolio=1").get_json()
+    assert empty["holdings"] == [] and empty["cash"] == []
 
     other = login_as(app, client, "other", "other@example.com")
     assert client.get("/portfolios/1/edit").status_code == 404

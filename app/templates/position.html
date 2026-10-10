@@ -2,10 +2,10 @@
 {% block title %}{{ symbol }} · Portfolio Manager{% endblock %}
 {% block page %}position{% endblock %}
 {% block content %}
-<div id="app" data-position-api="{{ url_for('views.api_position', symbol=symbol, account=account_id or None) }}" data-base="{{ base_currency }}">
+<div id="app" data-position-api="{{ url_for('views.api_position', symbol=symbol, account=account_id or None, portfolio=portfolio_id or None) }}" data-base="{{ base_currency }}">
   <div class="page-head">
     <div>
-      <a class="back" href="{{ url_for('views.dashboard', account=account_id or None) }}">← Dashboard</a>
+      <a class="back" href="{{ url_for('views.dashboard', account=account_id or None, portfolio=portfolio_id or None) }}">← Dashboard</a>
       <h1>{{ symbol }} <span class="muted title-name" id="pos-name"></span></h1>
       <p class="price-line" id="pos-price">Loading…</p>
     </div>
