@@ -145,12 +145,12 @@
     const HOLDING_COLUMNS = [
       { key: "symbol", label: "Symbol" },
       { key: "quantity", label: "Quantity", num: true },
+      { key: "avg_cost", label: "Avg cost", num: true },
       { key: "price", label: "Price", num: true },
       { key: "day_change_pct", label: "Today", num: true },
-      { key: "market_value", label: `Value (${BASE})`, num: true },
-      { key: "avg_cost", label: "Avg cost", num: true },
-      { key: "book_cost", label: "Book cost", num: true },
       { key: "unrealized", label: "Unrealized P/L", num: true },
+      { key: "book_cost", label: "Book cost", num: true },
+      { key: "market_value", label: `Value (${BASE})`, num: true },
       { key: "weight", label: "Weight", num: true },
     ];
 
@@ -171,21 +171,21 @@
         return `<tr>
           <td><a class="sym" href="${href}">${esc(h.symbol)}</a>${stale}<span class="sym-name">${esc(h.name)}</span></td>
           <td class="num">${qty(h.quantity)}</td>
+          <td class="num nowrap">${money(h.avg_cost, h.cost_currency)}</td>
           <td class="num nowrap">${money(h.price, h.currency)}</td>
           <td class="num ${tone(h.day_change_pct)}">${pct(h.day_change_pct)}</td>
-          <td class="num nowrap">${money(h.market_value)}</td>
-          <td class="num nowrap">${money(h.avg_cost, h.cost_currency)}</td>
-          <td class="num nowrap">${money(h.book_cost)}</td>
           <td class="num nowrap ${tone(h.unrealized)}">${money(h.unrealized, BASE, { signed: true })}<br><small>${pct(h.unrealized_pct)}</small></td>
+          <td class="num nowrap">${money(h.book_cost)}</td>
+          <td class="num nowrap">${money(h.market_value)}</td>
           <td class="num">${pct(h.weight, { signed: false })}</td>
         </tr>`;
       }).join("");
       const t = lastSnapshot.totals;
-      const foot = rows.length ? `<tfoot><tr><td>Total</td><td></td><td></td>
+      const foot = rows.length ? `<tfoot><tr><td>Total</td><td></td><td></td><td></td>
           <td class="num ${tone(t.day_change)}">${money(t.day_change, BASE, { signed: true })}</td>
-          <td class="num nowrap">${money(t.market_value)}</td><td></td>
+          <td class="num nowrap ${tone(t.unrealized)}">${money(t.unrealized, BASE, { signed: true })}</td>
           <td class="num nowrap">${money(t.book_cost)}</td>
-          <td class="num nowrap ${tone(t.unrealized)}">${money(t.unrealized, BASE, { signed: true })}</td><td></td></tr></tfoot>` : "";
+          <td class="num nowrap">${money(t.market_value)}</td><td></td></tr></tfoot>` : "";
       table.innerHTML = rows.length
         ? `<thead><tr>${head}</tr></thead><tbody>${body}</tbody>${foot}`
         : `<tbody><tr><td class="muted">No open positions.</td></tr></tbody>`;

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Portfolios · Portfolio Manager{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Portfolios</h1>
+    <p class="muted">Group accounts into portfolios. An account can belong to more than one portfolio.</p>
+  </div>
+</div>
+
+{% if rows %}
+<section class="card flush">
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr><th>Portfolio</th><th>Accounts</th><th><span class="sr-only">Actions</span></th></tr>
+      </thead>
+      <tbody>
+        {% for p in rows %}
+        <tr>
+          <td>{{ p.name }}</td>
+          <td>
+            {% for name in members.get(p.id, []) %}<div>{{ name }}</div>{% else %}<span class="muted">No accounts</span>{% endfor %}
+          </td>
+          <td class="row-actions">
+            <a class="btn btn-ghost btn-sm" href="{{ url_for('views.edit_portfolio', portfolio_id=p.id) }}">Edit</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+<form method="post" class="card form">
+  <h2>Create a portfolio</h2>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% with portfolio=None %}{% include "_portfolio_fields.html" %}{% endwith %}
+  <div class="form-actions"><button class="btn btn-primary" type="submit">Create portfolio</button></div>
+</form>
+{% endblock %}

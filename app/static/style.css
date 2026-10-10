@@ -181,6 +181,10 @@ label { display: grid; gap: 4px; font-size: .88rem; font-weight: 600; }
 label .hint { font-weight: 400; }
 .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
 .form-grid [hidden] { display: none; }
+.check-list { border: 0; padding: 0; margin: 16px 0 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px 16px; }
+.check-list legend { font-size: .88rem; font-weight: 600; padding: 0; margin-bottom: 8px; }
+label.check { display: flex; align-items: center; gap: 8px; font-weight: 400; cursor: pointer; }
+label.check input { width: auto; }
 .form-actions { display: flex; gap: 8px; margin-top: 20px; flex-wrap: wrap; }
 .form h2 { margin-bottom: 4px; }
 .filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; align-items: end; }

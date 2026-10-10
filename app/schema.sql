@@ -18,6 +18,21 @@ CREATE TABLE IF NOT EXISTS accounts (
     UNIQUE (user_id, number)
 );
 
+-- A named group of accounts (e.g. "Retirement"). An account can belong to several portfolios.
+CREATE TABLE IF NOT EXISTS portfolios (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (user_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS portfolio_accounts (
+    portfolio_id  INTEGER NOT NULL REFERENCES portfolios(id) ON DELETE CASCADE,
+    account_id    INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    PRIMARY KEY (portfolio_id, account_id)
+);
+
 CREATE TABLE IF NOT EXISTS transactions (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

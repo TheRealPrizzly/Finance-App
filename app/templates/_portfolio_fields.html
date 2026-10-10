@@ -1,0 +1,12 @@
+{% set chosen = request.form.getlist('account_ids') if request.method == 'POST' else selected|map('string')|list %}
+<div class="form-grid">
+  <label>Name <input name="name" value="{{ request.form.name if request.method == 'POST' else (portfolio.name if portfolio else '') }}" placeholder="e.g. Retirement" required autocomplete="off"></label>
+</div>
+<fieldset class="check-list">
+  <legend>Accounts</legend>
+  {% for a in accounts %}
+    <label class="check"><input type="checkbox" name="account_ids" value="{{ a.id }}" {% if a.id|string in chosen %}checked{% endif %}> {{ label(a) }}</label>
+  {% else %}
+    <p class="hint">No accounts yet. <a href="{{ url_for('views.accounts') }}">Add an account</a> or import a CSV first.</p>
+  {% endfor %}
+</fieldset>

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Edit portfolio · Portfolio Manager{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a class="back" href="{{ url_for('views.portfolios') }}">← Portfolios</a>
+    <h1>Edit portfolio</h1>
+  </div>
+</div>
+<form method="post" class="card form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% include "_portfolio_fields.html" %}
+  <div class="form-actions">
+    <button class="btn btn-primary" type="submit">Save</button>
+    <a class="btn btn-ghost" href="{{ url_for('views.portfolios') }}">Cancel</a>
+  </div>
+</form>
+<form method="post" action="{{ url_for('views.delete_portfolio', portfolio_id=portfolio.id) }}" class="danger-zone"
+      onsubmit="return confirm('Delete this portfolio? Its accounts and transactions are kept.')">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button class="btn btn-danger" type="submit">Delete portfolio</button>
+</form>
+{% endblock %}

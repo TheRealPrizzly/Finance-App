@@ -414,6 +414,103 @@ def delete_account(account_id):
     return redirect(url_for("views.accounts"))
 
 
+# -- portfolios -------------------------------------------------------------------------------
+
+
+def get_portfolio_or_404(portfolio_id):
+    row = get_db().execute(
+        "SELECT * FROM portfolios WHERE id = ? AND user_id = ?", (portfolio_id, g.user["id"])
+    ).fetchone()
+    if row is None:
+        abort(404)
+    return row
+
+
+def _parse_portfolio_form(form, accounts, portfolio_id=None):
+    """Validated (name, account_ids), or None after flashing the problem."""
+    name = form.get("name", "").strip()
+    owned = {a["id"] for a in accounts}
+    account_ids = sorted({int(v) for v in form.getlist("account_ids") if v.isdigit() and int(v) in owned})
+    clash = get_db().execute(
+        "SELECT 1 FROM portfolios WHERE user_id = ? AND name = ? AND id != ?", (g.user["id"], name, portfolio_id or 0)
+    ).fetchone()
+    if not name:
+        flash("Enter a portfolio name.", "error")
+    elif clash:
+        flash(f"You already have a portfolio named {name}.", "error")
+    else:
+        return name, account_ids
+    return None
+
+
+def _set_portfolio_accounts(db, portfolio_id, account_ids):
+    db.execute("DELETE FROM portfolio_accounts WHERE portfolio_id = ?", (portfolio_id,))
+    db.executemany(
+        "INSERT INTO portfolio_accounts (portfolio_id, account_id) VALUES (?, ?)",
+        [(portfolio_id, a) for a in account_ids],
+    )
+
+
+@bp.route("/portfolios", methods=["GET", "POST"])
+@login_required
+def portfolios():
+    db = get_db()
+    accounts = user_accounts()
+    if request.method == "POST":
+        parsed = _parse_portfolio_form(request.form, accounts)
+        if parsed:
+            name, account_ids = parsed
+            cur = db.execute("INSERT INTO portfolios (user_id, name) VALUES (?, ?)", (g.user["id"], name))
+            _set_portfolio_accounts(db, cur.lastrowid, account_ids)
+            db.commit()
+            flash(f"Portfolio {name} created.", "success")
+            return redirect(url_for("views.portfolios"))
+    rows = db.execute("SELECT * FROM portfolios WHERE user_id = ? ORDER BY name", (g.user["id"],)).fetchall()
+    labels = {a["id"]: account_label(a) for a in accounts}
+    members = {}
+    for m in db.execute(
+        """SELECT pa.portfolio_id, pa.account_id FROM portfolio_accounts pa
+           JOIN portfolios p ON p.id = pa.portfolio_id WHERE p.user_id = ?""",
+        (g.user["id"],),
+    ):
+        members.setdefault(m["portfolio_id"], []).append(labels[m["account_id"]])
+    return render_template("portfolios.html", rows=rows, members=members, accounts=accounts,
+                           selected=set(), label=account_label)
+
+
+@bp.route("/portfolios/<int:portfolio_id>/edit", methods=["GET", "POST"])
+@login_required
+def edit_portfolio(portfolio_id):
+    portfolio = get_portfolio_or_404(portfolio_id)
+    accounts = user_accounts()
+    db = get_db()
+    if request.method == "POST":
+        parsed = _parse_portfolio_form(request.form, accounts, portfolio_id)
+        if parsed:
+            name, account_ids = parsed
+            db.execute("UPDATE portfolios SET name = ? WHERE id = ? AND user_id = ?", (name, portfolio_id, g.user["id"]))
+            _set_portfolio_accounts(db, portfolio_id, account_ids)
+            db.commit()
+            flash("Portfolio updated.", "success")
+            return redirect(url_for("views.portfolios"))
+    selected = {r["account_id"] for r in db.execute(
+        "SELECT account_id FROM portfolio_accounts WHERE portfolio_id = ?", (portfolio_id,)
+    )}
+    return render_template("portfolio_form.html", portfolio=portfolio, accounts=accounts, selected=selected,
+                           label=account_label)
+
+
+@bp.post("/portfolios/<int:portfolio_id>/delete")
+@login_required
+def delete_portfolio(portfolio_id):
+    portfolio = get_portfolio_or_404(portfolio_id)
+    db = get_db()
+    db.execute("DELETE FROM portfolios WHERE id = ? AND user_id = ?", (portfolio_id, g.user["id"]))
+    db.commit()
+    flash(f"Deleted portfolio {portfolio['name']}. Its accounts and transactions are unchanged.", "success")
+    return redirect(url_for("views.portfolios"))
+
+
 # -- import / export -------------------------------------------------------------------------
 
 

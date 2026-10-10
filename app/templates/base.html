@@ -18,6 +18,7 @@
       {% set ep = request.endpoint or '' %}
       <nav class="nav" aria-label="Main">
         <a href="{{ url_for('views.dashboard') }}" {% if ep in ('views.dashboard', 'views.position') %}aria-current="page"{% endif %}>Dashboard</a>
+        <a href="{{ url_for('views.portfolios') }}" {% if 'portfolio' in ep %}aria-current="page"{% endif %}>Portfolios</a>
         <a href="{{ url_for('views.transactions') }}" {% if 'transaction' in ep %}aria-current="page"{% endif %}>Transactions</a>
         <a href="{{ url_for('views.accounts') }}" {% if 'account' in ep %}aria-current="page"{% endif %}>Accounts</a>
         <a href="{{ url_for('views.import_export') }}" {% if ep == 'views.import_export' %}aria-current="page"{% endif %}>Import / Export</a>

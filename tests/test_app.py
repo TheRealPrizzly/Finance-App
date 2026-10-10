@@ -125,3 +125,32 @@ def test_users_cannot_see_each_others_data(app, client):
     # still there for the owner
     login(client)
     assert len(client.get("/api/portfolio").get_json()["holdings"]) == 5
+
+
+def test_portfolios(app, client):
+    token = login(client)
+    upload(client, token)
+    assert client.get("/portfolios").status_code == 200
+    # account ids are 1 and 2 in a fresh database; 99 is not the user's and is ignored
+    resp = client.post("/portfolios", data={"csrf_token": token, "name": "Retirement", "account_ids": ["1", "2", "99"]})
+    assert resp.status_code == 302
+    html = client.get("/portfolios").get_data(as_text=True)
+    assert "Retirement" in html and "51234567" in html and "51234568" in html
+    dup = client.post("/portfolios", data={"csrf_token": token, "name": "Retirement"}).get_data(as_text=True)
+    assert "already have a portfolio named Retirement" in dup
+
+    assert client.get("/portfolios/1/edit").status_code == 200
+    client.post("/portfolios/1/edit", data={"csrf_token": token, "name": "RRSP only", "account_ids": ["2"]})
+    from app.db import connect
+    conn = connect(app.config["DATABASE"])
+    assert [r[0] for r in conn.execute("SELECT account_id FROM portfolio_accounts")] == [2]
+
+    other = login_as(app, client, "other", "other@example.com")
+    assert client.get("/portfolios/1/edit").status_code == 404
+    assert client.post("/portfolios/1/delete", data={"csrf_token": other}).status_code == 404
+
+    token = login(client)
+    client.post("/portfolios/1/delete", data={"csrf_token": token})
+    assert conn.execute("SELECT COUNT(*) FROM portfolios").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM accounts").fetchone()[0] == 2
+    conn.close()
