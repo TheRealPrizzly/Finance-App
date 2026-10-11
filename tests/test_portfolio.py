@@ -123,6 +123,21 @@ def test_history_time_weighted_return_ignores_deposits():
     assert h["points"][-1]["benchmark_twr"] == pytest.approx(0.10)
     since_inception = next(p for p in h["periods"] if p["label"] == "All")
     assert since_inception["portfolio"] == pytest.approx(0.10)
+    annual = next(p for p in h["periods"] if p["label"] == "Annualized")
+    assert annual["portfolio"] is None  # under a year of history: not annualized
+
+
+def test_period_returns_annualizes_since_inception():
+    points = [
+        {"date": "2023-01-02", "twr": 0.0, "benchmark_twr": 0.0},
+        {"date": "2025-01-01", "twr": 0.21, "benchmark_twr": 0.44},  # 730 days later
+    ]
+    periods = pf.period_returns(points, date(2025, 1, 1))
+    assert [p["label"] for p in periods][-2:] == ["All", "Annualized"]
+    annual = periods[-1]
+    years = 730 / 365.25
+    assert annual["portfolio"] == pytest.approx(1.21 ** (1 / years) - 1)
+    assert annual["benchmark"] == pytest.approx(1.44 ** (1 / years) - 1)
 
 
 def test_history_skips_weekends_but_keeps_their_flows():

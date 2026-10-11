@@ -336,8 +336,11 @@
       if (!rows.length) return;
       const cells = (fn) => rows.map((r) => `<td class="num">${fn(r)}</td>`).join("");
       const diff = (r) => (r.portfolio == null || r.benchmark == null ? null : r.portfolio - r.benchmark);
+      const head = (r) => r.label === "All" ? "<th class=\"num\">Since inception</th>"
+        : r.label === "Annualized" ? "<th class=\"num\" title=\"Compound yearly return since inception. Shown once there's at least a year of history.\">Annualized</th>"
+        : `<th class="num">${esc(r.label)}</th>`;
       $("period-table").innerHTML = `
-        <thead><tr><th></th>${rows.map((r) => `<th class="num">${esc(r.label === "All" ? "Since inception" : r.label)}</th>`).join("")}</tr></thead>
+        <thead><tr><th></th>${rows.map(head).join("")}</tr></thead>
         <tbody>
           <tr><td>Portfolio</td>${cells((r) => `<span class="${tone(r.portfolio)}">${pct(r.portfolio)}</span>`)}</tr>
           <tr><td>${esc(benchmark)}</td>${cells((r) => `<span class="${tone(r.benchmark)}">${pct(r.benchmark)}</span>`)}</tr>

@@ -529,7 +529,17 @@ def period_returns(points, today):
         if "benchmark_twr" in end and "benchmark_twr" in base:
             bench = (1 + end["benchmark_twr"]) / (1 + base["benchmark_twr"]) - 1
         out.append({"label": label, "portfolio": portfolio, "benchmark": bench})
+    out.append(annualized(out[-1], (dates[-1] - dates[0]).days / 365.25))
     return out
+
+
+def annualized(since_inception, years):
+    """Compound annual rate of the since-inception returns. Periods under a year
+    aren't annualized (standard practice: it would extrapolate a short streak)."""
+    def rate(r):
+        return None if r is None or years < 1 else (1 + r) ** (1 / years) - 1
+    return {"label": "Annualized", "portfolio": rate(since_inception["portfolio"]),
+            "benchmark": rate(since_inception["benchmark"])}
 
 
 # -- single position -----------------------------------------------------------
