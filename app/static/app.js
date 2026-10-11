@@ -504,6 +504,16 @@
     update();
   }
 
+  // Account / portfolio picker: options are "account:<id>" or "portfolio:<id>" ("" = all accounts).
+  // Kept out of an inline onchange attribute, where `URL` would resolve to the document.URL string.
+  $("account-select")?.addEventListener("change", (e) => {
+    const url = new URL(location.href);
+    ["account", "portfolio", "page"].forEach((p) => url.searchParams.delete(p));
+    const [key, id] = e.target.value.split(":");
+    if (id) url.searchParams.set(key, id);
+    location.href = url.href;
+  });
+
   const pages = { dashboard, position, "txn-form": txnForm };
   pages[document.body.dataset.page]?.();
 })();
