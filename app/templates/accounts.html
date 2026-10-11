@@ -25,8 +25,10 @@
           <td class="num nowrap">
             {% for b in cash.get(a.id, []) %}<div class="{{ 'loss' if b.amount < 0 }}">{{ b.amount|money(b.currency) }}</div>{% else %}<span class="muted">—</span>{% endfor %}
           </td>
-          <td class="row-actions">
-            <a class="btn btn-ghost btn-sm" href="{{ url_for('views.edit_account', account_id=a.id) }}">Edit</a>
+          <td>
+            <div class="row-actions">
+              <a class="btn btn-ghost btn-sm" href="{{ url_for('views.edit_account', account_id=a.id) }}">Edit</a>
+            </div>
           </td>
         </tr>
         {% endfor %}

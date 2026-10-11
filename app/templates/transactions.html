@@ -62,12 +62,14 @@
           <td class="num">{{ r.price|qty if r.price else '—' }}</td>
           <td class="num">{{ '%.2f'|format(r.costs) if r.costs else '—' }}</td>
           <td class="num nowrap {{ 'gain' if r.net_amount > 0 else 'loss' if r.net_amount < 0 }}">{{ r.net_amount|money(r.currency) }}</td>
-          <td class="row-actions">
-            <a class="btn btn-ghost btn-sm" href="{{ url_for('views.edit_transaction', txn_id=r.id) }}">Edit</a>
-            <form method="post" action="{{ url_for('views.delete_transaction', txn_id=r.id) }}" onsubmit="return confirm('Delete this transaction?')">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button class="btn btn-ghost btn-sm btn-danger-text" type="submit">Delete</button>
-            </form>
+          <td>
+            <div class="row-actions">
+              <a class="btn btn-ghost btn-sm" href="{{ url_for('views.edit_transaction', txn_id=r.id) }}">Edit</a>
+              <form method="post" action="{{ url_for('views.delete_transaction', txn_id=r.id) }}" onsubmit="return confirm('Delete this transaction?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-ghost btn-sm btn-danger-text" type="submit">Delete</button>
+              </form>
+            </div>
           </td>
         </tr>
         {% endfor %}

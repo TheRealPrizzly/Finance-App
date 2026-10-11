@@ -412,7 +412,7 @@
           <td class="num">${t.quantity ? qty(t.quantity) : "—"}</td>
           <td class="num nowrap">${t.price ? money(t.price, t.currency) : "—"}</td>
           <td class="num nowrap ${tone(t.net_amount)}">${money(t.net_amount, t.currency, { signed: true })}</td>
-          <td class="row-actions"><a class="btn btn-ghost btn-sm" href="${esc(t.edit_url)}">Edit</a></td></tr>`).join("")}</tbody>`;
+          <td><div class="row-actions"><a class="btn btn-ghost btn-sm" href="${esc(t.edit_url)}">Edit</a></div></td></tr>`).join("")}</tbody>`;
     }
 
     function renderPriceChart(p) {

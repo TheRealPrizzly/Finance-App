@@ -22,8 +22,10 @@
           <td>
             {% for name in members.get(p.id, []) %}<div>{{ name }}</div>{% else %}<span class="muted">No accounts</span>{% endfor %}
           </td>
-          <td class="row-actions">
-            <a class="btn btn-ghost btn-sm" href="{{ url_for('views.edit_portfolio', portfolio_id=p.id) }}">Edit</a>
+          <td>
+            <div class="row-actions">
+              <a class="btn btn-ghost btn-sm" href="{{ url_for('views.edit_portfolio', portfolio_id=p.id) }}">Edit</a>
+            </div>
           </td>
         </tr>
         {% endfor %}
