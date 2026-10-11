@@ -169,3 +169,31 @@ def test_portfolios(app, client):
     assert conn.execute("SELECT COUNT(*) FROM portfolios").fetchone()[0] == 0
     assert conn.execute("SELECT COUNT(*) FROM accounts").fetchone()[0] == 2
     conn.close()
+
+
+def test_theme_setting(app, client):
+    token = login(client)
+    assert 'data-theme="white"' in client.get("/accounts").get_data(as_text=True)
+    resp = client.post("/settings/theme", data={"csrf_token": token, "theme": "dark-grey", "next": "/accounts?x=1"})
+    assert resp.headers["Location"] == "/accounts?x=1"
+    html = client.get("/accounts").get_data(as_text=True)
+    assert 'data-theme="dark-grey"' in html and '<option value="dark-grey" selected>' in html
+    assert client.post("/settings/theme", data={"csrf_token": token, "theme": "neon"}).status_code == 400
+    for evil in ("https://evil.example", "//evil.example", "/\\evil.example"):
+        resp = client.post("/settings/theme", data={"csrf_token": token, "theme": "white", "next": evil})
+        assert resp.headers["Location"] == "/"
+
+
+def test_migration_adds_theme_to_existing_users(tmp_path):
+    from app.db import connect, init_db
+
+    path = str(tmp_path / "old.db")
+    conn = connect(path)
+    conn.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, google_sub TEXT, email TEXT, name TEXT, picture TEXT)")
+    conn.execute("INSERT INTO users (google_sub, email) VALUES ('s', 'a@b.c')")
+    conn.commit()
+    conn.close()
+    init_db(path)
+    conn = connect(path)
+    assert conn.execute("SELECT theme FROM users").fetchone()[0] == "white"
+    conn.close()

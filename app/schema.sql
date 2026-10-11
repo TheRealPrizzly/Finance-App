@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS users (
     email       TEXT NOT NULL,
     name        TEXT,
     picture     TEXT,
+    theme       TEXT NOT NULL DEFAULT 'white',
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

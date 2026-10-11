@@ -17,6 +17,7 @@ from .market import get_market
 
 bp = Blueprint("views", __name__)
 PAGE_SIZE = 100
+THEMES = {"white": "White - Standard", "dark-grey": "Dark grey"}
 CASH_KINDS = (pf.DIVIDEND, pf.DEPOSIT, pf.WITHDRAWAL, pf.TRANSFER, pf.FEE, pf.INTEREST, pf.FX, pf.OTHER)
 
 
@@ -40,7 +41,7 @@ def qty_filter(value):
 
 @bp.app_context_processor
 def inject_globals():
-    return {"kind_labels": pf.KIND_LABELS, "base_currency": current_app.config["BASE_CURRENCY"]}
+    return {"kind_labels": pf.KIND_LABELS, "base_currency": current_app.config["BASE_CURRENCY"], "themes": THEMES}
 
 
 # -- data access ------------------------------------------------------------------
@@ -445,6 +446,24 @@ def delete_account(account_id):
     db.commit()
     flash(f"Deleted {account_label(account)} and its transactions.", "success")
     return redirect(url_for("views.accounts"))
+
+
+# -- settings -------------------------------------------------------------------------------
+
+
+@bp.post("/settings/theme")
+@login_required
+def set_theme():
+    theme = request.form.get("theme", "")
+    if theme not in THEMES:
+        abort(400)
+    db = get_db()
+    db.execute("UPDATE users SET theme = ? WHERE id = ?", (theme, g.user["id"]))
+    db.commit()
+    back = request.form.get("next", "")
+    if not back.startswith("/") or back.startswith(("//", "/\\")):
+        back = url_for("views.dashboard")
+    return redirect(back)
 
 
 # -- portfolios -------------------------------------------------------------------------------

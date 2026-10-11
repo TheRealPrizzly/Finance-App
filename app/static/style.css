@@ -22,35 +22,28 @@
   --shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 1px 3px rgba(16, 24, 40, .04);
   color-scheme: light;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #0e1116;
-    --surface: #161a21;
-    --surface-2: #1d222b;
-    --border: #2a303b;
-    --text: #e8ebf0;
-    --muted: #98a1b0;
-    --accent: #6b95ff;
-    --accent-hover: #8aabff;
-    --accent-soft: #1d2a4a;
-    --gain: #3ccf7f;
-    --loss: #ff6b6b;
-    --info-bg: #17233d; --info-text: #b8ccff;
-    --ok-bg: #12291d;   --ok-text: #9ee5bd;
-    --err-bg: #331617;  --err-text: #ffb4b4;
-    --warn-bg: #30270f; --warn-text: #f3d68a;
-    --chart-1: #6b95ff;
-    --chart-2: #ffa94d;
-    --chart-3: #7d8799;
-    --shadow: none;
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #0e1116; --surface: #161a21; --surface-2: #1d222b; --border: #2a303b;
-  --text: #e8ebf0; --muted: #98a1b0; --accent: #6b95ff; --accent-hover: #8aabff; --accent-soft: #1d2a4a;
-  --gain: #3ccf7f; --loss: #ff6b6b; --chart-1: #6b95ff; --chart-2: #ffa94d; --chart-3: #7d8799;
-  --shadow: none; color-scheme: dark;
+/* Themes: "white" (White - Standard) is the default above; others override the tokens. */
+:root[data-theme="dark-grey"] {
+  --bg: #26282c;
+  --surface: #303236;
+  --surface-2: #3a3c41;
+  --border: #46494f;
+  --text: #ececee;
+  --muted: #a9adb5;
+  --accent: #7aa2ff;
+  --accent-hover: #98b7ff;
+  --accent-soft: #33405c;
+  --gain: #4cd28a;
+  --loss: #ff7b7b;
+  --info-bg: #2f3a52; --info-text: #c3d3ff;
+  --ok-bg: #24382d;   --ok-text: #a6e6c2;
+  --err-bg: #4a2a2c;  --err-text: #ffc0c0;
+  --warn-bg: #463c22; --warn-text: #f3d68a;
+  --chart-1: #7aa2ff;
+  --chart-2: #ffad5c;
+  --chart-3: #8d939e;
+  --shadow: none;
+  color-scheme: dark;
 }
 
 /* ---- Base --------------------------------------------------------------- */
@@ -90,6 +83,7 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
 .nav a[aria-current="page"] { color: var(--accent); background: var(--accent-soft); }
 .user { display: flex; align-items: center; gap: 8px; }
 .user form { margin: 0; }
+.theme-form select { width: auto; padding: 4px 8px; font-size: .85rem; }
 .avatar { width: 28px; height: 28px; border-radius: 50%; }
 .user-name { color: var(--muted); font-size: .9rem; }
 

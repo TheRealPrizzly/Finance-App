@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="{{ g.user.theme if g.user and g.user.theme in themes else 'white' }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -24,6 +24,15 @@
         <a href="{{ url_for('views.import_export') }}" {% if ep == 'views.import_export' %}aria-current="page"{% endif %}>Import / Export</a>
       </nav>
       <div class="user">
+        <form method="post" action="{{ url_for('views.set_theme') }}" class="theme-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="next" value="{{ request.full_path }}">
+          <label class="sr-only" for="theme-select">Theme</label>
+          <select id="theme-select" name="theme" onchange="this.form.submit()">
+            {% for key, label in themes.items() %}<option value="{{ key }}" {% if g.user.theme == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+          <noscript><button class="btn btn-ghost btn-sm" type="submit">Apply</button></noscript>
+        </form>
         {% if g.user.picture %}<img class="avatar" src="{{ g.user.picture }}" alt="" referrerpolicy="no-referrer">{% endif %}
         <span class="user-name">{{ g.user.name or g.user.email }}</span>
         <form method="post" action="{{ url_for('auth.logout') }}">

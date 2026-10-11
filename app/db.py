@@ -32,9 +32,17 @@ def init_db(path):
     conn = connect(path)
     try:
         conn.executescript(SCHEMA.read_text(encoding="utf-8"))
+        migrate(conn)
         conn.commit()
     finally:
         conn.close()
+
+
+def migrate(conn):
+    """Bring databases created by older versions up to the current schema."""
+    user_columns = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
+    if "theme" not in user_columns:
+        conn.execute("ALTER TABLE users ADD COLUMN theme TEXT NOT NULL DEFAULT 'white'")
 
 
 def init_app(app):
