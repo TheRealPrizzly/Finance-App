@@ -179,7 +179,7 @@
           <td class="num nowrap">${money(h.price, h.currency)}</td>
           <td class="num ${tone(h.day_change_pct)}">${pct(h.day_change_pct)}</td>
           <td class="num nowrap ${tone(h.unrealized)}">${money(h.unrealized, BASE, { signed: true })}<br><small>${pct(h.unrealized_pct)}</small></td>
-          <td class="num nowrap">${money(h.book_cost)}</td>
+          <td class="num nowrap">${money(h.book_cost_native, h.cost_currency)}${h.cost_currency === BASE ? "" : `<br><small>${money(h.book_cost)} ${BASE}</small>`}</td>
           <td class="num nowrap">${money(h.market_value)}</td>
           <td class="num">${pct(h.weight, { signed: false })}</td>
         </tr>`;

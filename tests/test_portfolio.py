@@ -71,6 +71,7 @@ def test_foreign_holding_uses_purchase_date_fx_for_book_cost():
     h = snap["holdings"][0]
     assert h["market_value"] == pytest.approx(3500)  # 10 * 250 * 1.40
     assert h["book_cost"] == pytest.approx(2600)  # 2000 * 1.30
+    assert h["book_cost_native"] == pytest.approx(2000)  # what the broker shows, in USD
     assert h["unrealized"] == pytest.approx(900)
 
 

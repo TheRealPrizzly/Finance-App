@@ -326,6 +326,7 @@ def snapshot(txns, account_labels, market, base="CAD"):
             "market_value_native": qty * price,
             "market_value": market_value,
             "book_cost": cost_base,
+            "book_cost_native": cost_native,
             "unrealized": market_value - cost_base,
             "unrealized_pct": _ratio(market_value - cost_base, cost_base),
             "day_change": day_change,
