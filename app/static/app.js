@@ -154,7 +154,7 @@
       { key: "day_change_pct", label: "Today", num: true },
       { key: "unrealized", label: "Unrealized P/L", num: true },
       { key: "book_cost", label: "Book cost", num: true },
-      { key: "market_value", label: `Value (${BASE})`, num: true },
+      { key: "market_value", label: "Value", num: true },
       { key: "weight", label: "Weight", num: true },
     ];
 
@@ -180,7 +180,7 @@
           <td class="num ${tone(h.day_change_pct)}">${pct(h.day_change_pct)}</td>
           <td class="num nowrap ${tone(h.unrealized)}">${money(h.unrealized, BASE, { signed: true })}<br><small>${pct(h.unrealized_pct)}</small></td>
           <td class="num nowrap">${money(h.book_cost_native, h.cost_currency)}${h.cost_currency === BASE ? "" : `<br><small>${money(h.book_cost)} ${BASE}</small>`}</td>
-          <td class="num nowrap">${money(h.market_value)}</td>
+          <td class="num nowrap">${money(h.market_value_native, h.currency)}${h.currency === BASE ? "" : `<br><small>${money(h.market_value)} ${BASE}</small>`}</td>
           <td class="num">${pct(h.weight, { signed: false })}</td>
         </tr>`;
       }).join("");
