@@ -287,6 +287,22 @@ def test_history_time_weighted_return_ignores_deposits():
     assert annual["portfolio"] is None  # under a year of history: not annualized
 
 
+def test_period_returns_include_five_years_between_one_year_and_inception():
+    points = [
+        {"date": "2019-06-03", "twr": 0.0, "benchmark_twr": 0.0},
+        {"date": "2020-09-30", "twr": 0.10, "benchmark_twr": 0.20},  # last point before 5Y starts (2020-10-01)
+        {"date": "2024-10-01", "twr": 0.50, "benchmark_twr": 0.80},  # last point before 1Y starts
+        {"date": "2025-10-01", "twr": 0.65, "benchmark_twr": 0.98},
+    ]
+    periods = {p["label"]: p for p in pf.period_returns(points, date(2025, 10, 1))}
+    assert list(periods)[-4:] == ["1Y", "5Y", "All", "Annualized"]
+    assert periods["5Y"]["portfolio"] == pytest.approx(1.65 / 1.10 - 1)
+    assert periods["5Y"]["benchmark"] == pytest.approx(1.98 / 1.20 - 1)
+    # with under five years of history there is no 5Y figure
+    short = {p["label"]: p for p in pf.period_returns(points[2:], date(2025, 10, 1))}
+    assert short["5Y"]["portfolio"] is None
+
+
 def test_period_returns_annualizes_since_inception():
     points = [
         {"date": "2023-01-02", "twr": 0.0, "benchmark_twr": 0.0},

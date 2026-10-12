@@ -561,7 +561,7 @@ def snapshot(txns, account_labels, market, base="CAD"):
 
 # -- performance history -------------------------------------------------------
 
-PERIODS = (("1M", 30), ("3M", 91), ("6M", 182), ("YTD", None), ("1Y", 365), ("All", None))
+PERIODS = (("1M", 30), ("3M", 91), ("6M", 182), ("YTD", None), ("1Y", 365), ("5Y", 1826), ("All", None))
 
 
 def history(txns, market, base="CAD", benchmark="VFV.TO", today=None):
