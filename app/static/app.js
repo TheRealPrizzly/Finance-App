@@ -164,6 +164,7 @@
 
       holdings = p.holdings;
       renderHoldings();
+      renderEarnings(p.holdings);
       renderAllocation("sector", p.sectors.map((s) => ({ label: s.sector, value: s.value })));
       renderAllocation("equity", [
         ...p.holdings.map((h) => ({ label: h.symbol, value: h.market_value })),
@@ -219,6 +220,43 @@
       table.innerHTML = rows.length
         ? `<thead><tr>${head}</tr></thead><tbody>${body}</tbody>${foot}`
         : `<tbody><tr><td class="muted">No open positions.</td></tr></tbody>`;
+    }
+
+    // Upcoming earnings ---------------------------------------------------------
+    // Dates are shown in New York time, the exchange's calendar day.
+    const MARKET_TZ = "America/New_York";
+    const marketDay = (ms) => new Date(`${new Date(ms).toLocaleDateString("en-CA", { timeZone: MARKET_TZ })}T00:00:00Z`);
+    const earningsDate = (ts) => new Date(ts * 1000).toLocaleDateString("en-CA", {
+      weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: MARKET_TZ,
+    });
+
+    function renderEarnings(list) {
+      const today = marketDay(Date.now());
+      const rows = list
+        .filter((h) => h.earnings)
+        .map((h) => ({ h, e: h.earnings, days: Math.round((marketDay(h.earnings.start * 1000) - today) / 86_400_000) }))
+        .filter((r) => r.days >= 0)
+        .sort((a, b) => a.e.start - b.e.start);
+      const missing = list.filter((h) => h.quote_type === "EQUITY" && !rows.some((r) => r.h === h)).map((h) => h.symbol);
+      const when = (d) => (d === 0 ? "Today" : d === 1 ? "Tomorrow" : `In ${d} days`);
+
+      $("earnings").innerHTML = rows.length
+        ? `<table class="table"><thead><tr><th>Symbol</th><th>Date</th><th class="num">When</th><th class="num">Value</th></tr></thead>
+          <tbody>${rows.map(({ h, e, days }) => {
+            const href = urls.positionUrl.replace("__SYMBOL__", encodeURIComponent(h.symbol));
+            const date = e.end ? `${earningsDate(e.start)} – ${earningsDate(e.end)}` : earningsDate(e.start);
+            const badge = e.estimated ? '<span class="badge" title="Yahoo's estimate; the company hasn't confirmed the date yet">estimated</span>' : "";
+            return `<tr>
+              <td><a class="sym" href="${href}">${esc(h.symbol)}</a><span class="sym-name">${esc(h.name)}</span></td>
+              <td class="nowrap">${esc(date)}${badge}</td>
+              <td class="num nowrap">${when(days)}</td>
+              <td class="num nowrap">${money(h.market_value)}</td>
+            </tr>`;
+          }).join("")}</tbody></table>`
+        : '<p class="muted">No upcoming earnings dates for your holdings.</p>';
+      $("earnings-note").textContent = missing.length
+        ? `No date announced yet for ${missing.join(", ")}. ETFs and funds don't report earnings.`
+        : "ETFs and funds don't report earnings.";
     }
 
     $("holdings").addEventListener("click", (e) => {

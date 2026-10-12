@@ -475,6 +475,7 @@ def snapshot(txns, account_labels, market, base="CAD"):
             "unrealized_pct": _ratio(market_value - cost_base, cost_base),
             "day_change": day_change,
             "day_change_pct": _ratio(price - prev, prev) if prev else None,
+            "earnings": (q or {}).get("earnings"),
             "realized": realized,
             "dividends": dividends,
             "accounts": [

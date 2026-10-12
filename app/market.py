@@ -69,6 +69,23 @@ def unadjust_splits(closes, splits):
     return out
 
 
+def next_earnings(quote, now=None):
+    """The next earnings date in a Yahoo quote, or None if none is announced.
+
+    Returns {"start": unix seconds, "end": unix seconds or None, "estimated": bool}. Yahoo
+    gives a single time once a date is confirmed, and a start/end window while it's still
+    an estimate. A date stays "upcoming" for a day so today's report is still listed."""
+    now = time.time() if now is None else now
+    times = sorted({t for t in (quote.get(k) for k in ("earningsTimestampStart", "earningsTimestamp",
+                                                        "earningsTimestampEnd")) if t})
+    upcoming = [t for t in times if t >= now - 86400]
+    if not upcoming:
+        return None
+    start, end = upcoming[0], upcoming[-1]
+    return {"start": start, "end": end if end - start >= 86400 else None,
+            "estimated": bool(quote.get("isEarningsDateEstimate"))}
+
+
 class YahooClient:
     """Thin HTTP client for the unofficial Yahoo Finance endpoints."""
 
@@ -216,6 +233,7 @@ class MarketData:
             "name": q.get("longName") or q.get("shortName") or q["symbol"],
             "quote_type": q.get("quoteType"),
             "market_state": q.get("marketState"),
+            "earnings": next_earnings(q),
         }
         with self._lock:
             self._quotes[data["symbol"]] = (time.time(), data)

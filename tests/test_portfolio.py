@@ -244,6 +244,18 @@ def test_holdings_only_mode_treats_buys_as_contributions():
     assert snap["totals"]["total_gain"] == pytest.approx(500)
 
 
+def test_holdings_carry_the_next_earnings_date():
+    class EarningsMarket(FakeMarket):
+        def quotes(self, symbols):
+            out = super().quotes(symbols)
+            out["AAPL"]["earnings"] = {"start": 1_790_000_000, "end": None, "estimated": False}
+            return out
+
+    market = EarningsMarket(quotes={"AAPL": (250.0, 245.0, "USD")}, fx={"USD": (1.4, {})})
+    snap = pf.snapshot([txn(1, "2025-01-02", pf.BUY, "AAPL", 2, 200, 0, -400, "USD")], {}, market)
+    assert snap["holdings"][0]["earnings"] == {"start": 1_790_000_000, "end": None, "estimated": False}
+
+
 def test_missing_quote_falls_back_to_last_trade_price():
     txns = [txn(1, "2025-01-02", pf.BUY, "PRIVATE", 10, 12, 0, -120)]
     snap = pf.snapshot(txns, {}, FakeMarket())
