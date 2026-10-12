@@ -245,7 +245,7 @@
           <tbody>${rows.map(({ h, e, days }) => {
             const href = urls.positionUrl.replace("__SYMBOL__", encodeURIComponent(h.symbol));
             const date = e.end ? `${earningsDate(e.start)} – ${earningsDate(e.end)}` : earningsDate(e.start);
-            const badge = e.estimated ? '<span class="badge" title="Yahoo's estimate; the company hasn't confirmed the date yet">estimated</span>' : "";
+            const badge = e.estimated ? '<span class="badge" title="Estimated by Yahoo; not yet confirmed by the company">estimated</span>' : "";
             return `<tr>
               <td><a class="sym" href="${href}">${esc(h.symbol)}</a><span class="sym-name">${esc(h.name)}</span></td>
               <td class="nowrap">${esc(date)}${badge}</td>
