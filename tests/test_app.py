@@ -320,7 +320,7 @@ def test_accounts_live_on_the_portfolio_manager_page(client):
 def test_transactions_live_on_the_portfolio_manager_page(client):
     token = login(client)
     upload(client, token)
-    html = client.get("/portfolios").get_data(as_text=True)
+    html = client.get("/portfolios?show=all").get_data(as_text=True)
     assert html.index('id="accounts"') < html.index('id="transactions"') < html.index('id="transactions-table"')
     table = html[html.index('id="transactions-table"'):html.index("</table>", html.index('id="transactions-table"'))]
     assert "VFV.TO" in table and "AAPL" in table and "/transactions/1/edit" in table
@@ -346,3 +346,35 @@ def test_transactions_live_on_the_portfolio_manager_page(client):
     resp = client.post("/transactions/1/delete", data={"csrf_token": token},
                        headers={"Referer": "http://localhost/portfolios?symbol=AAPL"})
     assert resp.headers["Location"] == "http://localhost/portfolios?symbol=AAPL#transactions"
+
+
+def test_transactions_preview_the_latest_ten(client, monkeypatch):
+    from app import views
+
+    token = login(client)
+    upload(client, token)  # 20 transactions
+
+    def table_rows(html):
+        start = html.index('id="transactions-table"')
+        return html[start:html.index("</table>", start)].count("/edit")
+
+    html = client.get("/portfolios").get_data(as_text=True)
+    assert table_rows(html) == 10
+    assert "20 transactions · showing the latest 10" in html
+    assert 'href="/portfolios?show=all#transactions">Show all 20 transactions</a>' in html
+    assert "Transaction pages" not in html  # no pager while collapsed
+
+    html = client.get("/portfolios?show=all").get_data(as_text=True)
+    assert table_rows(html) == 20 and "showing the latest" not in html
+    assert 'href="/portfolios#transactions">Show fewer</a>' in html
+    assert 'name="show" value="all"' in html  # filtering keeps the full list
+
+    filtered = client.get("/portfolios?symbol=AAPL&show=all").get_data(as_text=True)
+    assert 'href="/portfolios?symbol=AAPL#transactions">Show fewer</a>' not in filtered  # 3 rows: no toggle
+    assert table_rows(client.get("/portfolios?page=2").get_data(as_text=True)) == 10  # page ignored when collapsed
+
+    monkeypatch.setattr(views, "PAGE_SIZE", 8)  # expanded: 8 per page, 3 pages
+    html = client.get("/portfolios?show=all&page=2").get_data(as_text=True)
+    assert table_rows(html) == 8 and "Page 2 of 3" in html
+    assert "/portfolios?show=all&amp;page=1#transactions" in html and "/portfolios?show=all&amp;page=3#transactions" in html
+    assert table_rows(client.get("/portfolios?show=all&page=3").get_data(as_text=True)) == 4

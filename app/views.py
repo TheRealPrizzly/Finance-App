@@ -18,6 +18,7 @@ from .market import get_market
 
 bp = Blueprint("views", __name__)
 PAGE_SIZE = 100
+TXN_PREVIEW = 10  # transactions shown on the Portfolio Manager page until "Show all"
 THEMES = {"white": "White - Standard", "dark-grey": "Dark grey"}
 CASH_KINDS = (pf.DIVIDEND, pf.DEPOSIT, pf.WITHDRAWAL, pf.TRANSFER, pf.FEE, pf.INTEREST, pf.FX, pf.OTHER)
 
@@ -271,11 +272,16 @@ def transactions_section_url(**args):
 
 
 def transaction_listing():
-    """One page of the user's transactions, filtered by the account / symbol / kind query args."""
+    """The user's transactions, filtered by the account / symbol / kind query args: the latest
+    TXN_PREVIEW of them, or with ?show=all every one, PAGE_SIZE per page."""
     account_id = selected_account_id()
     symbol = request.args.get("symbol", "").strip().upper()
     kind = request.args.get("kind", "")
     page = max(int(request.args.get("page", "1")) if request.args.get("page", "1").isdigit() else 1, 1)
+    expanded = request.args.get("show") == "all"
+    if not expanded:
+        page = 1
+    limit = PAGE_SIZE if expanded else TXN_PREVIEW
 
     where, params = ["t.user_id = ?"], [g.user["id"]]
     if account_id:
@@ -294,10 +300,11 @@ def transaction_listing():
         f"""SELECT t.*, a.number, a.name AS account_name, a.type AS account_type
             FROM transactions t JOIN accounts a ON a.id = t.account_id
             WHERE {clause} ORDER BY t.date DESC, t.id DESC LIMIT ? OFFSET ?""",
-        params + [PAGE_SIZE, (page - 1) * PAGE_SIZE],
+        params + [limit, (page - 1) * limit],
     ).fetchall()
     return {"txn_rows": rows, "txn_account_id": account_id, "txn_symbol": symbol, "txn_kind": kind,
-            "txn_page": page, "txn_pages": max((total + PAGE_SIZE - 1) // PAGE_SIZE, 1), "txn_total": total}
+            "txn_page": page, "txn_pages": max((total + PAGE_SIZE - 1) // PAGE_SIZE, 1) if expanded else 1,
+            "txn_total": total, "txn_expanded": expanded, "txn_preview": TXN_PREVIEW}
 
 
 @bp.get("/transactions")

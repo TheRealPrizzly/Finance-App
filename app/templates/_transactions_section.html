@@ -3,7 +3,7 @@
 <div class="page-head section-head" id="transactions">
   <div>
     <h2>Transactions</h2>
-    <p class="muted">{{ txn_total }} transaction{{ '' if txn_total == 1 else 's' }}</p>
+    <p class="muted">{{ txn_total }} transaction{{ '' if txn_total == 1 else 's' }}{% if not txn_expanded and txn_total > txn_preview %} · showing the latest {{ txn_preview }}{% endif %}</p>
   </div>
   <div class="head-actions">
     <a class="btn btn-primary" href="{{ url_for('views.new_transaction', account=txn_account_id or None) }}">Add transaction</a>
@@ -30,6 +30,7 @@
       {% endfor %}
     </select>
   </label>
+  {% if txn_expanded %}<input type="hidden" name="show" value="all">{% endif %}
   <div class="filter-actions">
     <button class="btn btn-secondary" type="submit">Filter</button>
     {% if txn_account_id or txn_symbol or txn_kind %}<a class="btn btn-ghost" href="{{ url_for('views.portfolios', _anchor='transactions') }}">Clear</a>{% endif %}
@@ -76,13 +77,23 @@
     </table>
   </div>
 </section>
-{% if txn_pages > 1 %}
-<nav class="pager" aria-label="Transaction pages">
-  {% set args = request.args.to_dict() %}
-  {% if txn_page > 1 %}{% set _ = args.update(page=txn_page - 1) %}<a class="btn btn-secondary btn-sm" href="{{ url_for('views.portfolios', _anchor='transactions', **args) }}">← Newer</a>{% endif %}
-  <span class="muted">Page {{ txn_page }} of {{ txn_pages }}</span>
-  {% if txn_page < txn_pages %}{% set _ = args.update(page=txn_page + 1) %}<a class="btn btn-secondary btn-sm" href="{{ url_for('views.portfolios', _anchor='transactions', **args) }}">Older →</a>{% endif %}
-</nav>
+{% if txn_total > txn_preview %}
+{# filters stay in the links; "show" and "page" are set per link #}
+{% set args = request.args.to_dict() %}{% set _ = args.pop('page', None) %}{% set _ = args.pop('show', None) %}
+<div class="table-more" id="transactions-more">
+  {% if txn_expanded %}
+    {% if txn_pages > 1 %}
+    <nav class="pager" aria-label="Transaction pages">
+      {% if txn_page > 1 %}<a class="btn btn-secondary btn-sm" href="{{ url_for('views.portfolios', _anchor='transactions', show='all', page=txn_page - 1, **args) }}">← Newer</a>{% endif %}
+      <span class="muted">Page {{ txn_page }} of {{ txn_pages }}</span>
+      {% if txn_page < txn_pages %}<a class="btn btn-secondary btn-sm" href="{{ url_for('views.portfolios', _anchor='transactions', show='all', page=txn_page + 1, **args) }}">Older →</a>{% endif %}
+    </nav>
+    {% endif %}
+    <a class="btn btn-secondary btn-sm" href="{{ url_for('views.portfolios', _anchor='transactions', **args) }}">Show fewer</a>
+  {% else %}
+    <a class="btn btn-secondary btn-sm" href="{{ url_for('views.portfolios', _anchor='transactions', show='all', **args) }}">Show all {{ txn_total }} transactions</a>
+  {% endif %}
+</div>
 {% endif %}
 {% else %}
 <section class="empty card">
