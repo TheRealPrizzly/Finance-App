@@ -363,7 +363,7 @@ def new_transaction():
     accounts = user_accounts()
     if not accounts:
         flash("Add an account first, then record transactions in it.", "info")
-        return redirect(url_for("views.accounts"))
+        return redirect(accounts_section_url())
     if request.method == "POST":
         values, errors = _parse_txn_form(request.form, accounts)
         if not errors:
@@ -435,24 +435,14 @@ def delete_transaction(txn_id):
 # -- accounts ---------------------------------------------------------------------------
 
 
-@bp.route("/accounts", methods=["GET", "POST"])
-@login_required
-def accounts():
+def accounts_section_url():
+    """The Accounts section of the Portfolio Manager page."""
+    return url_for("views.portfolios", _anchor="accounts")
+
+
+def account_overview():
+    """Accounts with their transaction counts, and cash balances by account."""
     db = get_db()
-    if request.method == "POST":
-        number = request.form.get("number", "").strip()
-        if not number:
-            flash("Enter the account number.", "error")
-        elif db.execute("SELECT 1 FROM accounts WHERE user_id = ? AND number = ?", (g.user["id"], number)).fetchone():
-            flash(f"You already have an account numbered {number}.", "error")
-        else:
-            db.execute(
-                "INSERT INTO accounts (user_id, number, type, name) VALUES (?, ?, ?, ?)",
-                (g.user["id"], number, request.form.get("type", "").strip(), request.form.get("name", "").strip()),
-            )
-            db.commit()
-            flash("Account added.", "success")
-            return redirect(url_for("views.accounts"))
     rows = db.execute(
         """SELECT a.*, COUNT(t.id) AS txn_count FROM accounts a
            LEFT JOIN transactions t ON t.account_id = a.id
@@ -468,7 +458,30 @@ def accounts():
     cash = {}
     for b in balances:
         cash.setdefault(b["account_id"], []).append(b)
-    return render_template("accounts.html", rows=rows, cash=cash)
+    return rows, cash
+
+
+@bp.route("/accounts", methods=["GET", "POST"])
+@login_required
+def accounts():
+    """Adds an account. The account list lives on the Portfolio Manager page."""
+    if request.method != "POST":
+        return redirect(accounts_section_url())
+    db = get_db()
+    number = request.form.get("number", "").strip()
+    if not number:
+        flash("Enter the account number.", "error")
+    elif db.execute("SELECT 1 FROM accounts WHERE user_id = ? AND number = ?", (g.user["id"], number)).fetchone():
+        flash(f"You already have an account numbered {number}.", "error")
+    else:
+        db.execute(
+            "INSERT INTO accounts (user_id, number, type, name) VALUES (?, ?, ?, ?)",
+            (g.user["id"], number, request.form.get("type", "").strip(), request.form.get("name", "").strip()),
+        )
+        db.commit()
+        flash("Account added.", "success")
+        return redirect(accounts_section_url())
+    return redirect(url_for("views.portfolios"))  # top of the page, where the error message shows
 
 
 @bp.route("/accounts/<int:account_id>/edit", methods=["GET", "POST"])
@@ -493,7 +506,7 @@ def edit_account(account_id):
             )
             db.commit()
             flash("Account updated.", "success")
-            return redirect(url_for("views.accounts"))
+            return redirect(accounts_section_url())
     return render_template("account_form.html", account=account)
 
 
@@ -505,7 +518,7 @@ def delete_account(account_id):
     db.execute("DELETE FROM accounts WHERE id = ? AND user_id = ?", (account_id, g.user["id"]))
     db.commit()
     flash(f"Deleted {account_label(account)} and its transactions.", "success")
-    return redirect(url_for("views.accounts"))
+    return redirect(accounts_section_url())
 
 
 # -- settings -------------------------------------------------------------------------------
@@ -605,8 +618,9 @@ def portfolios():
         (g.user["id"],),
     ):
         members.setdefault(m["portfolio_id"], []).append(labels[m["account_id"]])
+    account_rows, cash = account_overview()
     return render_template("portfolios.html", rows=rows, members=members, accounts=accounts,
-                           selected=set(), label=account_label)
+                           selected=set(), label=account_label, account_rows=account_rows, cash=cash)
 
 
 @bp.route("/portfolios/<int:portfolio_id>/edit", methods=["GET", "POST"])

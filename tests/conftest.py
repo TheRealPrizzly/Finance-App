@@ -85,7 +85,7 @@ def login(client):
     token = csrf(client)
     resp = client.post("/login/dev", data={"csrf_token": token})
     assert resp.status_code == 302
-    return csrf(client, "/accounts")  # signing in starts a new session with a new token
+    return csrf(client, "/portfolios")  # signing in starts a new session with a new token
 
 
 def login_as(app, client, sub, email):

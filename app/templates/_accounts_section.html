@@ -1,22 +1,20 @@
-{% extends "base.html" %}
-{% block title %}Accounts · Portfolio Manager{% endblock %}
-{% block content %}
-<div class="page-head">
+{# Accounts list and "Add an account" form, shown on the Portfolio Manager page. #}
+<div class="page-head section-head" id="accounts">
   <div>
-    <h1>Accounts</h1>
+    <h2>Accounts</h2>
     <p class="muted">Each brokerage account works as its own portfolio. Pick one from the dashboard to view it on its own.</p>
   </div>
 </div>
 
-{% if rows %}
+{% if account_rows %}
 <section class="card flush">
   <div class="table-wrap">
-    <table class="table">
+    <table class="table" id="accounts-table">
       <thead>
         <tr><th>Account</th><th>Number</th><th>Type</th><th class="num">Transactions</th><th class="num">Cash</th><th><span class="sr-only">Actions</span></th></tr>
       </thead>
       <tbody>
-        {% for a in rows %}
+        {% for a in account_rows %}
         <tr>
           <td><a href="{{ url_for('views.dashboard', account=a.id) }}">{{ a.name or a.type or 'Account' }}</a></td>
           <td>{{ a.number }}</td>
@@ -38,7 +36,7 @@
 </section>
 {% endif %}
 
-<form method="post" class="card form">
+<form method="post" action="{{ url_for('views.accounts') }}" class="card form" id="add-account">
   <h2>Add an account</h2>
   <p class="hint">Accounts are also created automatically when you import a CSV.</p>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -52,4 +50,3 @@
   </div>
   <div class="form-actions"><button class="btn btn-primary" type="submit">Add account</button></div>
 </form>
-{% endblock %}

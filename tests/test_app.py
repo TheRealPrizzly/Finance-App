@@ -56,7 +56,7 @@ def test_portfolio_api(client):
 def test_account_filter_and_history(client):
     token = login(client)
     upload(client, token)
-    accounts = client.get("/accounts").get_data(as_text=True)
+    accounts = client.get("/portfolios").get_data(as_text=True)
     assert "51234567" in accounts and "51234568" in accounts
     # account ids are 1 and 2 in a fresh database
     rrsp = client.get("/api/portfolio?account=2").get_json()
@@ -68,7 +68,7 @@ def test_account_filter_and_history(client):
 def test_pages_render(client):
     token = login(client)
     upload(client, token)
-    for path in ("/", "/transactions", "/transactions?symbol=AAPL", "/accounts", "/import", "/position/VFV.TO",
+    for path in ("/", "/transactions", "/transactions?symbol=AAPL", "/portfolios", "/import", "/position/VFV.TO",
                  "/transactions/new", "/accounts/1/edit"):
         assert client.get(path).status_code == 200, path
     detail = client.get("/api/position/AAPL").get_json()
@@ -173,10 +173,10 @@ def test_portfolios(app, client):
 
 def test_theme_setting(app, client):
     token = login(client)
-    assert 'data-theme="white"' in client.get("/accounts").get_data(as_text=True)
-    resp = client.post("/settings/theme", data={"csrf_token": token, "theme": "dark-grey", "next": "/accounts?x=1"})
-    assert resp.headers["Location"] == "/accounts?x=1"
-    html = client.get("/accounts").get_data(as_text=True)
+    assert 'data-theme="white"' in client.get("/portfolios").get_data(as_text=True)
+    resp = client.post("/settings/theme", data={"csrf_token": token, "theme": "dark-grey", "next": "/portfolios?x=1"})
+    assert resp.headers["Location"] == "/portfolios?x=1"
+    html = client.get("/portfolios").get_data(as_text=True)
     assert 'data-theme="dark-grey"' in html and '<option value="dark-grey" selected>' in html
     assert client.post("/settings/theme", data={"csrf_token": token, "theme": "neon"}).status_code == 400
     for evil in ("https://evil.example", "//evil.example", "/\\evil.example"):
@@ -289,3 +289,29 @@ def test_performance_tab(app, client):
     client.post("/settings/default-view", data={"csrf_token": token, "scope": "account:2"})
     assert client.get("/performance").headers["Location"] == "/performance?account=2"
     assert "account=2" in client.get("/performance?account=2").get_data(as_text=True)  # history URL scoped
+
+
+def test_accounts_live_on_the_portfolio_manager_page(client):
+    token = login(client)
+    upload(client, token)
+    client.post("/portfolios", data={"csrf_token": token, "name": "Retirement", "account_ids": ["1"]})
+    html = client.get("/portfolios").get_data(as_text=True)
+    table = html[html.index('id="accounts-table"'):html.index("</table>", html.index('id="accounts-table"'))]
+    assert "51234567" in table and "51234568" in table and "/accounts/1/edit" in table  # accounts with edit links
+    assert html.index("Create a portfolio") < html.index('id="accounts"') < html.index('id="add-account"')
+    assert 'action="/accounts"' in html
+
+    nav = html[html.index('<nav class="nav"'):html.index("</nav>")]
+    assert ">Accounts<" not in nav and 'aria-current="page">Portfolio Manager<' in nav
+    edit_page = client.get("/accounts/1/edit").get_data(as_text=True)
+    assert 'aria-current="page">Portfolio Manager<' in edit_page and "/portfolios#accounts" in edit_page
+
+    assert client.get("/accounts").headers["Location"] == "/portfolios#accounts"  # old address still works
+    resp = client.post("/accounts", data={"csrf_token": token, "number": "999", "type": "FHSA"})
+    assert resp.headers["Location"] == "/portfolios#accounts"
+    assert "999" in client.get("/portfolios").get_data(as_text=True)
+    dup = client.post("/accounts", data={"csrf_token": token, "number": "999"})
+    assert dup.headers["Location"] == "/portfolios"  # error: back to the top, where the message shows
+    assert "already have an account numbered 999" in client.get("/portfolios").get_data(as_text=True)
+    resp = client.post("/accounts/1/edit", data={"csrf_token": token, "number": "51234567", "type": "TFSA", "name": "Main"})
+    assert resp.headers["Location"] == "/portfolios#accounts"

@@ -7,6 +7,6 @@
   {% for a in accounts %}
     <label class="check"><input type="checkbox" name="account_ids" value="{{ a.id }}" {% if a.id|string in chosen %}checked{% endif %}> {{ label(a) }}</label>
   {% else %}
-    <p class="hint">No accounts yet. <a href="{{ url_for('views.accounts') }}">Add an account</a> or import a CSV first.</p>
+    <p class="hint">No accounts yet. <a href="#accounts">Add an account</a> or import a CSV first.</p>
   {% endfor %}
 </fieldset>
