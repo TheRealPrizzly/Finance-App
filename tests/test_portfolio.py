@@ -75,6 +75,47 @@ def test_foreign_holding_uses_purchase_date_fx_for_book_cost():
     assert h["unrealized"] == pytest.approx(900)
 
 
+def test_reverse_split_keeps_cost_and_reported_quantity():
+    # 1:10 reverse split; the imported history is missing 10 of the 817 shares converted
+    txns = [
+        txn(1, "2023-08-01", pf.BUY, "TMF", 807, 8, 0, -6456),
+        txn(2, "2023-12-04", pf.SPLIT, "TMF", 81),
+        txn(3, "2023-12-04", pf.SPLIT, "TMF", -817),
+    ]
+    fx = pf.FxBook(FakeMarket(), "CAD", date(2023, 7, 1))
+    lot = pf.build_lots(txns, fx)[1, "TMF"]
+    assert lot.quantity == pytest.approx(81)
+    assert lot.cost_native == pytest.approx(6456)
+    assert lot.last_price == pytest.approx(8 * 817 / 81)
+    sold = pf.build_lots(txns + [txn(4, "2024-03-11", pf.SELL, "TMF", -81, 60, 0, 4860)], fx)[1, "TMF"]
+    assert sold.quantity == 0
+    assert sold.realized_base == pytest.approx(4860 - 6456)
+
+
+def test_split_under_a_new_symbol_moves_the_position():
+    txns = [
+        txn(1, "2024-03-12", pf.BUY, "OLD", 9, 100, 0, -900),
+        txn(2, "2024-12-04", pf.SPLIT, "NEW", 36),
+        txn(3, "2024-12-04", pf.SPLIT, "OLD", -9),
+    ]
+    lots = pf.build_lots(txns, pf.FxBook(FakeMarket(), "CAD", date(2024, 3, 1)))
+    assert lots[1, "OLD"].quantity == 0
+    assert lots[1, "NEW"].quantity == pytest.approx(36)
+    assert lots[1, "NEW"].cost_native == pytest.approx(900)
+
+
+def test_history_values_holdings_after_a_reverse_split():
+    days = [date(2023, 12, 1), date(2023, 12, 4)]  # Fri, Mon
+    market = FakeMarket(history={"TMF": ("CAD", {days[0]: 8.0, days[1]: 80.0})})  # as-traded closes
+    txns = [
+        txn(1, "2023-12-01", pf.BUY, "TMF", 807, 8, 0, -6456),
+        txn(2, "2023-12-04", pf.SPLIT, "TMF", 81),
+        txn(3, "2023-12-04", pf.SPLIT, "TMF", -817),
+    ]
+    h = pf.history(txns, market, today=days[1])
+    assert [p["value"] for p in h["points"]] == pytest.approx([807 * 8, 81 * 80])
+
+
 def test_holdings_only_mode_treats_buys_as_contributions():
     market = FakeMarket(quotes={"XEQT": (35.0, 34.0, "CAD")})
     txns = [txn(1, "2025-01-02", pf.BUY, "XEQT", 100, 30, 0, -3000)]

@@ -14,6 +14,9 @@ Conventions
 * If no deposits, withdrawals or cash transfers are recorded at all, the portfolio is
   treated as "holdings only": every buy counts as a contribution, every sale or dividend
   as money returned, and cash balances are left out of the portfolio value.
+* A split is reported as a pair of rows on the same day: the old shares out (negative
+  quantity) and the new shares in. It converts the account's whole position, so the new
+  shares carry all of the old cost and the account holds exactly the new quantity.
 """
 from __future__ import annotations
 
@@ -26,6 +29,7 @@ from datetime import date, timedelta
 
 BUY, SELL, DIVIDEND, DEPOSIT, WITHDRAWAL = "BUY", "SELL", "DIVIDEND", "DEPOSIT", "WITHDRAWAL"
 TRANSFER, FEE, INTEREST, FX, OTHER = "TRANSFER", "FEE", "INTEREST", "FX", "OTHER"
+SPLIT = "SPLIT"
 
 KIND_LABELS = {
     BUY: "Buy",
@@ -37,6 +41,7 @@ KIND_LABELS = {
     FEE: "Fee",
     INTEREST: "Interest",
     FX: "FX Conversion",
+    SPLIT: "Split",
     OTHER: "Other",
 }
 ACTIVITY_TYPES = {
@@ -49,6 +54,7 @@ ACTIVITY_TYPES = {
     FEE: "Fees and rebates",
     INTEREST: "Interest",
     FX: "FX conversion",
+    SPLIT: "Corporate actions",
     OTHER: "Other",
 }
 EPS = 1e-9
@@ -99,9 +105,36 @@ def qty_delta(t):
         return abs(t.quantity)
     if t.kind == SELL:
         return -abs(t.quantity)
-    if t.kind in (TRANSFER, OTHER) and t.symbol:
+    if t.kind in (TRANSFER, OTHER, SPLIT) and t.symbol:
         return t.quantity  # in-kind transfers, reinvested dividends, splits
     return 0.0
+
+
+def split_groups(txns):
+    """Split rows by (account, date): each group is one day's split(s) in one account."""
+    groups = defaultdict(list)
+    for t in txns:
+        if t.kind == SPLIT and t.symbol:
+            groups[t.account_id, t.date].append(t)
+    return groups
+
+
+def split_pairs(rows):
+    """Pair a split group's old-shares-out rows with its new-shares-in rows. Rows pair by
+    symbol; a single leftover old and new row pair with each other (the security changed
+    symbol). Returns [(old or None, new or None)]."""
+    old = [t for t in rows if t.quantity < 0]
+    new = [t for t in rows if t.quantity > 0]
+    pairs = []
+    for o in list(old):
+        n = next((n for n in new if n.symbol == o.symbol), None)
+        if n:
+            pairs.append((o, n))
+            old.remove(o)
+            new.remove(n)
+    if len(old) == 1 and len(new) == 1:
+        pairs.append((old.pop(), new.pop()))
+    return pairs + [(o, None) for o in old] + [(None, n) for n in new]
 
 
 def compute_net_amount(kind, quantity=0.0, price=0.0, costs=0.0, amount=0.0):
@@ -212,16 +245,25 @@ class Lot:
 def build_lots(txns, fx):
     """Average-cost positions keyed by (account_id, symbol)."""
     lots = {}
+
+    def lot_for(t):
+        key = (t.account_id, t.symbol)
+        if key not in lots:
+            lots[key] = Lot(t.account_id, t.symbol, t.currency)
+        return lots[key]
+
+    splits = split_groups(txns)
     # Within a day, apply shares received before shares removed: exports list same-day rows
     # newest-first or oldest-first depending on the broker, and a sale can only come from
     # shares already held.
     for t in sorted(txns, key=lambda t: (t.date, qty_delta(t) < 0, t.id)):
-        if not t.symbol or t.kind not in (BUY, SELL, TRANSFER, OTHER, DIVIDEND):
+        if not t.symbol or t.kind not in (BUY, SELL, TRANSFER, OTHER, DIVIDEND, SPLIT):
             continue
-        key = (t.account_id, t.symbol)
-        lot = lots.get(key)
-        if lot is None:
-            lot = lots[key] = Lot(t.account_id, t.symbol, t.currency)
+        if t.kind == SPLIT:  # the whole group is applied at its first row
+            for old, new in split_pairs(splits.pop((t.account_id, t.date), [])):
+                apply_split(old and lot_for(old), new and lot_for(new), old, new)
+            continue
+        lot = lot_for(t)
         rate = fx.on(t.currency, t.date)
         if t.kind == DIVIDEND:
             lot.dividends_base += t.net_amount * rate
@@ -253,6 +295,28 @@ def build_lots(txns, fx):
         if abs(lot.quantity) < 1e-7:
             lot.quantity = lot.cost_native = lot.cost_base = 0.0
     return lots
+
+
+def apply_split(src, dst, old, new):
+    """Apply one pair from split_pairs to its lots (src for the old row, dst for the new).
+    The new shares take over the whole old position and its cost. The old row's quantity
+    is not subtracted: if the imported history is missing some of the old shares, the
+    account still ends up with exactly the new quantity the broker reports."""
+    if src and dst:
+        cost_native, cost_base, last_price = src.cost_native, src.cost_base, src.last_price
+        src.quantity = src.cost_native = src.cost_base = 0.0
+        dst.quantity += new.quantity
+        dst.cost_native += cost_native
+        dst.cost_base += cost_base
+        if last_price:
+            dst.last_price = last_price * -old.quantity / new.quantity
+    elif src:  # shares removed with nothing in exchange
+        frac = min(-old.quantity / src.quantity, 1.0) if src.quantity > EPS else 0.0
+        src.quantity = max(src.quantity + old.quantity, 0.0)
+        src.cost_native -= src.cost_native * frac
+        src.cost_base -= src.cost_base * frac
+    elif dst:  # shares received at no cost
+        dst.quantity += new.quantity
 
 
 def _parallel_map(fn, items):
@@ -454,7 +518,8 @@ def history(txns, market, base="CAD", benchmark="VFV.TO", today=None):
     for t in txns:
         by_day[t.date].append(t)
 
-    qty, cash, last_trade = defaultdict(float), defaultdict(float), {}
+    qty, cash, last_trade = defaultdict(float), defaultdict(float), {}  # qty by (account, symbol)
+    splits = split_groups(txns)
 
     def price_on(sym, d):
         p = prices[sym].at(d)
@@ -469,8 +534,17 @@ def history(txns, market, base="CAD", benchmark="VFV.TO", today=None):
     while d <= today:
         for t in by_day.get(d, ()):
             dq = qty_delta(t)
-            if t.symbol and abs(dq) > EPS:
-                qty[t.symbol] += dq
+            if t.kind == SPLIT:  # same rules as apply_split
+                for old, new in split_pairs(splits.pop((t.account_id, d), [])):
+                    if old:
+                        key = (old.account_id, old.symbol)
+                        qty[key] = 0.0 if new else max(qty[key] + old.quantity, 0.0)
+                    if new:
+                        qty[new.account_id, new.symbol] += new.quantity
+                    if old and new and old.symbol in last_trade:
+                        last_trade[new.symbol] = last_trade[old.symbol] * -old.quantity / new.quantity
+            elif t.symbol and abs(dq) > EPS:
+                qty[t.account_id, t.symbol] += dq
                 if t.price > 0:
                     last_trade[t.symbol] = t.price
             cash[t.currency] += t.net_amount
@@ -479,7 +553,7 @@ def history(txns, market, base="CAD", benchmark="VFV.TO", today=None):
                 pending_flow += dq * price_on(t.symbol, d) * fx.on(price_currency[t.symbol], d)
 
         if d.weekday() < 5 or d == today:  # weekend activity rolls into the next weekday
-            value = sum(q * price_on(s, d) * fx.on(price_currency[s], d) for s, q in qty.items() if abs(q) > EPS)
+            value = sum(q * price_on(s, d) * fx.on(price_currency[s], d) for (_, s), q in qty.items() if abs(q) > EPS)
             if not holdings_only:
                 value += sum(amount * fx.on(cur, d) for cur, amount in cash.items())
             denominator = prev_value + pending_flow  # flows assumed at the start of the day

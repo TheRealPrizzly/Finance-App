@@ -48,6 +48,7 @@ _FEE = {"FCH", "FEE", "FEES", "COMMISSION"}
 _INTEREST = {"INT", "INTEREST"}
 _FX = {"FXT", "FX", "FX CONVERSION", "CONVERSION"}
 _TRANSFER = {"TRANSFER", "TF6", "TFO", "TSF", "TRF"}
+_SPLIT = {"REV", "SPLIT", "STOCK SPLIT", "REVERSE SPLIT"}
 
 
 @dataclass
@@ -74,6 +75,8 @@ def classify(action, activity_type, symbol="", quantity=0.0, net_amount=0.0):
         return pf.BUY
     if a in _SELL:
         return pf.SELL
+    if a in _SPLIT or "split" in t:
+        return pf.SPLIT
     if "trade" in t:
         return pf.BUY if quantity > 0 or net_amount < 0 else pf.SELL
     if "reinvest" in t or ((a in _DIVIDEND or "dividend" in t) and symbol and quantity and not net_amount):

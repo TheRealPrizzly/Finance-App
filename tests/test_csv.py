@@ -74,6 +74,8 @@ def test_classify_questrade_codes():
     assert csv_io.classify("TF6", "Transfers") == pf.TRANSFER
     assert csv_io.classify("REI", "Dividend reinvestment", "XEQT", 1, 0) == pf.OTHER
     assert csv_io.classify("XYZ", "") == pf.OTHER
+    assert csv_io.classify("REV", "Corporate actions", "TMF", -817, 0) == pf.SPLIT
+    assert csv_io.classify("REV", "Trades", "TMF", 81, 0) == pf.SPLIT  # action code beats activity type
 
 
 def test_export_round_trip():
