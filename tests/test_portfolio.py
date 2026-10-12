@@ -187,6 +187,53 @@ def test_in_kind_deposit_without_a_price_is_flagged():
     assert any("PRIVATE transfer" in w for w in snap["warnings"])
 
 
+# TFSA export starting 2021-09-24: VOO and part of BABA were bought before its first row
+BEFORE_HISTORY = [
+    txn(1, "2021-09-24", pf.DEPOSIT, net=650),
+    txn(2, "2021-09-24", pf.BUY, "BABA", 1, 145, 0, -145, "USD"),
+    txn(3, "2021-10-04", pf.DIVIDEND, "VOO", net=6.68, currency="USD"),
+    txn(4, "2021-10-25", pf.SELL, "VOO", -6, 417.29, 4.97, 2498.78, "USD"),
+    txn(5, "2022-12-22", pf.SELL, "BABA", -4, 86.83, 0, 347.32, "USD"),
+]
+BEFORE_MARKET = dict(
+    history={"VOO": ("USD", {date(2021, 9, 24): 410.0, date(2021, 10, 25): 417.29}),
+             "BABA": ("USD", {date(2021, 9, 24): 150.0, date(2022, 12, 22): 86.83})},
+    fx={"USD": (1.0, {})},
+)
+
+
+def test_shares_sold_before_any_purchase_are_held_from_the_first_date():
+    txns = pf.with_opening_positions(BEFORE_HISTORY)
+    opening = [(t.date, t.symbol, t.quantity) for t in txns if t.id < 0]
+    assert opening == [(date(2021, 9, 24), "BABA", 3), (date(2021, 9, 24), "VOO", 6)]
+    assert pf.with_opening_positions(txns) == txns  # applied once only
+
+
+def test_snapshot_has_no_negative_holdings_and_values_opening_shares_at_market():
+    snap = pf.snapshot(BEFORE_HISTORY, {}, FakeMarket(**BEFORE_MARKET), base="USD")
+    assert snap["holdings"] == []
+    closed = {c["symbol"]: c["realized"] for c in snap["closed"]}
+    assert closed["VOO"] == pytest.approx(2498.78 - 6 * 410)
+    assert closed["BABA"] == pytest.approx(347.32 - (145 + 3 * 150))
+    assert snap["totals"]["net_contributions"] == pytest.approx(650 + 6 * 410 + 3 * 150)
+    assert sum("assumed held from 2021-09-24" in w for w in snap["warnings"]) == 2
+
+
+def test_history_never_holds_negative_shares():
+    h = pf.history(BEFORE_HISTORY, FakeMarket(**BEFORE_MARKET), base="USD", today=date(2021, 10, 26))
+    first = h["points"][0]
+    assert first["value"] == pytest.approx(650 - 145 + 4 * 150 + 6 * 410)  # cash + opening shares
+    assert first["contributions"] == pytest.approx(650 + 6 * 410 + 3 * 150)
+    assert all(p["value"] >= 0 for p in h["points"])
+
+
+def test_position_page_dates_opening_shares_from_the_account_history():
+    detail = pf.position_detail(BEFORE_HISTORY, "VOO", {}, FakeMarket(**BEFORE_MARKET), base="USD",
+                                today=date(2021, 10, 26))
+    assert detail["holding"] is None
+    assert detail["realized"] == pytest.approx(2498.78 - 6 * 410)  # cost at 2021-09-24, not 2021-10-04
+
+
 def test_holdings_only_mode_treats_buys_as_contributions():
     market = FakeMarket(quotes={"XEQT": (35.0, 34.0, "CAD")})
     txns = [txn(1, "2025-01-02", pf.BUY, "XEQT", 100, 30, 0, -3000)]

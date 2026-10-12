@@ -137,6 +137,46 @@ def split_pairs(rows):
     return pairs + [(o, None) for o in old] + [(None, n) for n in new]
 
 
+def with_opening_positions(txns):
+    """Add the shares an account held before its imported history starts.
+
+    A broker export covers a limited period, so a sale can draw on shares bought before
+    its first row, and the position would go negative. For each account and symbol whose
+    share count dips below zero, the shortfall is added as shares transferred in on the
+    account's first date (id < 0 marks them). Like any transfer without a price, they are
+    valued at that day's close, both as book cost and as money contributed."""
+    txns = list(txns)
+    if any(t.id < 0 for t in txns):  # already added
+        return txns
+    start, currency = {}, {}
+    for t in txns:
+        start[t.account_id] = min(start.get(t.account_id, t.date), t.date)
+        if t.symbol:
+            currency.setdefault((t.account_id, t.symbol), t.currency)
+    held, lowest = defaultdict(float), defaultdict(float)
+    splits = split_groups(txns)
+    for t in sorted(txns, key=lambda t: (t.date, qty_delta(t) < 0, t.id)):  # same order as build_lots
+        if not t.symbol:
+            continue
+        if t.kind == SPLIT:  # same rules as apply_split
+            for old, new in split_pairs(splits.pop((t.account_id, t.date), [])):
+                if old and new:
+                    held[old.account_id, old.symbol] = 0.0
+                elif old:
+                    held[old.account_id, old.symbol] = max(held[old.account_id, old.symbol] + old.quantity, 0.0)
+                if new:
+                    held[new.account_id, new.symbol] += new.quantity
+            continue
+        key = (t.account_id, t.symbol)
+        held[key] += qty_delta(t)
+        lowest[key] = min(lowest[key], held[key])
+    opening = [
+        Txn(-(i + 1), start[acct], TRANSFER, sym, -low, 0.0, 0.0, 0.0, currency[acct, sym], acct)
+        for i, ((acct, sym), low) in enumerate(sorted(lowest.items())) if low < -1e-7
+    ]
+    return opening + txns
+
+
 def compute_net_amount(kind, quantity=0.0, price=0.0, costs=0.0, amount=0.0):
     """Cash effect of a manually entered transaction."""
     q, c = abs(quantity), abs(costs)
@@ -372,13 +412,17 @@ def _ratio(numerator, denominator):
 
 def snapshot(txns, account_labels, market, base="CAD"):
     """Current holdings at live prices, cash balances, totals and sector allocation."""
-    txns = sorted(txns, key=lambda t: (t.date, t.id))
+    txns = sorted(with_opening_positions(txns), key=lambda t: (t.date, t.id))
     holdings_only = is_holdings_only(txns)
     fx = FxBook(market, base, (txns[0].date if txns else date.today()) - timedelta(days=7))
     fx.preload({t.currency for t in txns})
     transfer_price = TransferPricer(market, (txns[0].date if txns else date.today()) - timedelta(days=10))
     lots = build_lots(txns, fx, transfer_price)
-    warnings = []
+    warnings = [
+        f"{t.quantity:g} {t.symbol} shares were sold before any purchase in the imported history; "
+        f"they are assumed held from {t.date} and valued at that day's price."
+        for t in txns if t.id < 0
+    ]
 
     by_symbol = defaultdict(list)
     for lot in lots.values():
@@ -524,7 +568,7 @@ def history(txns, market, base="CAD", benchmark="VFV.TO", today=None):
     """Daily portfolio value, net contributions and time-weighted return, alongside the
     benchmark both as a return index and as "the same contributions invested in it"."""
     today = today or date.today()
-    txns = sorted(txns, key=lambda t: (t.date, t.id))
+    txns = sorted(with_opening_positions(txns), key=lambda t: (t.date, t.id))
     empty = {"points": [], "periods": [], "benchmark": benchmark, "holdings_only": True}
     if not txns:
         return empty
@@ -658,9 +702,10 @@ def annualized(since_inception, years):
 
 
 def position_detail(txns, symbol, account_labels, market, base="CAD", today=None):
-    """One symbol: live holding, per-account cost basis, returns and price history."""
+    """One symbol: live holding, per-account cost basis, returns and price history.
+    Pass the accounts' full history: shares held before it starts are dated from it."""
     today = today or date.today()
-    txns = sorted((t for t in txns if t.symbol == symbol), key=lambda t: (t.date, t.id))
+    txns = sorted((t for t in with_opening_positions(txns) if t.symbol == symbol), key=lambda t: (t.date, t.id))
     if not txns:
         return None
     snap = snapshot(txns, account_labels, market, base)

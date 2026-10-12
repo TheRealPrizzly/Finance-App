@@ -178,7 +178,7 @@ def api_history():
 def api_position(symbol):
     symbol = symbol.upper()
     data = pf.position_detail(
-        load_txns(selected_account_ids(), symbol), symbol, account_labels(), get_market(),
+        load_txns(selected_account_ids()), symbol, account_labels(), get_market(),
         current_app.config["BASE_CURRENCY"],
     )
     if data is None:
