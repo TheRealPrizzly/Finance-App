@@ -276,7 +276,7 @@ def test_performance_tab(app, client):
     html = client.get("/performance").get_data(as_text=True)
     assert "No activity yet" in html  # empty state before any transactions
     nav = html[html.index('<nav class="nav"'):html.index("</nav>")]
-    assert nav.index(">Dashboard<") < nav.index(">Performance<") < nav.index(">Portfolios<")
+    assert nav.index(">Dashboard<") < nav.index(">Performance<") < nav.index(">Portfolio Manager<")
 
     upload(client, token)
     html = client.get("/performance").get_data(as_text=True)
