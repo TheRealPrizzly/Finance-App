@@ -242,8 +242,32 @@ class Lot:
     last_price: float = 0.0
 
 
-def build_lots(txns, fx):
-    """Average-cost positions keyed by (account_id, symbol)."""
+class TransferPricer:
+    """Value per share of an in-kind transfer: the row's own price, else that day's
+    market close. Brokers report shares moved in or out of an account without a price."""
+
+    def __init__(self, market, start):
+        self.market, self.start = market, start
+        self._closes = {}
+        self.warnings = []
+
+    def __call__(self, t):
+        if t.price > 0:
+            return t.price, t.currency
+        if t.symbol not in self._closes:
+            ysym = self.market.resolve(t.symbol, t.currency)
+            currency, closes = self.market.history(ysym, self.start, as_traded=True) if ysym else (None, {})
+            self._closes[t.symbol] = (Series(closes), currency or t.currency)
+        series, currency = self._closes[t.symbol]
+        price = series.at(t.date)
+        if not price:
+            self.warnings.append(f"No price for the {t.symbol} transfer on {t.date}; it is valued at zero.")
+        return price or 0.0, currency
+
+
+def build_lots(txns, fx, transfer_price=None):
+    """Average-cost positions keyed by (account_id, symbol). ``transfer_price`` values
+    shares transferred in without a price (see TransferPricer); without it they cost nothing."""
     lots = {}
 
     def lot_for(t):
@@ -276,6 +300,10 @@ def build_lots(txns, fx):
         if q > 0:
             if t.kind == BUY:
                 cost = -t.net_amount if t.net_amount < 0 else q * t.price + abs(t.costs)
+                lot.invested_base += cost * rate
+            elif t.kind == TRANSFER and transfer_price:  # shares deposited in kind, at market value
+                price, currency = transfer_price(t)
+                cost = q * price * fx.on(currency, t.date) / rate if currency != t.currency else q * price
                 lot.invested_base += cost * rate
             else:
                 cost = q * t.price
@@ -341,7 +369,8 @@ def snapshot(txns, account_labels, market, base="CAD"):
     holdings_only = is_holdings_only(txns)
     fx = FxBook(market, base, (txns[0].date if txns else date.today()) - timedelta(days=7))
     fx.preload({t.currency for t in txns})
-    lots = build_lots(txns, fx)
+    transfer_price = TransferPricer(market, (txns[0].date if txns else date.today()) - timedelta(days=10))
+    lots = build_lots(txns, fx, transfer_price)
     warnings = []
 
     by_symbol = defaultdict(list)
@@ -422,8 +451,9 @@ def snapshot(txns, account_labels, market, base="CAD"):
     contributions = 0.0
     for t in txns:
         contributions += external_cash_flow(t, holdings_only) * fx.on(t.currency, t.date)
-        if t.kind == TRANSFER and t.symbol:
-            contributions += qty_delta(t) * t.price * fx.on(t.currency, t.date)
+        if t.kind == TRANSFER and t.symbol and abs(qty_delta(t)) > EPS:
+            price, currency = transfer_price(t)
+            contributions += qty_delta(t) * price * fx.on(currency, t.date)
 
     market_value = sum(h["market_value"] for h in holdings)
     cash_total = sum(c["amount_base"] for c in cash)
@@ -474,7 +504,7 @@ def snapshot(txns, account_labels, market, base="CAD"):
         "closed": closed,
         "cash": cash,
         "sectors": sectors,
-        "warnings": fx.warnings + warnings,
+        "warnings": fx.warnings + list(dict.fromkeys(transfer_price.warnings)) + warnings,
     }
 
 
@@ -630,7 +660,7 @@ def position_detail(txns, symbol, account_labels, market, base="CAD", today=None
     holding = snap["holdings"][0] if snap["holdings"] else None
 
     fx = FxBook(market, base, txns[0].date - timedelta(days=7))
-    lots = build_lots(txns, fx)
+    lots = build_lots(txns, fx, TransferPricer(market, txns[0].date - timedelta(days=10)))
     invested = sum(l.invested_base for l in lots.values())
     realized = sum(l.realized_base for l in lots.values())
     dividends = snap["totals"]["dividends"]

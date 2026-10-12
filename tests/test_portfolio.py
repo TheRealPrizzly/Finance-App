@@ -116,6 +116,55 @@ def test_history_values_holdings_after_a_reverse_split():
     assert [p["value"] for p in h["points"]] == pytest.approx([807 * 8, 81 * 80])
 
 
+IN_KIND_WITHDRAWAL = [
+    txn(1, "2021-11-05", pf.DEPOSIT, net=1200),
+    txn(2, "2021-11-08", pf.BUY, "V", 5, 200, 0, -1000),
+    txn(3, "2021-11-23", pf.TRANSFER, "V", -5),  # imported "WDR" row: shares out, no price, no cash
+]
+
+
+def test_in_kind_withdrawal_removes_shares_and_counts_their_value_as_withdrawn():
+    market = FakeMarket(quotes={"V": (300.0, 300.0, "CAD")}, history={"V": ("CAD", {date(2021, 11, 23): 210.0})})
+    snap = pf.snapshot(IN_KIND_WITHDRAWAL, {}, market)
+    t = snap["totals"]
+    assert snap["holdings"] == []
+    assert t["total_value"] == pytest.approx(200)  # leftover cash only
+    assert t["net_contributions"] == pytest.approx(1200 - 5 * 210)
+    assert t["total_gain"] == pytest.approx(5 * 10)  # bought at 200, worth 210 when withdrawn
+    assert t["realized"] == pytest.approx(0)
+
+
+def test_history_treats_in_kind_withdrawal_as_money_out():
+    days = [date(2021, 11, 22), date(2021, 11, 23), date(2021, 11, 24)]  # Mon to Wed
+    market = FakeMarket(history={"V": ("CAD", {days[0]: 200.0, days[1]: 210.0, days[2]: 210.0})})
+    txns = [txn(1, "2021-11-22", pf.DEPOSIT, net=1000), txn(2, "2021-11-22", pf.BUY, "V", 5, 200, 0, -1000),
+            txn(3, "2021-11-24", pf.TRANSFER, "V", -5)]
+    h = pf.history(txns, market, today=days[2])
+    assert [p["value"] for p in h["points"]] == pytest.approx([1000, 1050, 0])
+    assert [p["contributions"] for p in h["points"]] == pytest.approx([1000, 1000, -50])
+    assert h["points"][-1]["twr"] == pytest.approx(0.05)  # the 5% gain, not a 100% loss
+
+
+def test_in_kind_deposit_adds_shares_at_market_value():
+    # RRSP export: 5 V shares arrive with no price or cash, then are sold
+    market = FakeMarket(history={"V": ("USD", {date(2021, 11, 23): 210.0})}, fx={"USD": (1.0, {})})
+    txns = [
+        txn(1, "2021-11-15", pf.DEPOSIT, net=200, currency="CAD"),
+        txn(2, "2021-11-23", pf.TRANSFER, "V", 5, currency="USD"),
+        txn(3, "2022-04-28", pf.SELL, "V", -5, 222, 4.96, 1105.04, "USD"),
+    ]
+    snap = pf.snapshot(txns, {}, market)
+    assert snap["holdings"] == []  # no negative position left behind
+    assert snap["closed"] == [{"symbol": "V", "realized": pytest.approx(1105.04 - 5 * 210), "dividends": 0.0}]
+    assert snap["totals"]["net_contributions"] == pytest.approx(200 + 5 * 210)
+    assert not snap["warnings"]
+
+
+def test_in_kind_deposit_without_a_price_is_flagged():
+    snap = pf.snapshot([txn(1, "2021-11-23", pf.TRANSFER, "PRIVATE", 5)], {}, FakeMarket())
+    assert any("PRIVATE transfer" in w for w in snap["warnings"])
+
+
 def test_holdings_only_mode_treats_buys_as_contributions():
     market = FakeMarket(quotes={"XEQT": (35.0, 34.0, "CAD")})
     txns = [txn(1, "2025-01-02", pf.BUY, "XEQT", 100, 30, 0, -3000)]

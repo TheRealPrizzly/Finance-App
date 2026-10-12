@@ -43,6 +43,12 @@ def migrate(conn):
     user_columns = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
     if "theme" not in user_columns:
         conn.execute("ALTER TABLE users ADD COLUMN theme TEXT NOT NULL DEFAULT 'white'")
+    # Imports before in-kind deposits and withdrawals were recognized stored them as cash
+    # deposits and withdrawals, which ignores their shares.
+    conn.execute(
+        "UPDATE transactions SET kind = 'TRANSFER'"
+        " WHERE kind IN ('DEPOSIT', 'WITHDRAWAL') AND symbol <> '' AND quantity <> 0"
+    )
 
 
 def init_app(app):

@@ -197,3 +197,25 @@ def test_migration_adds_theme_to_existing_users(tmp_path):
     conn = connect(path)
     assert conn.execute("SELECT theme FROM users").fetchone()[0] == "white"
     conn.close()
+
+
+def test_migration_turns_in_kind_deposits_and_withdrawals_into_transfers(tmp_path):
+    from app.db import connect, init_db
+
+    path = str(tmp_path / "old.db")
+    init_db(path)
+    conn = connect(path)
+    conn.execute("INSERT INTO users (id, google_sub, email) VALUES (1, 's', 'a@b.c')")
+    conn.execute("INSERT INTO accounts (id, user_id, number, type) VALUES (1, 1, '1', 'TFSA')")
+    for kind, symbol, qty, net in (("WITHDRAWAL", "V", -5, 0), ("WITHDRAWAL", "", 0, -100),
+                                   ("DEPOSIT", "V", 5, 0), ("DEPOSIT", "", 0, 100)):
+        conn.execute("INSERT INTO transactions (user_id, account_id, date, action, kind, symbol, quantity, "
+                     "net_amount, currency) VALUES (1, 1, '2021-11-23', 'WDR', ?, ?, ?, ?, 'USD')",
+                     (kind, symbol, qty, net))
+    conn.commit()
+    conn.close()
+    init_db(path)
+    conn = connect(path)
+    kinds = [r[0] for r in conn.execute("SELECT kind FROM transactions ORDER BY id")]
+    conn.close()
+    assert kinds == ["TRANSFER", "WITHDRAWAL", "TRANSFER", "DEPOSIT"]

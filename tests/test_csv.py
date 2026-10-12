@@ -69,6 +69,9 @@ def test_fingerprints_distinguish_identical_rows_in_one_file():
 
 def test_classify_questrade_codes():
     assert csv_io.classify("WDR", "Withdrawals") == pf.WITHDRAWAL
+    assert csv_io.classify("WDR", "Withdrawals", "V", -5, 0) == pf.TRANSFER  # shares withdrawn in kind
+    assert csv_io.classify("CON", "Deposits", "V", 5, 0) == pf.TRANSFER  # shares deposited in kind
+    assert csv_io.classify("CON", "Deposits") == pf.DEPOSIT
     assert csv_io.classify("INT", "Interest") == pf.INTEREST
     assert csv_io.classify("", "Trades", "AAPL", -5, 500) == pf.SELL
     assert csv_io.classify("TF6", "Transfers") == pf.TRANSFER

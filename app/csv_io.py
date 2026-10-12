@@ -77,6 +77,9 @@ def classify(action, activity_type, symbol="", quantity=0.0, net_amount=0.0):
         return pf.SELL
     if a in _SPLIT or "split" in t:
         return pf.SPLIT
+    in_kind = a in _WITHDRAWAL or a in _DEPOSIT or any(w in t for w in ("withdrawal", "deposit", "contribution"))
+    if in_kind and symbol and quantity:
+        return pf.TRANSFER  # shares deposited or withdrawn in kind
     if "trade" in t:
         return pf.BUY if quantity > 0 or net_amount < 0 else pf.SELL
     if "reinvest" in t or ((a in _DIVIDEND or "dividend" in t) and symbol and quantity and not net_amount):
