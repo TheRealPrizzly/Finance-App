@@ -235,11 +235,17 @@ class Lot:
     currency: str
     quantity: float = 0.0
     cost_native: float = 0.0
+    commissions_native: float = 0.0  # part of cost_native; left out of the average price paid
     cost_base: float = 0.0
     invested_base: float = 0.0  # total ever bought, for return percentages
     realized_base: float = 0.0
     dividends_base: float = 0.0
     last_price: float = 0.0
+
+    @property
+    def avg_cost(self):
+        """Average price paid per share, commissions excluded (book cost includes them)."""
+        return (self.cost_native - self.commissions_native) / self.quantity if self.quantity > EPS else None
 
 
 class TransferPricer:
@@ -301,6 +307,7 @@ def build_lots(txns, fx, transfer_price=None):
             if t.kind == BUY:
                 cost = -t.net_amount if t.net_amount < 0 else q * t.price + abs(t.costs)
                 lot.invested_base += cost * rate
+                lot.commissions_native += cost - q * t.price if t.price > 0 else abs(t.costs)
             elif t.kind == TRANSFER and transfer_price:  # shares deposited in kind, at market value
                 price, currency = transfer_price(t)
                 cost = q * price * fx.on(currency, t.date) / rate if currency != t.currency else q * price
@@ -316,12 +323,13 @@ def build_lots(txns, fx, transfer_price=None):
             cost_native, cost_base = lot.cost_native * frac, lot.cost_base * frac
             lot.quantity -= sold
             lot.cost_native -= cost_native
+            lot.commissions_native -= lot.commissions_native * frac
             lot.cost_base -= cost_base
             if t.kind == SELL:
                 proceeds = t.net_amount if t.net_amount > 0 else sold * t.price - abs(t.costs)
                 lot.realized_base += proceeds * rate - cost_base
         if abs(lot.quantity) < 1e-7:
-            lot.quantity = lot.cost_native = lot.cost_base = 0.0
+            lot.quantity = lot.cost_native = lot.commissions_native = lot.cost_base = 0.0
     return lots
 
 
@@ -332,9 +340,11 @@ def apply_split(src, dst, old, new):
     account still ends up with exactly the new quantity the broker reports."""
     if src and dst:
         cost_native, cost_base, last_price = src.cost_native, src.cost_base, src.last_price
-        src.quantity = src.cost_native = src.cost_base = 0.0
+        commissions = src.commissions_native
+        src.quantity = src.cost_native = src.commissions_native = src.cost_base = 0.0
         dst.quantity += new.quantity
         dst.cost_native += cost_native
+        dst.commissions_native += commissions
         dst.cost_base += cost_base
         if last_price:
             dst.last_price = last_price * -old.quantity / new.quantity
@@ -342,6 +352,7 @@ def apply_split(src, dst, old, new):
         frac = min(-old.quantity / src.quantity, 1.0) if src.quantity > EPS else 0.0
         src.quantity = max(src.quantity + old.quantity, 0.0)
         src.cost_native -= src.cost_native * frac
+        src.commissions_native -= src.commissions_native * frac
         src.cost_base -= src.cost_base * frac
     elif dst:  # shares received at no cost
         dst.quantity += new.quantity
@@ -415,7 +426,7 @@ def snapshot(txns, account_labels, market, base="CAD"):
             "price": price,
             "prev_close": prev,
             "live": q is not None,
-            "avg_cost": cost_native / qty,
+            "avg_cost": (cost_native - sum(l.commissions_native for l in ls)) / qty,
             "market_value_native": qty * price,
             "market_value": market_value,
             "book_cost": cost_base,
@@ -690,7 +701,7 @@ def position_detail(txns, symbol, account_labels, market, base="CAD", today=None
             {
                 "account": account_labels.get(l.account_id, ""),
                 "quantity": l.quantity,
-                "avg_cost": l.cost_native / l.quantity if l.quantity > EPS else None,
+                "avg_cost": l.avg_cost,
                 "currency": l.currency,
                 "book_cost": l.cost_base,
                 "realized": l.realized_base,

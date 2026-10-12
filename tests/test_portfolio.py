@@ -28,6 +28,21 @@ def test_average_cost_and_realized_gain():
     assert lot.dividends_base == pytest.approx(12.5)
 
 
+def test_average_cost_excludes_commissions_but_book_cost_keeps_them():
+    # AMZN in the TFSA export: 8 buys, 34.65 USD of commissions, then 4 shares sold
+    fx = pf.FxBook(FakeMarket(), "USD", date(2022, 1, 1))
+    buys = [("2022-12-06", 3, 89.0, 4.95, -271.95), ("2023-09-22", 1, 129.5389, 4.95, -134.49),
+            ("2023-10-05", 2, 124.5363, 4.95, -254.02), ("2024-01-10", 2, 153.8179, 4.95, -312.59),
+            ("2024-04-11", 3, 187.098, 4.95, -566.24), ("2024-08-02", 3, 163.359, 4.95, -495.03),
+            ("2024-08-06", 2, 164.7878, 4.95, -334.53), ("2025-12-16", 3, 222.2792, 0, -666.84)]
+    txns = [txn(i, d, pf.BUY, "AMZN", q, p, c, n, "USD") for i, (d, q, p, c, n) in enumerate(buys)]
+    txns.append(txn(99, "2026-05-13", pf.SELL, "AMZN", -4, 265.765, 0.03, 1063.03, "USD"))
+    lot = pf.build_lots(txns, fx)[(1, "AMZN")]
+    assert lot.quantity == pytest.approx(15)
+    assert lot.avg_cost == pytest.approx(157.949, abs=5e-4)
+    assert lot.cost_native / lot.quantity == pytest.approx(3035.69 / 19)  # book cost per share
+
+
 def test_same_day_sell_listed_before_buy_uses_the_buy():
     # newest-first export: the sell of 2 appears before the buy of 3 it was taken from
     fx = pf.FxBook(FakeMarket(), "USD", date(2026, 1, 1))
@@ -55,7 +70,8 @@ def test_snapshot_totals():
     assert t["total_gain"] == pytest.approx(585 + 85 + 12.5)
     assert t["dividends"] == pytest.approx(12.5)
     holding = snap["holdings"][0]
-    assert holding["avg_cost"] == pytest.approx(111)
+    assert holding["avg_cost"] == pytest.approx(110)  # prices paid; the 10 commissions stay in book cost
+    assert holding["book_cost_native"] == pytest.approx(1665)
     assert holding["weight"] == pytest.approx(2250 / t["total_value"])
     assert snap["cash"] == [{"account_id": 1, "account": "TFSA · 1", "currency": "CAD",
                              "amount": pytest.approx(3432.5), "amount_base": pytest.approx(3432.5)}]
