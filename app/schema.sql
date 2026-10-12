@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS users (
     name        TEXT,
     picture     TEXT,
     theme       TEXT NOT NULL DEFAULT 'white',
+    default_scope TEXT NOT NULL DEFAULT '',  -- view the dashboard opens with: '', 'account:<id>' or 'portfolio:<id>'
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

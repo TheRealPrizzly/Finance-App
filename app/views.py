@@ -105,10 +105,25 @@ def selected_account_ids():
     return None
 
 
+def default_scope():
+    """The user's saved default view as ("account" | "portfolio", id), or None for all
+    accounts. A default whose account or portfolio was deleted counts as none."""
+    kind, _, raw_id = (g.user["default_scope"] or "").partition(":")
+    if kind not in ("account", "portfolio") or not raw_id.isdigit():
+        return None
+    table = "accounts" if kind == "account" else "portfolios"
+    row = get_db().execute(f"SELECT id FROM {table} WHERE id = ? AND user_id = ?", (int(raw_id), g.user["id"])).fetchone()
+    return (kind, row["id"]) if row else None
+
+
 def scope_template_args():
-    """What the dashboard and position pages need to render the account/portfolio picker."""
+    """What the dashboard and position pages need to render the account/portfolio picker.
+    "all" marks an explicit All accounts choice, so links keep it instead of the default."""
+    default = default_scope()
     return {"accounts": user_accounts(), "portfolios": user_portfolios(),
-            "account_id": selected_account_id(), "portfolio_id": selected_portfolio_id()}
+            "account_id": selected_account_id(), "portfolio_id": selected_portfolio_id(),
+            "all_selected": bool(request.args.get("all")),
+            "default_scope": f"{default[0]}:{default[1]}" if default else ""}
 
 
 def load_txns(account_ids=None, symbol=None):
@@ -134,6 +149,10 @@ def has_transactions():
 @bp.get("/")
 @login_required
 def dashboard():
+    if not any(request.args.get(k) for k in ("account", "portfolio", "all")):
+        default = default_scope()
+        if default:
+            return redirect(url_for("views.dashboard", **{default[0]: default[1]}))
     return render_template(
         "dashboard.html",
         **scope_template_args(),
@@ -481,6 +500,25 @@ def set_theme():
     db = get_db()
     db.execute("UPDATE users SET theme = ? WHERE id = ?", (theme, g.user["id"]))
     db.commit()
+    back = request.form.get("next", "")
+    if not back.startswith("/") or back.startswith(("//", "/\\")):
+        back = url_for("views.dashboard")
+    return redirect(back)
+
+
+@bp.post("/settings/default-view")
+@login_required
+def set_default_view():
+    scope = request.form.get("scope", "")
+    kind, _, raw_id = scope.partition(":")
+    if scope:
+        if kind not in ("account", "portfolio") or not raw_id.isdigit():
+            abort(400)
+        (get_account_or_404 if kind == "account" else get_portfolio_or_404)(int(raw_id))
+    db = get_db()
+    db.execute("UPDATE users SET default_scope = ? WHERE id = ?", (scope, g.user["id"]))
+    db.commit()
+    flash("The dashboard will now open with this view.", "success")
     back = request.form.get("next", "")
     if not back.startswith("/") or back.startswith(("//", "/\\")):
         back = url_for("views.dashboard")

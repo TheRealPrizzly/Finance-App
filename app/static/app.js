@@ -575,9 +575,10 @@
   // Kept out of an inline onchange attribute, where `URL` would resolve to the document.URL string.
   $("account-select")?.addEventListener("change", (e) => {
     const url = new URL(location.href);
-    ["account", "portfolio", "page"].forEach((p) => url.searchParams.delete(p));
+    ["account", "portfolio", "all", "page"].forEach((p) => url.searchParams.delete(p));
     const [key, id] = e.target.value.split(":");
     if (id) url.searchParams.set(key, id);
+    else url.searchParams.set("all", "1");  // an explicit choice: don't fall back to a saved default
     location.href = url.href;
   });
 

@@ -43,6 +43,8 @@ def migrate(conn):
     user_columns = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
     if "theme" not in user_columns:
         conn.execute("ALTER TABLE users ADD COLUMN theme TEXT NOT NULL DEFAULT 'white'")
+    if "default_scope" not in user_columns:
+        conn.execute("ALTER TABLE users ADD COLUMN default_scope TEXT NOT NULL DEFAULT ''")
     # Imports before in-kind deposits and withdrawals were recognized stored them as cash
     # deposits and withdrawals, which ignores their shares.
     conn.execute(

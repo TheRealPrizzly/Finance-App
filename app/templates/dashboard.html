@@ -23,7 +23,7 @@
 <div id="app"
      data-portfolio-url="{{ url_for('views.api_portfolio', account=account_id or None, portfolio=portfolio_id or None) }}"
      data-history-url="{{ url_for('views.api_history', account=account_id or None, portfolio=portfolio_id or None) }}"
-     data-position-url="{{ url_for('views.position', symbol='__SYMBOL__', account=account_id or None, portfolio=portfolio_id or None) }}"
+     data-position-url="{{ url_for('views.position', symbol='__SYMBOL__', account=account_id or None, portfolio=portfolio_id or None, all=1 if all_selected else None) }}"
      data-benchmark="{{ benchmark }}" data-base="{{ base_currency }}">
 
   <div id="notices"></div>

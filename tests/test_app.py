@@ -196,6 +196,7 @@ def test_migration_adds_theme_to_existing_users(tmp_path):
     init_db(path)
     conn = connect(path)
     assert conn.execute("SELECT theme FROM users").fetchone()[0] == "white"
+    assert conn.execute("SELECT default_scope FROM users").fetchone()[0] == ""
     conn.close()
 
 
@@ -237,3 +238,34 @@ def test_dismissed_warnings_stay_hidden(client):
     assert warning not in client.get("/api/portfolio").get_json()["warnings"]
     assert warning not in client.get("/api/position/PRIVATE").get_json()["warnings"]
     assert 'name="csrf-token"' in client.get("/").get_data(as_text=True)
+
+
+def test_default_view(app, client):
+    token = login(client)
+    upload(client, token)
+    client.post("/portfolios", data={"csrf_token": token, "name": "Retirement", "account_ids": ["1", "2"]})
+
+    html = client.get("/").get_data(as_text=True)  # no default yet: All accounts
+    assert "All accounts (default)" in html and ">Default</span>" in html
+
+    resp = client.post("/settings/default-view", data={"csrf_token": token, "scope": "portfolio:1", "next": "/?portfolio=1"})
+    assert resp.status_code == 302 and resp.headers["Location"] == "/?portfolio=1"
+    resp = client.get("/")
+    assert resp.status_code == 302 and resp.headers["Location"] == "/?portfolio=1"
+    html = client.get("/?portfolio=1").get_data(as_text=True)
+    assert "Retirement (default)</option>" in html and ">Default</span>" in html
+
+    html = client.get("/?all=1").get_data(as_text=True)  # All accounts can still be picked
+    assert "Set as default" in html and "all=1" in html  # position links keep the choice
+    assert "all=1" in client.get("/position/AAPL?all=1").get_data(as_text=True)  # back link too
+
+    assert client.post("/settings/default-view", data={"csrf_token": token, "scope": "bogus"}).status_code == 400
+    assert client.post("/settings/default-view", data={"csrf_token": token, "scope": "account:99"}).status_code == 404
+
+    client.post("/portfolios/1/delete", data={"csrf_token": token})
+    assert client.get("/").status_code == 200  # default deleted: back to All accounts
+
+    client.post("/settings/default-view", data={"csrf_token": token, "scope": "account:2"})
+    assert client.get("/").headers["Location"] == "/?account=2"
+    client.post("/settings/default-view", data={"csrf_token": token, "scope": ""})
+    assert client.get("/").status_code == 200

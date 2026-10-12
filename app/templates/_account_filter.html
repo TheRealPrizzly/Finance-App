@@ -1,19 +1,30 @@
+{% set current_scope = 'account:%d' % account_id if account_id else ('portfolio:%d' % portfolio_id if portfolio_id else '') %}
 <div class="account-filter">
   <label class="sr-only" for="account-select">Account or portfolio</label>
   {# Each option is "param:id"; app.js reloads the page with that account/portfolio selected. #}
   <select id="account-select">
-    <option value="">All accounts</option>
+    <option value="">All accounts{% if default_scope == '' %} (default){% endif %}</option>
     {% if portfolios %}
     <optgroup label="Portfolios">
       {% for p in portfolios %}
-        <option value="portfolio:{{ p.id }}" {% if p.id == portfolio_id and not account_id %}selected{% endif %}>{{ p.name }}</option>
+        <option value="portfolio:{{ p.id }}" {% if p.id == portfolio_id and not account_id %}selected{% endif %}>{{ p.name }}{% if default_scope == 'portfolio:%d' % p.id %} (default){% endif %}</option>
       {% endfor %}
     </optgroup>
     {% endif %}
     <optgroup label="Accounts">
       {% for a in accounts %}
-        <option value="account:{{ a.id }}" {% if a.id == account_id %}selected{% endif %}>{{ a.name or a.type or 'Account' }} · {{ a.number }}</option>
+        <option value="account:{{ a.id }}" {% if a.id == account_id %}selected{% endif %}>{{ a.name or a.type or 'Account' }} · {{ a.number }}{% if default_scope == 'account:%d' % a.id %} (default){% endif %}</option>
       {% endfor %}
     </optgroup>
   </select>
+  {% if current_scope == default_scope %}
+    <span class="default-tag" title="The dashboard opens with this view">Default</span>
+  {% else %}
+    <form method="post" action="{{ url_for('views.set_default_view') }}" class="default-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="scope" value="{{ current_scope }}">
+      <input type="hidden" name="next" value="{{ request.full_path }}">
+      <button type="submit" class="btn btn-secondary btn-sm" title="Open the dashboard with this view from now on">Set as default</button>
+    </form>
+  {% endif %}
 </div>

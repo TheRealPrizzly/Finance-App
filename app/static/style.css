@@ -183,7 +183,9 @@ label.check input { width: auto; }
 .form h2 { margin-bottom: 4px; }
 .filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; align-items: end; }
 .filter-actions { display: flex; gap: 8px; }
-.account-filter { margin: 0; }
+.account-filter { margin: 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.default-form { margin: 0; }
+.default-tag { font-size: .8rem; font-weight: 600; color: var(--muted); padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; }
 .account-filter select { width: auto; min-width: 200px; max-width: 100%; }
 .danger-zone { margin-top: 8px; }
 .pager { display: flex; gap: 12px; align-items: center; justify-content: center; }
@@ -231,7 +233,7 @@ details summary { cursor: pointer; font-weight: 600; font-size: .9rem; margin: 1
   .topbar-inner { gap: 8px 16px; padding-top: 8px; padding-bottom: 8px; }
   .nav { order: 3; flex-basis: 100%; }
   .user { margin-left: auto; }
-  .account-filter select { min-width: 0; width: 100%; }
+  .account-filter select { min-width: 0; width: auto; flex: 1; }
   .head-actions { width: 100%; }
   .head-actions .account-filter { width: 100%; }
 }
