@@ -88,7 +88,7 @@ def test_add_edit_delete_transaction(client):
     })
     assert resp.status_code == 302
     data = client.get("/api/portfolio").get_json()
-    assert data["holdings"][0]["book_cost"] == 1005
+    assert data["holdings"][0]["book_cost"] == 1000  # the 5 commission is not book cost
 
     resp = client.post("/transactions/1/edit", data={
         "csrf_token": token, "kind": "BUY", "date": "2025-05-01", "account_id": "1", "currency": "CAD",

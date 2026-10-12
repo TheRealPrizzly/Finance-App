@@ -23,12 +23,12 @@ def test_average_cost_and_realized_gain():
     fx = pf.FxBook(FakeMarket(), "CAD", date(2025, 1, 1))
     lot = pf.build_lots(TRADES, fx)[(1, "VFV.TO")]
     assert lot.quantity == pytest.approx(15)
-    assert lot.cost_native == pytest.approx(1665)  # avg cost 111/share
-    assert lot.realized_base == pytest.approx(85)  # 640 proceeds - 555 cost
+    assert lot.cost_native == pytest.approx(1650)  # avg price paid 110/share; commissions excluded
+    assert lot.realized_base == pytest.approx(-20 + 90)  # both buy commissions + (640 proceeds - 550 cost)
     assert lot.dividends_base == pytest.approx(12.5)
 
 
-def test_average_cost_excludes_commissions_but_book_cost_keeps_them():
+def test_book_cost_excludes_commissions():
     # AMZN in the TFSA export: 8 buys, 34.65 USD of commissions, then 4 shares sold
     fx = pf.FxBook(FakeMarket(), "USD", date(2022, 1, 1))
     buys = [("2022-12-06", 3, 89.0, 4.95, -271.95), ("2023-09-22", 1, 129.5389, 4.95, -134.49),
@@ -40,7 +40,13 @@ def test_average_cost_excludes_commissions_but_book_cost_keeps_them():
     lot = pf.build_lots(txns, fx)[(1, "AMZN")]
     assert lot.quantity == pytest.approx(15)
     assert lot.avg_cost == pytest.approx(157.949, abs=5e-4)
-    assert lot.cost_native / lot.quantity == pytest.approx(3035.69 / 19)  # book cost per share
+    assert lot.cost_native == pytest.approx(2369.24, abs=0.005)
+    paid = 3035.69  # what the 19 shares cost in cash, commissions included
+    avg = 3001.0315 / 19  # price paid per share
+    assert lot.realized_base == pytest.approx(-(paid - 19 * avg) + 1063.03 - 4 * avg)
+    # no money goes missing: realized + unrealized at any price P equals cash in - cash out + 15 x P,
+    # i.e. realized - book cost = sale proceeds - cash paid
+    assert lot.realized_base - lot.cost_native == pytest.approx(1063.03 - paid)
 
 
 def test_same_day_sell_listed_before_buy_uses_the_buy():
@@ -51,8 +57,8 @@ def test_same_day_sell_listed_before_buy_uses_the_buy():
         txn(2, "2026-02-06", pf.BUY, "MSFT", 3, 400.255, 0, -1200.77, "USD"),
     ], fx)[(1, "MSFT")]
     assert lot.quantity == pytest.approx(1)
-    assert lot.cost_native == pytest.approx(1200.77 / 3)  # avg cost 400.26
-    assert lot.realized_base == pytest.approx(800.90 - 2 * 1200.77 / 3)
+    assert lot.cost_native == pytest.approx(400.255)  # price paid for the share left
+    assert lot.realized_base == pytest.approx(800.90 - 2 * 400.255 - (1200.77 - 3 * 400.255))
 
 
 def test_snapshot_totals():
@@ -63,15 +69,15 @@ def test_snapshot_totals():
     assert t["market_value"] == pytest.approx(2250)
     assert t["cash"] == pytest.approx(5000 - 1010 - 1210 + 640 + 12.5)
     assert t["total_value"] == pytest.approx(2250 + 3432.5)
-    assert t["unrealized"] == pytest.approx(585)
+    assert t["unrealized"] == pytest.approx(600)  # 15 x (150 - 110 price paid)
     assert t["day_change"] == pytest.approx(30)
     assert t["day_change_pct"] == pytest.approx(30 / (t["total_value"] - 30))
     assert t["net_contributions"] == pytest.approx(5000)
     assert t["total_gain"] == pytest.approx(585 + 85 + 12.5)
     assert t["dividends"] == pytest.approx(12.5)
     holding = snap["holdings"][0]
-    assert holding["avg_cost"] == pytest.approx(110)  # prices paid; the 10 commissions stay in book cost
-    assert holding["book_cost_native"] == pytest.approx(1665)
+    assert holding["avg_cost"] == pytest.approx(110)  # price paid; commissions are not book cost
+    assert holding["book_cost_native"] == pytest.approx(1650)
     assert holding["weight"] == pytest.approx(2250 / t["total_value"])
     assert snap["cash"] == [{"account_id": 1, "account": "TFSA · 1", "currency": "CAD",
                              "amount": pytest.approx(3432.5), "amount_base": pytest.approx(3432.5)}]
