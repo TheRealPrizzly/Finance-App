@@ -125,6 +125,15 @@
     const allocCharts = {};
     let holdings = [];
     let sort = { key: "market_value", dir: -1 };
+    // Holdings and Upcoming earnings show their first PREVIEW_ROWS rows until "Show all" is clicked.
+    const PREVIEW_ROWS = 5;
+    let holdingsExpanded = false;
+    let earningsExpanded = false;
+    let earningsList = [];
+    const moreButton = (count, expanded, controls, noun) => (count > PREVIEW_ROWS
+      ? `<button type="button" class="btn btn-secondary btn-sm" aria-controls="${controls}" aria-expanded="${expanded}">
+          ${expanded ? "Show fewer" : `Show all ${count} ${noun}`}</button>`
+      : "");
     let lastSnapshot = null;
 
     chartDefaults();
@@ -196,7 +205,8 @@
         const state = sort.key === c.key ? (sort.dir > 0 ? "ascending" : "descending") : "none";
         return `<th class="${c.num ? "num" : ""}" aria-sort="${state}"><button type="button" data-sort="${c.key}">${esc(c.label)}</button></th>`;
       }).join("");
-      const body = rows.map((h) => {
+      const collapsed = !holdingsExpanded && rows.length > PREVIEW_ROWS;
+      const body = (collapsed ? rows.slice(0, PREVIEW_ROWS) : rows).map((h) => {
         const href = urls.positionUrl.replace("__SYMBOL__", encodeURIComponent(h.symbol));
         const stale = h.live ? "" : '<span class="badge" title="No live quote; using last trade price">stale</span>';
         return `<tr>
@@ -212,7 +222,8 @@
         </tr>`;
       }).join("");
       const t = lastSnapshot.totals;
-      const foot = rows.length ? `<tfoot><tr><td>Total</td><td></td><td></td><td></td>
+      const totalLabel = collapsed ? `Total <small class="muted">all ${rows.length}</small>` : "Total";
+      const foot = rows.length ? `<tfoot><tr><td>${totalLabel}</td><td></td><td></td><td></td>
           <td class="num ${tone(t.day_change)}">${money(t.day_change, BASE, { signed: true })}</td>
           <td class="num nowrap">${money(t.book_cost)}</td>
           <td class="num nowrap ${tone(t.unrealized)}">${money(t.unrealized, BASE, { signed: true })}</td>
@@ -220,7 +231,14 @@
       table.innerHTML = rows.length
         ? `<thead><tr>${head}</tr></thead><tbody>${body}</tbody>${foot}`
         : `<tbody><tr><td class="muted">No open positions.</td></tr></tbody>`;
+      $("holdings-more").innerHTML = moreButton(rows.length, holdingsExpanded, "holdings", "holdings");
     }
+
+    $("holdings-more").addEventListener("click", (e) => {
+      if (!e.target.closest("button")) return;
+      holdingsExpanded = !holdingsExpanded;
+      renderHoldings();
+    });
 
     // Upcoming earnings ---------------------------------------------------------
     // Dates are shown in New York time, the exchange's calendar day.
@@ -230,7 +248,8 @@
       weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: MARKET_TZ,
     });
 
-    function renderEarnings(list) {
+    function renderEarnings(list = earningsList) {
+      earningsList = list;
       const today = marketDay(Date.now());
       const rows = list
         .filter((h) => h.earnings)
@@ -242,7 +261,7 @@
 
       $("earnings").innerHTML = rows.length
         ? `<table class="table"><thead><tr><th>Symbol</th><th>Date</th><th class="num">When</th><th class="num">Value</th></tr></thead>
-          <tbody>${rows.map(({ h, e, days }) => {
+          <tbody>${(earningsExpanded ? rows : rows.slice(0, PREVIEW_ROWS)).map(({ h, e, days }) => {
             const href = urls.positionUrl.replace("__SYMBOL__", encodeURIComponent(h.symbol));
             const date = e.end ? `${earningsDate(e.start)} – ${earningsDate(e.end)}` : earningsDate(e.start);
             const badge = e.estimated ? '<span class="badge" title="Estimated by Yahoo; not yet confirmed by the company">estimated</span>' : "";
@@ -254,10 +273,17 @@
             </tr>`;
           }).join("")}</tbody></table>`
         : '<p class="muted">No upcoming earnings dates for your holdings.</p>';
+      $("earnings-more").innerHTML = moreButton(rows.length, earningsExpanded, "earnings", "upcoming reports");
       $("earnings-note").textContent = missing.length
         ? `No date announced yet for ${missing.join(", ")}. ETFs and funds don't report earnings.`
         : "ETFs and funds don't report earnings.";
     }
+
+    $("earnings-more").addEventListener("click", (e) => {
+      if (!e.target.closest("button")) return;
+      earningsExpanded = !earningsExpanded;
+      renderEarnings();
+    });
 
     $("holdings").addEventListener("click", (e) => {
       const btn = e.target.closest("button[data-sort]");
