@@ -4,6 +4,7 @@ Every query is scoped to ``g.user`` so users only ever see their own data.
 """
 import re
 from datetime import date, datetime
+from urllib.parse import urlsplit
 
 from flask import (
     Blueprint, Response, abort, current_app, flash, g, jsonify, redirect, render_template, request, url_for,
@@ -264,9 +265,13 @@ def api_position(symbol):
 # -- transactions -------------------------------------------------------------------------
 
 
-@bp.get("/transactions")
-@login_required
-def transactions():
+def transactions_section_url(**args):
+    """The Transactions section of the Portfolio Manager page."""
+    return url_for("views.portfolios", _anchor="transactions", **args)
+
+
+def transaction_listing():
+    """One page of the user's transactions, filtered by the account / symbol / kind query args."""
     account_id = selected_account_id()
     symbol = request.args.get("symbol", "").strip().upper()
     kind = request.args.get("kind", "")
@@ -291,17 +296,15 @@ def transactions():
             WHERE {clause} ORDER BY t.date DESC, t.id DESC LIMIT ? OFFSET ?""",
         params + [PAGE_SIZE, (page - 1) * PAGE_SIZE],
     ).fetchall()
-    return render_template(
-        "transactions.html",
-        rows=rows,
-        accounts=user_accounts(),
-        account_id=account_id,
-        symbol=symbol,
-        kind=kind,
-        page=page,
-        pages=max((total + PAGE_SIZE - 1) // PAGE_SIZE, 1),
-        total=total,
-    )
+    return {"txn_rows": rows, "txn_account_id": account_id, "txn_symbol": symbol, "txn_kind": kind,
+            "txn_page": page, "txn_pages": max((total + PAGE_SIZE - 1) // PAGE_SIZE, 1), "txn_total": total}
+
+
+@bp.get("/transactions")
+@login_required
+def transactions():
+    """The list now lives on the Portfolio Manager page; keep old links and filters working."""
+    return redirect(transactions_section_url(**request.args.to_dict()))
 
 
 def _parse_txn_form(form, accounts):
@@ -378,7 +381,7 @@ def new_transaction():
             )
             db.commit()
             flash("Transaction added.", "success")
-            return redirect(url_for("views.transactions"))
+            return redirect(transactions_section_url())
         for e in errors:
             flash(e, "error")
         form = request.form
@@ -411,7 +414,7 @@ def edit_transaction(txn_id):
             )
             db.commit()
             flash("Transaction updated.", "success")
-            return redirect(url_for("views.transactions"))
+            return redirect(transactions_section_url())
         for e in errors:
             flash(e, "error")
         form = request.form
@@ -428,8 +431,12 @@ def delete_transaction(txn_id):
     db.execute("DELETE FROM transactions WHERE id = ? AND user_id = ?", (txn_id, g.user["id"]))
     db.commit()
     flash("Transaction deleted.", "success")
-    return redirect(request.referrer if request.referrer and "/edit" not in request.referrer
-                    else url_for("views.transactions"))
+    back = request.referrer
+    if not back or "/edit" in back:
+        return redirect(transactions_section_url())
+    if urlsplit(back).path == url_for("views.portfolios"):
+        back = back.split("#")[0] + "#transactions"  # browsers drop the #section from the referrer
+    return redirect(back)
 
 
 # -- accounts ---------------------------------------------------------------------------
@@ -620,7 +627,8 @@ def portfolios():
         members.setdefault(m["portfolio_id"], []).append(labels[m["account_id"]])
     account_rows, cash = account_overview()
     return render_template("portfolios.html", rows=rows, members=members, accounts=accounts,
-                           selected=set(), label=account_label, account_rows=account_rows, cash=cash)
+                           selected=set(), label=account_label, account_rows=account_rows, cash=cash,
+                           **transaction_listing())
 
 
 @bp.route("/portfolios/<int:portfolio_id>/edit", methods=["GET", "POST"])

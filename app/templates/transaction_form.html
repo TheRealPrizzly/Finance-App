@@ -4,7 +4,7 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <a class="back" href="{{ url_for('views.transactions') }}">← Transactions</a>
+    <a class="back" href="{{ url_for('views.portfolios', _anchor='transactions') }}">← Portfolio Manager</a>
     <h1>{{ 'Edit transaction' if txn else 'Add transaction' }}</h1>
   </div>
 </div>
@@ -53,7 +53,7 @@
   </div>
   <div class="form-actions">
     <button class="btn btn-primary" type="submit">{{ 'Save changes' if txn else 'Add transaction' }}</button>
-    <a class="btn btn-ghost" href="{{ url_for('views.transactions') }}">Cancel</a>
+    <a class="btn btn-ghost" href="{{ url_for('views.portfolios', _anchor='transactions') }}">Cancel</a>
   </div>
 </form>
 

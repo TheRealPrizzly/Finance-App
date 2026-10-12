@@ -1,46 +1,45 @@
-{% extends "base.html" %}
-{% block title %}Transactions · Portfolio Manager{% endblock %}
-{% block content %}
-<div class="page-head">
+{# Transactions list with filters and paging, shown on the Portfolio Manager page.
+   Filters and page links reload the page and jump back to this section. #}
+<div class="page-head section-head" id="transactions">
   <div>
-    <h1>Transactions</h1>
-    <p class="muted">{{ total }} transaction{{ '' if total == 1 else 's' }}</p>
+    <h2>Transactions</h2>
+    <p class="muted">{{ txn_total }} transaction{{ '' if txn_total == 1 else 's' }}</p>
   </div>
   <div class="head-actions">
-    <a class="btn btn-primary" href="{{ url_for('views.new_transaction', account=account_id or None) }}">Add transaction</a>
+    <a class="btn btn-primary" href="{{ url_for('views.new_transaction', account=txn_account_id or None) }}">Add transaction</a>
   </div>
 </div>
 
-<form method="get" class="filters card">
+<form method="get" action="{{ url_for('views.portfolios', _anchor='transactions') }}" class="filters card">
   <label>Account
     <select name="account">
       <option value="">All accounts</option>
       {% for a in accounts %}
-        <option value="{{ a.id }}" {% if a.id == account_id %}selected{% endif %}>{{ a.name or a.type or 'Account' }} · {{ a.number }}</option>
+        <option value="{{ a.id }}" {% if a.id == txn_account_id %}selected{% endif %}>{{ a.name or a.type or 'Account' }} · {{ a.number }}</option>
       {% endfor %}
     </select>
   </label>
   <label>Symbol
-    <input name="symbol" value="{{ symbol }}" placeholder="e.g. VFV.TO" autocomplete="off">
+    <input name="symbol" value="{{ txn_symbol }}" placeholder="e.g. VFV.TO" autocomplete="off">
   </label>
   <label>Type
     <select name="kind">
       <option value="">All types</option>
       {% for key, label in kind_labels.items() %}
-        <option value="{{ key }}" {% if key == kind %}selected{% endif %}>{{ label }}</option>
+        <option value="{{ key }}" {% if key == txn_kind %}selected{% endif %}>{{ label }}</option>
       {% endfor %}
     </select>
   </label>
   <div class="filter-actions">
     <button class="btn btn-secondary" type="submit">Filter</button>
-    {% if account_id or symbol or kind %}<a class="btn btn-ghost" href="{{ url_for('views.transactions') }}">Clear</a>{% endif %}
+    {% if txn_account_id or txn_symbol or txn_kind %}<a class="btn btn-ghost" href="{{ url_for('views.portfolios', _anchor='transactions') }}">Clear</a>{% endif %}
   </div>
 </form>
 
-{% if rows %}
+{% if txn_rows %}
 <section class="card flush">
   <div class="table-wrap">
-    <table class="table">
+    <table class="table" id="transactions-table">
       <thead>
         <tr>
           <th>Date</th><th>Account</th><th>Type</th><th>Symbol</th>
@@ -49,7 +48,7 @@
         </tr>
       </thead>
       <tbody>
-        {% for r in rows %}
+        {% for r in txn_rows %}
         <tr>
           <td class="nowrap">{{ r.date }}</td>
           <td class="nowrap">{{ r.account_name or r.account_type or 'Account' }} · {{ r.number }}</td>
@@ -77,22 +76,21 @@
     </table>
   </div>
 </section>
-{% if pages > 1 %}
-<nav class="pager" aria-label="Pages">
+{% if txn_pages > 1 %}
+<nav class="pager" aria-label="Transaction pages">
   {% set args = request.args.to_dict() %}
-  {% if page > 1 %}{% set _ = args.update(page=page - 1) %}<a class="btn btn-secondary btn-sm" href="{{ url_for('views.transactions', **args) }}">← Newer</a>{% endif %}
-  <span class="muted">Page {{ page }} of {{ pages }}</span>
-  {% if page < pages %}{% set _ = args.update(page=page + 1) %}<a class="btn btn-secondary btn-sm" href="{{ url_for('views.transactions', **args) }}">Older →</a>{% endif %}
+  {% if txn_page > 1 %}{% set _ = args.update(page=txn_page - 1) %}<a class="btn btn-secondary btn-sm" href="{{ url_for('views.portfolios', _anchor='transactions', **args) }}">← Newer</a>{% endif %}
+  <span class="muted">Page {{ txn_page }} of {{ txn_pages }}</span>
+  {% if txn_page < txn_pages %}{% set _ = args.update(page=txn_page + 1) %}<a class="btn btn-secondary btn-sm" href="{{ url_for('views.portfolios', _anchor='transactions', **args) }}">Older →</a>{% endif %}
 </nav>
 {% endif %}
 {% else %}
 <section class="empty card">
   <h2>No transactions found</h2>
-  <p class="muted">{% if account_id or symbol or kind %}Nothing matches these filters.{% else %}Import a CSV or add your first transaction.{% endif %}</p>
+  <p class="muted">{% if txn_account_id or txn_symbol or txn_kind %}Nothing matches these filters.{% else %}Import a CSV or add your first transaction.{% endif %}</p>
   <div class="actions">
     <a class="btn btn-primary" href="{{ url_for('views.new_transaction') }}">Add transaction</a>
     <a class="btn btn-secondary" href="{{ url_for('views.import_export') }}">Import CSV</a>
   </div>
 </section>
 {% endif %}
-{% endblock %}

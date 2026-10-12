@@ -68,7 +68,7 @@ def test_account_filter_and_history(client):
 def test_pages_render(client):
     token = login(client)
     upload(client, token)
-    for path in ("/", "/transactions", "/transactions?symbol=AAPL", "/portfolios", "/import", "/position/VFV.TO",
+    for path in ("/", "/portfolios?symbol=AAPL", "/portfolios", "/import", "/position/VFV.TO",
                  "/transactions/new", "/accounts/1/edit"):
         assert client.get(path).status_code == 200, path
     detail = client.get("/api/position/AAPL").get_json()
@@ -315,3 +315,34 @@ def test_accounts_live_on_the_portfolio_manager_page(client):
     assert "already have an account numbered 999" in client.get("/portfolios").get_data(as_text=True)
     resp = client.post("/accounts/1/edit", data={"csrf_token": token, "number": "51234567", "type": "TFSA", "name": "Main"})
     assert resp.headers["Location"] == "/portfolios#accounts"
+
+
+def test_transactions_live_on_the_portfolio_manager_page(client):
+    token = login(client)
+    upload(client, token)
+    html = client.get("/portfolios").get_data(as_text=True)
+    assert html.index('id="accounts"') < html.index('id="transactions"') < html.index('id="transactions-table"')
+    table = html[html.index('id="transactions-table"'):html.index("</table>", html.index('id="transactions-table"'))]
+    assert "VFV.TO" in table and "AAPL" in table and "/transactions/1/edit" in table
+    assert 'action="/portfolios#transactions"' in html  # filters jump back to the section
+
+    filtered = client.get("/portfolios?symbol=aapl").get_data(as_text=True)
+    table = filtered[filtered.index('id="transactions-table"'):filtered.index("</table>", filtered.index('id="transactions-table"'))]
+    assert "AAPL" in table and "VFV.TO" not in table
+    assert 'value="AAPL"' in filtered and 'href="/portfolios#transactions">Clear</a>' in filtered
+
+    nav = html[html.index('<nav class="nav"'):html.index("</nav>")]
+    assert ">Transactions<" not in nav
+    form_page = client.get("/transactions/new").get_data(as_text=True)
+    assert 'aria-current="page">Portfolio Manager<' in form_page and "/portfolios#transactions" in form_page
+    assert "/portfolios?symbol=AAPL#transactions" in client.get("/position/AAPL").get_data(as_text=True)
+
+    assert client.get("/transactions?symbol=AAPL").headers["Location"] == "/portfolios?symbol=AAPL#transactions"
+    resp = client.post("/transactions/new", data={
+        "csrf_token": token, "kind": "DEPOSIT", "date": "2025-06-01", "account_id": "1", "currency": "CAD",
+        "net_amount": "100", "symbol": "", "quantity": "", "price": "", "costs": "",
+    })
+    assert resp.headers["Location"] == "/portfolios#transactions"
+    resp = client.post("/transactions/1/delete", data={"csrf_token": token},
+                       headers={"Referer": "http://localhost/portfolios?symbol=AAPL"})
+    assert resp.headers["Location"] == "http://localhost/portfolios?symbol=AAPL#transactions"
