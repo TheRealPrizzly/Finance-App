@@ -146,15 +146,35 @@ def has_transactions():
 # -- dashboard & positions ------------------------------------------------------------
 
 
-@bp.get("/")
-@login_required
-def dashboard():
+def redirect_to_default_view(endpoint):
+    """With no account or portfolio picked, a redirect to the user's default view, if any."""
     if not any(request.args.get(k) for k in ("account", "portfolio", "all")):
         default = default_scope()
         if default:
-            return redirect(url_for("views.dashboard", **{default[0]: default[1]}))
+            return redirect(url_for(endpoint, **{default[0]: default[1]}))
+    return None
+
+
+@bp.get("/")
+@login_required
+def dashboard():
+    if (resp := redirect_to_default_view("views.dashboard")) is not None:
+        return resp
     return render_template(
         "dashboard.html",
+        **scope_template_args(),
+        has_transactions=has_transactions(),
+        benchmark=current_app.config["BENCHMARK_SYMBOL"],
+    )
+
+
+@bp.get("/performance")
+@login_required
+def performance():
+    if (resp := redirect_to_default_view("views.performance")) is not None:
+        return resp
+    return render_template(
+        "performance.html",
         **scope_template_args(),
         has_transactions=has_transactions(),
         benchmark=current_app.config["BENCHMARK_SYMBOL"],

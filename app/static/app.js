@@ -114,14 +114,125 @@
     };
   }
 
-  // ---- dashboard ---------------------------------------------------------------
-  function dashboard() {
-    const urls = root.dataset;
-    const benchmark = urls.benchmark;
+  // ---- performance section (dashboard and Performance tab) -------------------
+  // Growth / returns chart with time ranges, and the period returns table.
+  function performanceSection(urls, benchmark) {
     let history = null;
     let mode = "growth";
     let range = "All";
     let perfChart = null;
+
+    async function loadHistory() {
+      try {
+        history = await getJSON(urls.historyUrl);
+        $("perf-status").hidden = true;
+        renderPeriods();
+        renderPerf();
+      } catch (err) {
+        $("perf-status").textContent = `Couldn't build history: ${err.message}`;
+      }
+    }
+
+    function rangeStart(points) {
+      if (range === "All" || !points.length) return 0;
+      const end = new Date(`${points[points.length - 1].date}T00:00:00`);
+      const start = new Date(end);
+      if (range === "YTD") start.setMonth(0, 1);
+      else start.setMonth(end.getMonth() - { "1M": 1, "3M": 3, "6M": 6, "1Y": 12 }[range]);
+      const iso = start.toISOString().slice(0, 10);
+      const i = points.findIndex((p) => p.date >= iso);
+      return Math.max(i - 1, 0);
+    }
+
+    function renderPerf() {
+      const all = history.points;
+      if (!all.length) return;
+      const pts = all.slice(rangeStart(all));
+      const labels = pts.map((p) => p.date);
+      const c1 = cssVar("--chart-1"), c2 = cssVar("--chart-2"), c3 = cssVar("--chart-3");
+      let datasets, yFormat, note;
+      if (mode === "growth") {
+        datasets = [
+          { label: "Portfolio value", data: pts.map((p) => p.value), borderColor: c1, backgroundColor: `${c1}22`, fill: true, borderWidth: 2 },
+          { label: "Net contributions", data: pts.map((p) => p.contributions), borderColor: c3, borderDash: [4, 4], borderWidth: 1.5, stepped: true },
+          { label: `Same contributions in ${benchmark}`, data: pts.map((p) => p.benchmark_value ?? null), borderColor: c2, borderWidth: 1.5 },
+        ];
+        yFormat = (v) => money(v, BASE, { compact: true });
+        note = `Dashed line: money you put in. Orange: what the same deposits would be worth if each had bought ${benchmark}.`;
+      } else {
+        const b = pts[0];
+        const rebase = (end, start) => (end == null || start == null ? null : (1 + end) / (1 + start) - 1);
+        datasets = [
+          { label: "Portfolio (time-weighted)", data: pts.map((p) => rebase(p.twr, b.twr)), borderColor: c1, borderWidth: 2 },
+          { label: benchmark, data: pts.map((p) => rebase(p.benchmark_twr, b.benchmark_twr)), borderColor: c2, borderWidth: 1.5 },
+        ];
+        yFormat = (v) => pct(v);
+        note = "Time-weighted return removes the effect of deposits and withdrawals, so it compares directly with the index.";
+      }
+      $("perf-note").textContent = note;
+      datasets.forEach((d) => Object.assign(d, { pointRadius: 0, pointHoverRadius: 3, tension: 0.15 }));
+      const config = {
+        type: "line",
+        data: { labels, datasets },
+        options: {
+          maintainAspectRatio: false,
+          animation: false,
+          interaction: { mode: "index", intersect: false },
+          scales: {
+            x: { grid: { display: false }, ticks: dateTicks(labels) },
+            y: { ticks: { callback: yFormat }, grace: "5%" },
+          },
+          plugins: {
+            legend: { position: "bottom", labels: { boxWidth: 12, boxHeight: 2, usePointStyle: false } },
+            tooltip: {
+              callbacks: {
+                title: (items) => new Date(`${items[0].label}T00:00:00`).toLocaleDateString("en-CA", { dateStyle: "medium" }),
+                label: (c) => ` ${c.dataset.label}: ${c.parsed.y == null ? "—" : yFormat(c.parsed.y)}`,
+              },
+            },
+          },
+        },
+      };
+      if (perfChart) perfChart.destroy();
+      perfChart = new Chart($("perf-chart"), config);
+    }
+
+    function renderPeriods() {
+      const rows = history.periods;
+      if (!rows.length) return;
+      const cells = (fn) => rows.map((r) => `<td class="num">${fn(r)}</td>`).join("");
+      const diff = (r) => (r.portfolio == null || r.benchmark == null ? null : r.portfolio - r.benchmark);
+      const head = (r) => r.label === "All" ? "<th class=\"num\">Since inception</th>"
+        : r.label === "Annualized" ? "<th class=\"num\" title=\"Compound yearly return since inception. Shown once there's at least a year of history.\">Annualized</th>"
+        : `<th class="num">${esc(r.label)}</th>`;
+      $("period-table").innerHTML = `
+        <thead><tr><th></th>${rows.map(head).join("")}</tr></thead>
+        <tbody>
+          <tr><td>Portfolio</td>${cells((r) => `<span class="${tone(r.portfolio)}">${pct(r.portfolio)}</span>`)}</tr>
+          <tr><td>${esc(benchmark)}</td>${cells((r) => `<span class="${tone(r.benchmark)}">${pct(r.benchmark)}</span>`)}</tr>
+          <tr><td>Difference</td>${cells((r) => `<span class="${tone(diff(r))}">${pct(diff(r))}</span>`)}</tr>
+        </tbody>`;
+    }
+
+    function bindSeg(id, attr, onChange) {
+      $(id).addEventListener("click", (e) => {
+        const btn = e.target.closest("button");
+        if (!btn) return;
+        $(id).querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
+        onChange(btn.dataset[attr]);
+        if (history) renderPerf();
+      });
+    }
+    bindSeg("chart-mode", "mode", (v) => { mode = v; });
+    bindSeg("chart-range", "range", (v) => { range = v; });
+
+    loadHistory();
+  }
+
+  // ---- dashboard ---------------------------------------------------------------
+  function dashboard() {
+    const urls = root.dataset;
+    const benchmark = urls.benchmark;
     const allocCharts = {};
     let holdings = [];
     let sort = { key: "market_value", dir: -1 };
@@ -345,113 +456,9 @@
         ${holdingsOnly ? '<p class="hint">Record deposits and withdrawals to include cash in your portfolio value.</p>' : ""}`;
     }
 
-    // Performance history -----------------------------------------------------
-    async function loadHistory() {
-      try {
-        history = await getJSON(urls.historyUrl);
-        $("perf-status").hidden = true;
-        renderPeriods();
-        renderPerf();
-      } catch (err) {
-        $("perf-status").textContent = `Couldn't build history: ${err.message}`;
-      }
-    }
-
-    function rangeStart(points) {
-      if (range === "All" || !points.length) return 0;
-      const end = new Date(`${points[points.length - 1].date}T00:00:00`);
-      const start = new Date(end);
-      if (range === "YTD") start.setMonth(0, 1);
-      else start.setMonth(end.getMonth() - { "1M": 1, "3M": 3, "6M": 6, "1Y": 12 }[range]);
-      const iso = start.toISOString().slice(0, 10);
-      const i = points.findIndex((p) => p.date >= iso);
-      return Math.max(i - 1, 0);
-    }
-
-    function renderPerf() {
-      const all = history.points;
-      if (!all.length) return;
-      const pts = all.slice(rangeStart(all));
-      const labels = pts.map((p) => p.date);
-      const c1 = cssVar("--chart-1"), c2 = cssVar("--chart-2"), c3 = cssVar("--chart-3");
-      let datasets, yFormat, note;
-      if (mode === "growth") {
-        datasets = [
-          { label: "Portfolio value", data: pts.map((p) => p.value), borderColor: c1, backgroundColor: `${c1}22`, fill: true, borderWidth: 2 },
-          { label: "Net contributions", data: pts.map((p) => p.contributions), borderColor: c3, borderDash: [4, 4], borderWidth: 1.5, stepped: true },
-          { label: `Same contributions in ${benchmark}`, data: pts.map((p) => p.benchmark_value ?? null), borderColor: c2, borderWidth: 1.5 },
-        ];
-        yFormat = (v) => money(v, BASE, { compact: true });
-        note = `Dashed line: money you put in. Orange: what the same deposits would be worth if each had bought ${benchmark}.`;
-      } else {
-        const b = pts[0];
-        const rebase = (end, start) => (end == null || start == null ? null : (1 + end) / (1 + start) - 1);
-        datasets = [
-          { label: "Portfolio (time-weighted)", data: pts.map((p) => rebase(p.twr, b.twr)), borderColor: c1, borderWidth: 2 },
-          { label: benchmark, data: pts.map((p) => rebase(p.benchmark_twr, b.benchmark_twr)), borderColor: c2, borderWidth: 1.5 },
-        ];
-        yFormat = (v) => pct(v);
-        note = "Time-weighted return removes the effect of deposits and withdrawals, so it compares directly with the index.";
-      }
-      $("perf-note").textContent = note;
-      datasets.forEach((d) => Object.assign(d, { pointRadius: 0, pointHoverRadius: 3, tension: 0.15 }));
-      const config = {
-        type: "line",
-        data: { labels, datasets },
-        options: {
-          maintainAspectRatio: false,
-          animation: false,
-          interaction: { mode: "index", intersect: false },
-          scales: {
-            x: { grid: { display: false }, ticks: dateTicks(labels) },
-            y: { ticks: { callback: yFormat }, grace: "5%" },
-          },
-          plugins: {
-            legend: { position: "bottom", labels: { boxWidth: 12, boxHeight: 2, usePointStyle: false } },
-            tooltip: {
-              callbacks: {
-                title: (items) => new Date(`${items[0].label}T00:00:00`).toLocaleDateString("en-CA", { dateStyle: "medium" }),
-                label: (c) => ` ${c.dataset.label}: ${c.parsed.y == null ? "—" : yFormat(c.parsed.y)}`,
-              },
-            },
-          },
-        },
-      };
-      if (perfChart) perfChart.destroy();
-      perfChart = new Chart($("perf-chart"), config);
-    }
-
-    function renderPeriods() {
-      const rows = history.periods;
-      if (!rows.length) return;
-      const cells = (fn) => rows.map((r) => `<td class="num">${fn(r)}</td>`).join("");
-      const diff = (r) => (r.portfolio == null || r.benchmark == null ? null : r.portfolio - r.benchmark);
-      const head = (r) => r.label === "All" ? "<th class=\"num\">Since inception</th>"
-        : r.label === "Annualized" ? "<th class=\"num\" title=\"Compound yearly return since inception. Shown once there's at least a year of history.\">Annualized</th>"
-        : `<th class="num">${esc(r.label)}</th>`;
-      $("period-table").innerHTML = `
-        <thead><tr><th></th>${rows.map(head).join("")}</tr></thead>
-        <tbody>
-          <tr><td>Portfolio</td>${cells((r) => `<span class="${tone(r.portfolio)}">${pct(r.portfolio)}</span>`)}</tr>
-          <tr><td>${esc(benchmark)}</td>${cells((r) => `<span class="${tone(r.benchmark)}">${pct(r.benchmark)}</span>`)}</tr>
-          <tr><td>Difference</td>${cells((r) => `<span class="${tone(diff(r))}">${pct(diff(r))}</span>`)}</tr>
-        </tbody>`;
-    }
-
-    function bindSeg(id, attr, onChange) {
-      $(id).addEventListener("click", (e) => {
-        const btn = e.target.closest("button");
-        if (!btn) return;
-        $(id).querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
-        onChange(btn.dataset[attr]);
-        if (history) renderPerf();
-      });
-    }
-    bindSeg("chart-mode", "mode", (v) => { mode = v; });
-    bindSeg("chart-range", "range", (v) => { range = v; });
 
     loadPortfolio();
-    loadHistory();
+    performanceSection(urls, benchmark);
     setInterval(() => { if (!document.hidden) loadPortfolio(); }, REFRESH_MS);
     document.addEventListener("visibilitychange", () => { if (!document.hidden) loadPortfolio(); });
   }
@@ -608,6 +615,11 @@
     location.href = url.href;
   });
 
-  const pages = { dashboard, position, "txn-form": txnForm };
+  function performance() {
+    chartDefaults();
+    performanceSection(root.dataset, root.dataset.benchmark);
+  }
+
+  const pages = { dashboard, performance, position, "txn-form": txnForm };
   pages[document.body.dataset.page]?.();
 })();

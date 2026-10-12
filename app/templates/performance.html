@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Performance · Portfolio Manager{% endblock %}
+{% block page %}performance{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Performance</h1>
+    <p class="muted">Portfolio growth and returns compared with {{ benchmark }}.</p>
+  </div>
+  {% if accounts %}<div class="head-actions">{% include "_account_filter.html" %}</div>{% endif %}
+</div>
+
+{% if not has_transactions %}
+<section class="empty card">
+  <h2>No activity yet</h2>
+  <p class="muted">Performance is calculated from your transactions. Import your broker's activity CSV or record transactions by hand.</p>
+  <div class="actions">
+    <a class="btn btn-primary" href="{{ url_for('views.import_export') }}">Import a CSV</a>
+    <a class="btn btn-secondary" href="{{ url_for('views.new_transaction') }}">Add a transaction</a>
+  </div>
+</section>
+{% else %}
+<div id="app"
+     data-history-url="{{ url_for('views.api_history', account=account_id or None, portfolio=portfolio_id or None) }}"
+     data-benchmark="{{ benchmark }}" data-base="{{ base_currency }}">
+  {% include "_performance_section.html" %}
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if has_transactions %}
+<script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% endif %}
+{% endblock %}

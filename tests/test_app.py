@@ -269,3 +269,23 @@ def test_default_view(app, client):
     assert client.get("/").headers["Location"] == "/?account=2"
     client.post("/settings/default-view", data={"csrf_token": token, "scope": ""})
     assert client.get("/").status_code == 200
+
+
+def test_performance_tab(app, client):
+    token = login(client)
+    html = client.get("/performance").get_data(as_text=True)
+    assert "No activity yet" in html  # empty state before any transactions
+    nav = html[html.index('<nav class="nav"'):html.index("</nav>")]
+    assert nav.index(">Dashboard<") < nav.index(">Performance<") < nav.index(">Portfolios<")
+
+    upload(client, token)
+    html = client.get("/performance").get_data(as_text=True)
+    assert 'id="perf-chart"' in html and 'id="period-table"' in html
+    assert 'aria-current="page">Performance<' in html
+    assert "/api/history" in html and 'data-page="performance"' in html
+    assert 'id="holdings"' not in html  # only the performance section
+    assert 'id="perf-chart"' in client.get("/?all=1").get_data(as_text=True)  # still on the dashboard
+
+    client.post("/settings/default-view", data={"csrf_token": token, "scope": "account:2"})
+    assert client.get("/performance").headers["Location"] == "/performance?account=2"
+    assert "account=2" in client.get("/performance?account=2").get_data(as_text=True)  # history URL scoped
