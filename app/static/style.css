@@ -194,6 +194,11 @@ label.check input { width: auto; }
 .alert-success { background: var(--ok-bg); color: var(--ok-text); }
 .alert-error { background: var(--err-bg); color: var(--err-text); }
 .alert-warning { background: var(--warn-bg); color: var(--warn-text); }
+.alert-dismissible { display: flex; align-items: flex-start; gap: 12px; }
+.alert-dismissible > span { flex: 1; }
+.alert-close { flex: none; border: 0; background: none; color: inherit; font: inherit; font-size: 1.25rem; line-height: 1;
+  padding: 0 4px; border-radius: 4px; cursor: pointer; opacity: .7; }
+.alert-close:hover, .alert-close:focus-visible { opacity: 1; background: rgba(0, 0, 0, .08); }
 .empty { text-align: center; padding: 48px 20px; }
 .empty .actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 16px; }
 .empty p { max-width: 520px; margin-left: auto; margin-right: auto; }

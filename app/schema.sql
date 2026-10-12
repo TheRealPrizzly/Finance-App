@@ -72,3 +72,11 @@ CREATE TABLE IF NOT EXISTS sectors (
     weights       TEXT NOT NULL,              -- JSON {"Technology": 0.37, ...}
     updated_at    TEXT NOT NULL
 );
+
+-- Dashboard warnings the user closed; matched by their exact text so they stay hidden.
+CREATE TABLE IF NOT EXISTS dismissed_warnings (
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    message     TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, message)
+);

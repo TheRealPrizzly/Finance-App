@@ -56,12 +56,38 @@
     return res.json();
   }
 
+  // Warnings can be closed for good: the server remembers the text and stops sending it.
   function notices(items) {
     $("notices").innerHTML = items
       .filter(Boolean)
-      .map(([kind, text]) => `<div class="alert alert-${kind}">${esc(text)}</div>`)
+      .map(([kind, text]) => kind === "warning"
+        ? `<div class="alert alert-${kind} alert-dismissible"><span>${esc(text)}</span>
+            <button type="button" class="alert-close" aria-label="Dismiss this message" title="Dismiss"
+              data-dismiss="${esc(text)}">&times;</button></div>`
+        : `<div class="alert alert-${kind}">${esc(text)}</div>`)
       .join("");
   }
+
+  document.addEventListener("click", async (event) => {
+    const button = event.target.closest(".alert-close");
+    if (!button) return;
+    const alert = button.closest(".alert");
+    alert.hidden = true;
+    try {
+      const res = await fetch("/api/warnings/dismiss", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": document.querySelector('meta[name="csrf-token"]')?.content || "",
+        },
+        body: JSON.stringify({ message: button.dataset.dismiss }),
+      });
+      if (!res.ok) throw new Error(`Request failed (${res.status})`);
+      alert.remove();
+    } catch {
+      alert.hidden = false;  // not saved: keep it visible so it can be tried again
+    }
+  });
 
   function kpi(label, value, sub = "", valueTone = "") {
     return `<div class="kpi"><div class="kpi-label">${esc(label)}</div>

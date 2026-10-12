@@ -154,12 +154,32 @@ def position(symbol):
     return render_template("position.html", symbol=symbol, **scope_template_args())
 
 
+def visible_warnings(warnings):
+    """Warnings the user hasn't dismissed."""
+    dismissed = {r["message"] for r in get_db().execute(
+        "SELECT message FROM dismissed_warnings WHERE user_id = ?", (g.user["id"],))}
+    return [w for w in warnings if w not in dismissed]
+
+
+@bp.post("/api/warnings/dismiss")
+@login_required
+def dismiss_warning():
+    message = ((request.get_json(silent=True) or {}).get("message") or "").strip()
+    if not message:
+        return jsonify(error="No message given."), 400
+    db = get_db()
+    db.execute("INSERT OR IGNORE INTO dismissed_warnings (user_id, message) VALUES (?, ?)", (g.user["id"], message))
+    db.commit()
+    return jsonify(ok=True)
+
+
 @bp.get("/api/portfolio")
 @login_required
 def api_portfolio():
     data = pf.snapshot(
         load_txns(selected_account_ids()), account_labels(), get_market(), current_app.config["BASE_CURRENCY"]
     )
+    data["warnings"] = visible_warnings(data["warnings"])
     data["as_of"] = datetime.now().isoformat(timespec="seconds")
     return jsonify(data)
 
@@ -183,6 +203,7 @@ def api_position(symbol):
     )
     if data is None:
         return jsonify(error="No transactions for this symbol in the selected account."), 404
+    data["warnings"] = visible_warnings(data["warnings"])
     rows = get_db().execute(
         """SELECT t.*, a.number, a.name, a.type FROM transactions t JOIN accounts a ON a.id = t.account_id
            WHERE t.user_id = ? AND t.symbol = ? ORDER BY t.date DESC, t.id DESC""",

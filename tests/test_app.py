@@ -219,3 +219,21 @@ def test_migration_turns_in_kind_deposits_and_withdrawals_into_transfers(tmp_pat
     kinds = [r[0] for r in conn.execute("SELECT kind FROM transactions ORDER BY id")]
     conn.close()
     assert kinds == ["TRANSFER", "WITHDRAWAL", "TRANSFER", "DEPOSIT"]
+
+
+def test_dismissed_warnings_stay_hidden(client):
+    token = login(client)
+    client.post("/accounts", data={"csrf_token": token, "number": "777", "type": "TFSA"})
+    client.post("/transactions/new", data={  # no live quote for this symbol, so the API warns
+        "csrf_token": token, "kind": "BUY", "date": "2025-05-01", "account_id": "1", "currency": "CAD",
+        "symbol": "PRIVATE", "quantity": "10", "price": "12", "costs": "0", "net_amount": "",
+    })
+    warning = "No live price for PRIVATE; valued at its last trade price."
+    assert warning in client.get("/api/portfolio").get_json()["warnings"]
+
+    assert client.post("/api/warnings/dismiss", json={"message": warning}).status_code == 400  # no CSRF token
+    resp = client.post("/api/warnings/dismiss", json={"message": warning}, headers={"X-CSRF-Token": token})
+    assert resp.status_code == 200
+    assert warning not in client.get("/api/portfolio").get_json()["warnings"]
+    assert warning not in client.get("/api/position/PRIVATE").get_json()["warnings"]
+    assert 'name="csrf-token"' in client.get("/").get_data(as_text=True)
