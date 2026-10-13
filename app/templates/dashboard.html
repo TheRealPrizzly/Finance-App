@@ -15,7 +15,7 @@
   <h2>Add your activity</h2>
   <p class="muted">Import your broker's activity CSV or record transactions by hand. Holdings, cash balances and performance are all calculated from your transactions.</p>
   <div class="actions">
-    <a class="btn btn-primary" href="{{ url_for('views.import_export') }}">Import a CSV</a>
+    <a class="btn btn-primary" href="{{ url_for('views.portfolios', _anchor='import') }}">Import a CSV</a>
     <a class="btn btn-secondary" href="{{ url_for('views.new_transaction') }}">Add a transaction</a>
   </div>
 </section>

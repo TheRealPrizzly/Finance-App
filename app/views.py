@@ -623,6 +623,13 @@ def portfolios():
             db.commit()
             flash(f"Portfolio {name} created.", "success")
             return redirect(url_for("views.portfolios"))
+    return render_portfolio_manager()
+
+
+def render_portfolio_manager(**extra):
+    """The Portfolio Manager page: portfolios, import / export, accounts and transactions."""
+    db = get_db()
+    accounts = user_accounts()
     rows = db.execute("SELECT * FROM portfolios WHERE user_id = ? ORDER BY name", (g.user["id"],)).fetchall()
     labels = {a["id"]: account_label(a) for a in accounts}
     members = {}
@@ -635,7 +642,7 @@ def portfolios():
     account_rows, cash = account_overview()
     return render_template("portfolios.html", rows=rows, members=members, accounts=accounts,
                            selected=set(), label=account_label, account_rows=account_rows, cash=cash,
-                           **transaction_listing())
+                           import_columns=csv_io.COLUMNS, **transaction_listing(), **extra)
 
 
 @bp.route("/portfolios/<int:portfolio_id>/edit", methods=["GET", "POST"])
@@ -677,21 +684,24 @@ def delete_portfolio(portfolio_id):
 @bp.route("/import", methods=["GET", "POST"])
 @login_required
 def import_export():
+    """Imports a CSV and shows the results on the Portfolio Manager page, where the
+    Import / Export section now lives."""
+    if request.method != "POST":
+        return redirect(url_for("views.portfolios", _anchor="import"))
     result = None
-    if request.method == "POST":
-        upload = request.files.get("file")
-        if not upload or not upload.filename:
-            flash("Choose a CSV file to import.", "error")
-        else:
-            rows, errors = csv_io.parse(csv_io.decode(upload.read()))
-            imported = duplicates = created = 0
-            if rows:
-                imported, duplicates, created = csv_io.import_rows(get_db(), g.user["id"], rows)
-            result = {"filename": upload.filename, "imported": imported, "duplicates": duplicates,
-                      "accounts_created": created, "errors": errors}
-            if imported:
-                flash(f"Imported {imported} transaction{'s' if imported != 1 else ''}.", "success")
-    return render_template("import.html", result=result, columns=csv_io.COLUMNS, accounts=user_accounts())
+    upload = request.files.get("file")
+    if not upload or not upload.filename:
+        flash("Choose a CSV file to import.", "error")
+    else:
+        rows, errors = csv_io.parse(csv_io.decode(upload.read()))
+        imported = duplicates = created = 0
+        if rows:
+            imported, duplicates, created = csv_io.import_rows(get_db(), g.user["id"], rows)
+        result = {"filename": upload.filename, "imported": imported, "duplicates": duplicates,
+                  "accounts_created": created, "errors": errors}
+        if imported:
+            flash(f"Imported {imported} transaction{'s' if imported != 1 else ''}.", "success")
+    return render_portfolio_manager(import_result=result)
 
 
 @bp.get("/export.csv")

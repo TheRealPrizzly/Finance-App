@@ -68,7 +68,7 @@ def test_account_filter_and_history(client):
 def test_pages_render(client):
     token = login(client)
     upload(client, token)
-    for path in ("/", "/portfolios?symbol=AAPL", "/portfolios", "/import", "/position/VFV.TO",
+    for path in ("/", "/portfolios?symbol=AAPL", "/portfolios", "/position/VFV.TO",
                  "/transactions/new", "/accounts/1/edit"):
         assert client.get(path).status_code == 200, path
     detail = client.get("/api/position/AAPL").get_json()
@@ -384,3 +384,25 @@ def test_transactions_preview_the_latest_ten(client, monkeypatch):
     assert table_rows(html) == 8 and "Page 2 of 3" in html
     assert "/portfolios?show=all&amp;page=1#transactions" in html and "/portfolios?show=all&amp;page=3#transactions" in html
     assert table_rows(client.get("/portfolios?show=all&page=3").get_data(as_text=True)) == 4
+
+
+def test_import_export_lives_on_the_portfolio_manager_page(client):
+    token = login(client)
+    html = client.get("/").get_data(as_text=True)  # empty dashboard points to the new section
+    assert 'href="/portfolios#import">Import a CSV</a>' in html
+    assert client.get("/import").headers["Location"] == "/portfolios#import"  # old address still works
+
+    html = upload(client, token).get_data(as_text=True)  # results show on the Portfolio Manager page
+    assert "Import results · activity.csv" in html and "<strong>20</strong> imported" in html
+    assert html.index('id="import"') < html.index('id="import-result"') < html.index('id="import-form"')
+    assert 'action="/import#import"' in html  # the page reloads at the section
+    assert 'action="/portfolios" class="card form">\n  <h2>Create a portfolio</h2>' in html  # not /import
+    nav = html[html.index('<nav class="nav"'):html.index("</nav>")]
+    assert ">Import / Export<" not in nav and 'aria-current="page">Portfolio Manager<' in nav
+
+    html = client.get("/portfolios").get_data(as_text=True)
+    assert html.index("Create a portfolio") < html.index('id="import"') < html.index('id="accounts"') < html.index('id="transactions"')
+    assert 'id="import-result"' not in html and 'id="export-form"' in html and "Transaction Date" in html
+
+    missing = client.post("/import", data={"csrf_token": token}).get_data(as_text=True)
+    assert "Choose a CSV file to import." in missing and 'id="import-result"' not in missing

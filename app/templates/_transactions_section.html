@@ -101,7 +101,7 @@
   <p class="muted">{% if txn_account_id or txn_symbol or txn_kind %}Nothing matches these filters.{% else %}Import a CSV or add your first transaction.{% endif %}</p>
   <div class="actions">
     <a class="btn btn-primary" href="{{ url_for('views.new_transaction') }}">Add transaction</a>
-    <a class="btn btn-secondary" href="{{ url_for('views.import_export') }}">Import CSV</a>
+    <a class="btn btn-secondary" href="{{ url_for('views.portfolios', _anchor='import') }}">Import CSV</a>
   </div>
 </section>
 {% endif %}

@@ -35,12 +35,14 @@
 </section>
 {% endif %}
 
-<form method="post" class="card form">
+<form method="post" action="{{ url_for('views.portfolios') }}" class="card form">
   <h2>Create a portfolio</h2>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   {% with portfolio=None %}{% include "_portfolio_fields.html" %}{% endwith %}
   <div class="form-actions"><button class="btn btn-primary" type="submit">Create portfolio</button></div>
 </form>
+
+{% include "_import_section.html" %}
 
 {% include "_accounts_section.html" %}
 
