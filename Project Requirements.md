@@ -3,7 +3,7 @@
 > Single source of truth for what this app must do. Update it as requirements are added or changed.
 > Mark unresolved items with `TBD`.
 
-**Last updated:** 2026-10-09
+**Last updated:** 2026-10-13
 
 ---
 
@@ -29,11 +29,13 @@
 | F10 | Cash balances | Cash per account and currency, converted to CAD | Must | Done |
 | F11 | Position breakdown | Per-symbol page: price chart with trades, cost basis per account, realized P/L, dividends, total return | Must | Done |
 | F12 | Import / export | CSV in the format in section 3; duplicate rows are skipped on re-import | Must | Done |
+| F13 | Macros tab | Pre-market: S&P 500 and Nasdaq 100 futures, sector moves (Select Sector SPDR ETFs). Market sentiment: CNN Fear & Greed Index. Bonds & rates: US Treasury yield curve | Must | Done |
 
 ## 3. Data & Integrations
 
 - **Asset types supported:** Stocks, ETFs, crypto and anything else Yahoo Finance quotes; cash in any currency
 - **Market data source / API:** Yahoo Finance (unofficial endpoints, no API key). Unofficial: may change or rate-limit without notice
+- **Macros sources:** CNN's Fear & Greed JSON feed (unofficial, behind cnn.com/markets/fear-and-greed) and the US Treasury's daily par yield curve CSV; if the Treasury can't be reached, the yield curve falls back to the four Treasury yields Yahoo quotes
 - **Base currency & multi-currency support:** Base currency is CAD (Canadian dollars) and should allow for multi-currency support
 - **Data import/export formats:** Transaction Date, Action,	Symbol, Quantity, Price, Costs, Net Amount, Currency, Account #, Activity Type, Account Type
 

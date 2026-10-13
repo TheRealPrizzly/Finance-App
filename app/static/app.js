@@ -800,6 +800,258 @@
       </tr>`).join("")}</tbody>`;
   }
 
-  const pages = { dashboard, performance, position, "txn-form": txnForm };
+  // ---- Macros tab ------------------------------------------------------------------
+  // Pre-market futures and sectors (refreshed every minute), CNN's Fear & Greed Index and
+  // the Treasury yield curve. Each section loads on its own, so one slow source can't hold up the rest.
+  function macros() {
+    const urls = root.dataset;
+    chartDefaults();
+    const num = (v, digits = 2) => (v == null ? "—"
+      : v.toLocaleString("en-CA", { minimumFractionDigits: digits, maximumFractionDigits: digits }));
+    const signed = (v, text) => (v < 0 ? "−" : v > 0 ? "+" : "") + text;
+    const etTime = (unix) => (unix ? `${new Date(unix * 1000).toLocaleTimeString("en-CA",
+      { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" })} ET` : "");
+    const longDate = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-CA",
+      { month: "short", day: "numeric", year: "numeric" });
+
+    // Pre-market ------------------------------------------------------------------
+    const SESSIONS = {
+      pre: "Pre-market", regular: "Market open · today's change",
+      post: "After hours", closed: "Market closed · last session",
+    };
+
+    // Today's prices as a line, with the previous close dashed for reference.
+    function sparkline(points, base) {
+      if (points.length < 2) return "";
+      const W = 160, H = 48;
+      const values = points.map((p) => p[1]).concat(base ?? []);
+      const lo = Math.min(...values), span = Math.max(...values) - lo || 1;
+      const t0 = points[0][0], t1 = points[points.length - 1][0];
+      const x = (t) => (((t - t0) / (t1 - t0 || 1)) * W).toFixed(1);
+      const y = (v) => (H - 2 - ((v - lo) / span) * (H - 4)).toFixed(1);
+      const path = points.map((p, i) => `${i ? "L" : "M"}${x(p[0])},${y(p[1])}`).join("");
+      const ref = base == null ? "" : `<line class="spark-base" x1="0" x2="${W}" y1="${y(base)}" y2="${y(base)}"/>`;
+      const last = points[points.length - 1][1];
+      return `<svg class="spark ${base == null ? "" : tone(last - base)}" viewBox="0 0 ${W} ${H}"
+        preserveAspectRatio="none" aria-hidden="true">${ref}<path d="${path}"/></svg>`;
+    }
+
+    function renderFutures(futures) {
+      $("futures").innerHTML = futures.length
+        ? futures.map((f) => `<div class="kpi future">
+            <div class="future-text">
+              <div class="kpi-label">${esc(f.label)}</div>
+              <div class="kpi-value">${num(f.price)}</div>
+              <div class="kpi-sub"><span class="${tone(f.change)}">${f.change == null ? "—" : signed(f.change, num(Math.abs(f.change)))}
+                (${pct(f.change_pct)})</span></div>
+              <div class="kpi-sub">${esc(f.name)}${f.time ? ` · ${etTime(f.time)}` : ""}</div>
+            </div>
+            ${sparkline(f.points, f.prev_close)}
+          </div>`).join("")
+        : '<p class="muted">Futures quotes are unavailable right now.</p>';
+    }
+
+    function renderSectors(data) {
+      const rows = [...data.sectors].sort((a, b) => (b.change_pct ?? -Infinity) - (a.change_pct ?? -Infinity));
+      const widest = Math.max(0.005, ...rows.map((r) => Math.abs(r.change_pct ?? 0)));
+      $("sector-session").textContent = data.session
+        ? `${SESSIONS[data.session]}${data.session_time ? ` · ${etTime(data.session_time)}` : ""}` : "";
+      $("sectors").innerHTML = rows.length
+        ? rows.map((r) => {
+          const width = ((Math.abs(r.change_pct ?? 0) / widest) * 50).toFixed(1);
+          const side = (r.change_pct ?? 0) < 0 ? "right" : "left";
+          return `<div class="sbar" role="listitem" aria-label="${esc(`${r.sector} (${r.symbol}): ${pct(r.change_pct)}`)}">
+            <span class="sbar-name">${esc(r.sector)} <span class="muted">${esc(r.symbol)}</span></span>
+            <span class="sbar-track"><span class="sbar-fill ${tone(r.change_pct)}" style="${side}:50%;width:${width}%"></span></span>
+            <span class="sbar-val ${tone(r.change_pct)}">${pct(r.change_pct)}</span>
+          </div>`;
+        }).join("")
+        : '<p class="muted">Sector quotes are unavailable right now.</p>';
+    }
+
+    async function loadPremarket() {
+      try {
+        const data = await getJSON(urls.premarketUrl);
+        renderFutures(data.futures);
+        renderSectors(data);
+        const updated = new Date().toLocaleTimeString("en-CA", { hour: "numeric", minute: "2-digit" });
+        $("as-of").textContent = `Futures and sector prices from Yahoo Finance · updated ${updated}`;
+      } catch (err) {
+        $("as-of").textContent = `Couldn't load prices: ${err.message}`;
+        if ($("futures").querySelector(".skeleton")) {
+          $("futures").innerHTML = '<p class="muted">Futures quotes are unavailable right now.</p>';
+          $("sectors").innerHTML = '<p class="muted">Sector quotes are unavailable right now.</p>';
+        }
+      }
+    }
+
+    // Fear & Greed ----------------------------------------------------------------
+    const FG_RATINGS = ["extreme fear", "fear", "neutral", "greed", "extreme greed"];
+    const FG_BANDS = [[0, 25], [25, 45], [45, 55], [55, 75], [75, 100]];
+    // CNN's bands, applied to the unrounded score as CNN does (44.9 shows as 45 but is "fear").
+    const fgRating = (s) => FG_RATINGS[s < 25 ? 0 : s < 45 ? 1 : s <= 55 ? 2 : s <= 75 ? 3 : 4];
+    const fgClass = (rating) => `fg-${Math.max(FG_RATINGS.indexOf(rating), 0)}`;
+    const fgChip = (rating) => `<span class="fg-chip ${fgClass(rating)}">${esc(rating || "—")}</span>`;
+
+    // Half-circle gauge: 0 on the left, 100 on the right, one coloured arc per band.
+    function gauge(score) {
+      const cx = 110, cy = 112, r = 90;
+      const at = (s, radius = r) => {
+        const a = Math.PI * (1 - s / 100);
+        return [(cx + radius * Math.cos(a)).toFixed(2), (cy - radius * Math.sin(a)).toFixed(2)];
+      };
+      const arcs = FG_BANDS.map(([a, b], i) => {
+        const [x1, y1] = at(a + (a ? 0.8 : 0)), [x2, y2] = at(b - (b < 100 ? 0.8 : 0));
+        return `<path class="fg-arc fg-${i}" d="M${x1},${y1} A${r},${r} 0 0 1 ${x2},${y2}"/>`;
+      }).join("");
+      const [nx, ny] = at(score, r - 24);
+      return `<svg class="gauge" viewBox="0 0 220 124" role="img" aria-label="Fear and Greed Index: ${Math.round(score)}">
+        ${arcs}<line class="needle" x1="${cx}" y1="${cy}" x2="${nx}" y2="${ny}"/><circle class="needle-hub" cx="${cx}" cy="${cy}" r="6"/>
+      </svg>`;
+    }
+
+    function renderFearGreed(fg) {
+      const updated = fg.updated ? new Date(fg.updated).toLocaleString("en-CA",
+        { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+      $("fear-greed").innerHTML = `<div class="fg">
+        <div class="fg-now">
+          ${gauge(fg.score)}
+          <div class="fg-score">${Math.round(fg.score)}</div>
+          <div class="fg-rating ${fgClass(fg.rating)}">${esc(fg.rating)}</div>
+        </div>
+        <ul class="fg-compare">${fg.compare.map((c) => `<li>
+          <span class="muted">${esc(c.label)}</span>${fgChip(c.rating)}<strong>${Math.round(c.score)}</strong></li>`).join("")}
+        </ul>
+      </div>`;
+
+      if (fg.history.length > 1) {
+        $("fg-history-box").hidden = false;
+        const labels = fg.history.map((p) => p[0]);
+        new Chart($("fg-history"), {
+          type: "line",
+          data: { labels, datasets: [{ data: fg.history.map((p) => p[1]), borderColor: cssVar("--chart-1"), borderWidth: 2, pointRadius: 0, tension: 0.2 }] },
+          options: {
+            maintainAspectRatio: false,
+            animation: false,
+            interaction: { mode: "index", intersect: false },
+            scales: { x: { grid: { display: false }, ticks: dateTicks(labels) }, y: { min: 0, max: 100, ticks: { stepSize: 25 } } },
+            plugins: {
+              legend: { display: false },
+              tooltip: { callbacks: {
+                title: (items) => longDate(labels[items[0].dataIndex]),
+                label: (c) => ` ${Math.round(c.parsed.y)} · ${fgRating(c.parsed.y)}`,
+              } },
+            },
+          },
+        });
+      }
+
+      $("fg-indicators").innerHTML = fg.indicators.length ? `
+        <thead><tr><th>Indicator</th><th>Rating</th><th class="num">Score</th></tr></thead>
+        <tbody>${fg.indicators.map((i) => `<tr>
+          <td>${esc(i.name)}<span class="sym-name">${esc(i.detail)}</span></td>
+          <td>${fgChip(i.rating)}</td><td class="num">${Math.round(i.score)}</td></tr>`).join("")}</tbody>` : "";
+      $("fg-note").textContent = `From CNN Business${updated ? ` (updated ${updated})` : ""}. 0 is extreme fear and 100 is extreme greed; the index averages the seven indicators above.`;
+    }
+
+    async function loadSentiment() {
+      try {
+        renderFearGreed(await getJSON(urls.sentimentUrl));
+      } catch (err) {
+        $("fear-greed").innerHTML = `<p class="muted">${esc(err.message)} Open it on CNN with the button above.</p>`;
+      }
+    }
+
+    // Treasury yields -------------------------------------------------------------
+    const CURVES = {
+      latest: { label: "Latest", color: "--chart-1", width: 2.5 },
+      "1m": { label: "1 month ago", color: "--chart-2", width: 1.5 },
+      "1y": { label: "1 year ago", color: "--chart-3", width: 1.5, dash: [5, 4] },
+      prev: { label: "Previous close", color: "--chart-3", width: 1.5, dash: [5, 4] },
+    };
+    const COMPARE = { "1w": "1 wk", "1m": "1 mo", "1y": "1 yr", prev: "Prev. close" };
+    const yieldText = (v) => (v == null ? "—" : `${v.toFixed(2)}%`);
+    const bps = (a, b) => (a == null || b == null ? null : Math.round((a - b) * 100));
+    const bpsText = (v) => (v == null ? "—" : signed(v, `${Math.abs(v)} bps`));
+
+    function renderRates(data) {
+      const { tenors, curves } = data;
+      const latest = curves.find((c) => c.key === "latest");
+      const at = (curve, tenor) => (curve && tenors.includes(tenor) ? curve.yields[tenors.indexOf(tenor)] : null);
+      const comparisons = curves.filter((c) => c.key in COMPARE);
+      const ref = curves.find((c) => c.key === "1m") || curves.find((c) => c.key === "prev");
+      const refText = ref ? (ref.key === "prev" ? "vs previous close" : "vs 1 month ago") : "";
+
+      const tiles = [];
+      for (const [tenor, label] of [["2Y", "2-year"], ["10Y", "10-year"], ["30Y", "30-year"]]) {
+        if (at(latest, tenor) == null) continue;
+        const change = bps(at(latest, tenor), at(ref, tenor));
+        tiles.push(kpi(`${label} yield`, yieldText(at(latest, tenor)), ref ? `${bpsText(change)} ${refText}` : ""));
+      }
+      for (const [long, short] of [["10Y", "2Y"], ["10Y", "3M"]]) {
+        const spread = bps(at(latest, long), at(latest, short));
+        if (spread == null) continue;
+        const before = bps(at(ref, long), at(ref, short));
+        const sub = `${spread < 0 ? '<span class="loss">Inverted</span>' : "Normal"}${before == null ? "" : ` · ${bpsText(spread - before)} ${refText}`}`;
+        tiles.push(kpi(`${long} − ${short} spread`, bpsText(spread), sub));
+      }
+      $("rate-kpis").innerHTML = tiles.join("");
+
+      $("yield-status").hidden = true;
+      new Chart($("yield-chart"), {
+        type: "line",
+        data: {
+          labels: tenors,
+          datasets: curves.filter((c) => CURVES[c.key]).map((c) => {
+            const style = CURVES[c.key];
+            const color = cssVar(style.color);
+            return {
+              label: c.key === "latest" && c.date ? `${style.label} (${longDate(c.date)})` : style.label,
+              data: c.yields, borderColor: color, backgroundColor: color, borderWidth: style.width,
+              borderDash: style.dash || [], pointRadius: c.key === "latest" ? 3 : 0, spanGaps: true, tension: 0.25,
+            };
+          }),
+        },
+        options: {
+          maintainAspectRatio: false,
+          animation: false,
+          interaction: { mode: "index", intersect: false },
+          scales: { x: { grid: { display: false }, title: { display: true, text: "Maturity" } },
+            y: { ticks: { callback: (v) => `${v.toFixed(2)}%` }, grace: "5%" } },
+          plugins: {
+            legend: { position: "bottom", labels: { boxWidth: 12 } },
+            tooltip: { callbacks: { label: (c) => ` ${c.dataset.label}: ${yieldText(c.parsed.y)}` } },
+          },
+        },
+      });
+
+      $("yield-table").innerHTML = `
+        <thead><tr><th>Maturity</th><th class="num">Yield</th>${comparisons.map((c) =>
+          `<th class="num" title="${c.date ? esc(longDate(c.date)) : ""}">vs ${esc(COMPARE[c.key])}</th>`).join("")}</tr></thead>
+        <tbody>${tenors.map((t) => `<tr><td>${esc(t)}</td><td class="num">${yieldText(at(latest, t))}</td>${comparisons.map((c) =>
+          `<td class="num">${bpsText(bps(at(latest, t), at(c, t)))}</td>`).join("")}</tr>`).join("")}</tbody>`;
+
+      $("yield-note").innerHTML = data.source === "treasury"
+        ? `Daily par yield curve from the <a href="${esc(data.source_url)}" target="_blank" rel="noopener">U.S. Treasury</a>${latest.date ? `, as of ${esc(longDate(latest.date))}` : ""}. Published each business day after the close.`
+        : `The U.S. Treasury site couldn't be reached, so this shows the four Treasury yields Yahoo Finance quotes (the 3-month is the 13-week bill).`;
+    }
+
+    async function loadRates() {
+      try {
+        renderRates(await getJSON(urls.ratesUrl));
+      } catch (err) {
+        $("yield-status").textContent = `Couldn't load yields: ${err.message}`;
+        $("rate-kpis").innerHTML = "";
+      }
+    }
+
+    loadPremarket();
+    loadSentiment();
+    loadRates();
+    setInterval(() => { if (!document.hidden) loadPremarket(); }, REFRESH_MS);
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) loadPremarket(); });
+  }
+
+  const pages = { dashboard, performance, position, "txn-form": txnForm, macros };
   pages[document.body.dataset.page]?.();
 })();

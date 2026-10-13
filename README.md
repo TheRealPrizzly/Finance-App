@@ -10,6 +10,7 @@ A multi-user web app for tracking investments across brokerage accounts in Canad
 - Cash balances per account
 - A breakdown for each position
 - CSV import and export
+- A Macros tab: S&P 500 and Nasdaq futures, pre-market moves by sector, CNN's Fear & Greed Index and the US Treasury yield curve
 
 Requirements are tracked in [Project Requirements.md](Project%20Requirements.md).
 

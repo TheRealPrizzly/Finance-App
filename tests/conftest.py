@@ -35,6 +35,9 @@ class FakeMarket:
     def history(self, symbol, start, as_traded=False):
         return self._history.get(symbol, (None, {}))
 
+    def intraday(self, symbol):
+        return None, []
+
     def fx_rate(self, currency):
         return self._fx.get(currency, (None, {}))[0]
 

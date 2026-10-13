@@ -23,6 +23,7 @@ USER_AGENT = (
 )
 QUOTE_TTL = 60  # seconds
 HISTORY_TTL = 60 * 60
+INTRADAY_TTL = 2 * 60
 RESOLVE_RETRY = timedelta(days=1)  # retry symbols Yahoo didn't recognise after this long
 SECTOR_TTL = timedelta(days=7)
 
@@ -158,6 +159,22 @@ class YahooClient:
         ]
         return currency, out, splits
 
+    def intraday(self, symbol, interval="5m"):
+        """Today's prices at ``interval``. Returns (previous close, [(unix seconds, close)])."""
+        data = self._get_json(
+            f"{self.BASE1}/v8/finance/chart/{urlquote(symbol, safe='')}", {"range": "1d", "interval": interval}
+        )
+        results = ((data or {}).get("chart") or {}).get("result") or []
+        if not results:
+            return None, []
+        res = results[0]
+        meta = res.get("meta") or {}
+        _, divisor = _major_unit(meta.get("currency"))
+        prev = meta.get("chartPreviousClose") or meta.get("previousClose")
+        closes = (((res.get("indicators") or {}).get("quote") or [{}])[0]).get("close") or []
+        points = [(ts, close / divisor) for ts, close in zip(res.get("timestamp") or [], closes) if close is not None]
+        return (prev / divisor if prev else None), points
+
     def summary(self, symbol, modules):
         data = self._get_json(
             f"{self.BASE2}/v10/finance/quoteSummary/{urlquote(symbol, safe='')}",
@@ -178,6 +195,7 @@ class MarketData:
         self.base = base_currency
         self._quotes = {}  # yahoo symbol -> (fetched_at, quote)
         self._history = {}  # yahoo symbol -> (fetched_at, start, currency, closes, splits)
+        self._intraday = {}  # yahoo symbol -> (fetched_at, prev_close, points)
         self._lock = threading.Lock()
 
     # -- symbols ---------------------------------------------------------------
@@ -223,14 +241,23 @@ class MarketData:
 
     def _remember_quote(self, q):
         currency, divisor = _major_unit(q.get("currency"))
-        price = q.get("regularMarketPrice")
-        prev = q.get("regularMarketPreviousClose")
+
+        def price(key):
+            value = q.get(key)
+            return None if value is None else value / divisor
+
         data = {
             "symbol": q["symbol"].upper(),
-            "price": None if price is None else price / divisor,
-            "prev_close": None if prev is None else prev / divisor,
+            "price": price("regularMarketPrice"),
+            "prev_close": price("regularMarketPreviousClose"),
+            "time": q.get("regularMarketTime"),
+            "pre_price": price("preMarketPrice"),  # before the open (4:00–9:30 ET for US stocks)
+            "pre_time": q.get("preMarketTime"),
+            "post_price": price("postMarketPrice"),  # after the close
+            "post_time": q.get("postMarketTime"),
             "currency": currency,
             "name": q.get("longName") or q.get("shortName") or q["symbol"],
+            "short_name": q.get("shortName"),
             "quote_type": q.get("quoteType"),
             "market_state": q.get("marketState"),
             "earnings": next_earnings(q),
@@ -284,6 +311,20 @@ class MarketData:
                     self._history[yahoo_symbol] = cached
         _, _, currency, closes, splits = cached
         return currency, unadjust_splits(closes, splits) if as_traded else closes
+
+    def intraday(self, yahoo_symbol):
+        """Today's 5-minute prices. Returns (previous close, [(unix seconds, close)])."""
+        cached = self._intraday.get(yahoo_symbol)
+        if cached and time.time() - cached[0] < INTRADAY_TTL:
+            return cached[1], cached[2]
+        try:
+            prev, points = self.client.intraday(yahoo_symbol)
+        except requests.RequestException as exc:
+            log.warning("Intraday request for %s failed: %s", yahoo_symbol, exc)
+            return (cached[1], cached[2]) if cached else (None, [])
+        with self._lock:
+            self._intraday[yahoo_symbol] = (time.time(), prev, points)
+        return prev, points
 
     # -- FX --------------------------------------------------------------------
 

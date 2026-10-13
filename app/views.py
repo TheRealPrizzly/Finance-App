@@ -14,6 +14,7 @@ from . import csv_io
 from . import portfolio as pf
 from .auth import login_required
 from .db import get_db
+from .macro import FEAR_GREED_PAGE, Unavailable, get_macro
 from .market import get_market
 
 bp = Blueprint("views", __name__)
@@ -181,6 +182,37 @@ def performance():
         has_transactions=has_transactions(),
         benchmark=current_app.config["BENCHMARK_SYMBOL"],
     )
+
+
+@bp.get("/macros")
+@login_required
+def macros():
+    return render_template("macros.html", fear_greed_url=FEAR_GREED_PAGE)
+
+
+def macro_json(fetch):
+    try:
+        return jsonify(fetch())
+    except Unavailable as exc:
+        return jsonify(error=str(exc)), 502
+
+
+@bp.get("/api/macros/premarket")
+@login_required
+def api_premarket():
+    return macro_json(get_macro().premarket)
+
+
+@bp.get("/api/macros/sentiment")
+@login_required
+def api_sentiment():
+    return macro_json(get_macro().sentiment)
+
+
+@bp.get("/api/macros/rates")
+@login_required
+def api_rates():
+    return macro_json(get_macro().rates)
 
 
 @bp.get("/position/<symbol>")

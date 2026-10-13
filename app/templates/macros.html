@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Macros · Portfolio Manager{% endblock %}
+{% block page %}macros{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Macros</h1>
+    <p class="muted" id="as-of">Loading market data…</p>
+  </div>
+</div>
+
+<div id="app"
+     data-premarket-url="{{ url_for('views.api_premarket') }}"
+     data-sentiment-url="{{ url_for('views.api_sentiment') }}"
+     data-rates-url="{{ url_for('views.api_rates') }}">
+
+  <h2 class="group-title">Pre-market</h2>
+  <section class="kpis futures" id="futures" aria-live="polite">
+    {% for _ in range(2) %}<div class="kpi skeleton"></div>{% endfor %}
+  </section>
+  <section class="card">
+    <div class="card-head">
+      <h3>Sectors</h3>
+      <span class="tag" id="sector-session"></span>
+    </div>
+    <div class="sector-bars" id="sectors" role="list" aria-label="Sector moves"><p class="muted">Loading…</p></div>
+    <p class="hint">Each S&amp;P 500 sector is shown by its Select Sector SPDR ETF. Before the open (4:00–9:30 AM ET)
+      the move is the pre-market price against the last close; during the session, today's change; after the
+      close, the after-hours move. Futures trade almost around the clock, so before the open they show where
+      the market is expected to start. Their change is measured from the previous settlement.</p>
+  </section>
+
+  <h2 class="group-title">Market sentiment</h2>
+  <section class="card">
+    <div class="card-head">
+      <h3>Fear &amp; Greed Index</h3>
+      <a class="btn btn-secondary btn-sm" href="{{ fear_greed_url }}" target="_blank" rel="noopener">View on CNN ↗</a>
+    </div>
+    <div id="fear-greed"><p class="muted">Loading…</p></div>
+    <div class="chart-box chart-sm" id="fg-history-box" hidden>
+      <canvas id="fg-history" aria-label="Fear and Greed Index over the past year" role="img"></canvas>
+    </div>
+    <div class="table-wrap"><table class="table compact" id="fg-indicators"></table></div>
+    <p class="hint" id="fg-note"></p>
+  </section>
+
+  <h2 class="group-title">Bonds &amp; rates</h2>
+  <section class="kpis" id="rate-kpis" aria-live="polite">
+    {% for _ in range(5) %}<div class="kpi skeleton"></div>{% endfor %}
+  </section>
+  <section class="card">
+    <div class="card-head"><h3>US Treasury yield curve</h3></div>
+    <div class="chart-box">
+      <canvas id="yield-chart" aria-label="US Treasury yield curve" role="img"></canvas>
+      <div class="chart-status" id="yield-status">Loading…</div>
+    </div>
+    <p class="hint" id="yield-note"></p>
+    <div class="table-wrap"><table class="table compact" id="yield-table"></table></div>
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% endblock %}
