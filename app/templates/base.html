@@ -8,7 +8,7 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232457d6'/%3E%3Cpath d='M7 22l6-7 5 4 7-9' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body data-page="{% block page %}{% endblock %}">
+<body data-page="{% block page %}{% endblock %}"{% if sections %} class="has-sidenav"{% endif %}>
 {% if g.user %}
   <header class="topbar">
     <div class="topbar-inner">
@@ -43,14 +43,32 @@
     </div>
   </header>
 {% endif %}
-<main class="container">
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% for category, message in messages %}
-      <div class="alert alert-{{ category }}" role="{{ 'alert' if category == 'error' else 'status' }}">{{ message }}</div>
-    {% endfor %}
-  {% endwith %}
-  {% block content %}{% endblock %}
-</main>
+{# Pages list their sections as `sections`: (anchor id, label) or (anchor id, label, [children]).
+   They're shown as a sidebar for jumping around the page; sidenav.js highlights the current one. #}
+<div class="container{% if sections %} layout{% endif %}">
+  {% if sections %}
+  <nav class="sidenav" aria-label="On this page">
+    <ul>
+      {% for section in sections %}
+      <li><a href="#{{ section[0] }}">{{ section[1] }}</a>
+        {% if section|length > 2 %}
+        <ul>{% for child in section[2] %}<li><a href="#{{ child[0] }}">{{ child[1] }}</a></li>{% endfor %}</ul>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </nav>
+  {% endif %}
+  <main class="main">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }}" role="{{ 'alert' if category == 'error' else 'status' }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
+{% if sections %}<script src="{{ url_for('static', filename='sidenav.js') }}" defer></script>{% endif %}
 {% block scripts %}{% endblock %}
 </body>
 </html>

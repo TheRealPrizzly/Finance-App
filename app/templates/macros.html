@@ -1,6 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Macros · Portfolio Manager{% endblock %}
 {% block page %}macros{% endblock %}
+{% set sections = [
+  ("premarket", "Pre-market", [("futures", "Index futures"), ("sector-moves", "Sectors")]),
+  ("sentiment", "Market sentiment", [("fear-greed-index", "Fear & Greed Index")]),
+  ("rates", "Bonds & rates", [("rate-kpis", "Key rates"), ("yield-curve", "Yield curve")]),
+] %}
 {% block content %}
 <div class="page-head">
   <div>
@@ -16,11 +21,11 @@
      data-fear-greed-meta='{{ fear_greed_meta|tojson }}'
      data-rates-url="{{ url_for('views.api_rates') }}">
 
-  <h2 class="group-title">Pre-market</h2>
+  <h2 class="group-title" id="premarket">Pre-market</h2>
   <section class="kpis futures" id="futures" aria-live="polite">
     {% for _ in range(2) %}<div class="kpi skeleton"></div>{% endfor %}
   </section>
-  <section class="card">
+  <section class="card" id="sector-moves">
     <div class="card-head">
       <h3>Sectors</h3>
       <span class="tag" id="sector-session"></span>
@@ -32,8 +37,8 @@
       the market is expected to start. Their change is measured from the previous settlement.</p>
   </section>
 
-  <h2 class="group-title">Market sentiment</h2>
-  <section class="card">
+  <h2 class="group-title" id="sentiment">Market sentiment</h2>
+  <section class="card" id="fear-greed-index">
     <div class="card-head">
       <h3>Fear &amp; Greed Index</h3>
       <a class="btn btn-secondary btn-sm" href="{{ fear_greed_url }}" target="_blank" rel="noopener">View on CNN ↗</a>
@@ -46,11 +51,11 @@
     <p class="hint" id="fg-note"></p>
   </section>
 
-  <h2 class="group-title">Bonds &amp; rates</h2>
+  <h2 class="group-title" id="rates">Bonds &amp; rates</h2>
   <section class="kpis" id="rate-kpis" aria-live="polite">
     {% for _ in range(5) %}<div class="kpi skeleton"></div>{% endfor %}
   </section>
-  <section class="card">
+  <section class="card" id="yield-curve">
     <div class="card-head"><h3>US Treasury yield curve</h3></div>
     <div class="chart-box">
       <canvas id="yield-chart" aria-label="US Treasury yield curve" role="img"></canvas>

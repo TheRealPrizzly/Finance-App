@@ -1,7 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Portfolios · Portfolio Manager{% endblock %}
+{% set sections = [
+  ("portfolios", "Portfolios", [("create-portfolio", "Create a portfolio")]),
+  ("import", "Import / Export"),
+  ("accounts", "Accounts", [("add-account", "Add an account")]),
+  ("transactions", "Transactions"),
+] %}
 {% block content %}
-<div class="page-head">
+<div class="page-head" id="portfolios">
   <div>
     <h1>Portfolios</h1>
     <p class="muted">Group accounts into portfolios. An account can belong to more than one portfolio.</p>
@@ -35,7 +41,7 @@
 </section>
 {% endif %}
 
-<form method="post" action="{{ url_for('views.portfolios') }}" class="card form">
+<form method="post" action="{{ url_for('views.portfolios') }}" class="card form" id="create-portfolio">
   <h2>Create a portfolio</h2>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   {% with portfolio=None %}{% include "_portfolio_fields.html" %}{% endwith %}

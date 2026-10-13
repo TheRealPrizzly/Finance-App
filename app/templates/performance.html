@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Performance · Portfolio Manager{% endblock %}
 {% block page %}performance{% endblock %}
+{% set sections = [("performance", "Performance"), ("annual", "Performance by year")] if has_transactions else [] %}
 {% block content %}
 <div class="page-head">
   <div>

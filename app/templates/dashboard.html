@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Dashboard · Portfolio Manager{% endblock %}
 {% block page %}dashboard{% endblock %}
+{% set sections = [("kpis", "Overview"), ("performance", "Performance"), ("allocation", "Allocation"),
+                   ("cash-balances", "Cash balances"), ("holdings-section", "Holdings"),
+                   ("earnings-section", "Upcoming earnings")] if has_transactions else [] %}
 {% block content %}
 <div class="page-head">
   <div>
@@ -34,7 +37,7 @@
 
   {% include "_performance_section.html" %}
 
-  <div class="grid-2">
+  <div class="grid-2" id="allocation">
     <section class="card">
       <div class="card-head">
         <h2>Allocation by sector</h2>
@@ -73,12 +76,12 @@
     </section>
   </div>
 
-  <section class="card">
+  <section class="card" id="cash-balances">
     <h2>Cash balances</h2>
     <div class="table-wrap" id="cash"></div>
   </section>
 
-  <section class="card">
+  <section class="card" id="holdings-section">
     <div class="card-head">
       <h2>Holdings</h2>
       <a class="btn btn-secondary btn-sm" href="{{ url_for('views.new_transaction', account=account_id or None) }}">Add transaction</a>
@@ -87,7 +90,7 @@
     <div class="table-more" id="holdings-more"></div>
   </section>
 
-  <section class="card">
+  <section class="card" id="earnings-section">
     <h2>Upcoming earnings</h2>
     <div class="table-wrap" id="earnings"></div>
     <div class="table-more" id="earnings-more"></div>

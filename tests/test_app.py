@@ -1,4 +1,5 @@
 import io
+import re
 
 from conftest import SAMPLE_CSV, csrf, login, login_as
 
@@ -396,7 +397,7 @@ def test_import_export_lives_on_the_portfolio_manager_page(client):
     assert "Import results · activity.csv" in html and "<strong>20</strong> imported" in html
     assert html.index('id="import"') < html.index('id="import-result"') < html.index('id="import-form"')
     assert 'action="/import#import"' in html  # the page reloads at the section
-    assert 'action="/portfolios" class="card form">\n  <h2>Create a portfolio</h2>' in html  # not /import
+    assert 'action="/portfolios" class="card form" id="create-portfolio">\n  <h2>Create a portfolio</h2>' in html  # not /import
     nav = html[html.index('<nav class="nav"'):html.index("</nav>")]
     assert ">Import / Export<" not in nav and 'aria-current="page">Portfolio Manager<' in nav
 
@@ -406,3 +407,28 @@ def test_import_export_lives_on_the_portfolio_manager_page(client):
 
     missing = client.post("/import", data={"csrf_token": token}).get_data(as_text=True)
     assert "Choose a CSV file to import." in missing and 'id="import-result"' not in missing
+
+
+def test_section_sidebar(app, client):
+    token = login(client)
+    # Before any activity the Dashboard and Performance tabs only show an empty state.
+    for path in ("/", "/performance"):
+        assert 'class="sidenav"' not in client.get(path).get_data(as_text=True), path
+    upload(client, token)
+    expected = {
+        "/": ["kpis", "performance", "allocation", "cash-balances", "holdings-section", "earnings-section"],
+        "/performance": ["performance", "annual"],
+        "/macros": ["premarket", "futures", "sector-moves", "sentiment", "fear-greed-index", "rates", "rate-kpis",
+                    "yield-curve"],
+        "/portfolios": ["portfolios", "create-portfolio", "import", "accounts", "add-account", "transactions"],
+    }
+    for path, anchors in expected.items():
+        html = client.get(path).get_data(as_text=True)
+        nav = re.search(r'<nav class="sidenav".*?</nav>', html, re.S).group(0)
+        assert re.findall(r'href="#([^"]+)"', nav) == anchors, path
+        for anchor in anchors:  # every link lands on something
+            assert f'id="{anchor}"' in html, (path, anchor)
+        assert 'class="has-sidenav"' in html and "sidenav.js" in html
+    for path in ("/position/VFV.TO", "/transactions/new"):
+        html = client.get(path).get_data(as_text=True)
+        assert 'class="sidenav"' not in html and "sidenav.js" not in html, path

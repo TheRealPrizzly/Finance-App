@@ -263,7 +263,7 @@ def test_macros_tab(macro_app, client):
     assert client.get("/macros").status_code == 302  # sign-in required
     login(client)
     html = client.get("/macros").get_data(as_text=True)
-    assert '<body data-page="macros">' in html
+    assert '<body data-page="macros" class="has-sidenav">' in html
     assert 'href="/macros" aria-current="page"' in html
     for heading in ("Pre-market", "Market sentiment", "Fear &amp; Greed Index", "Bonds &amp; rates", "US Treasury yield curve"):
         assert heading in html
