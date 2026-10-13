@@ -289,10 +289,10 @@
       holdings = p.holdings;
       renderHoldings();
       renderEarnings(p.holdings);
-      renderAllocation("sector", p.sectors.map((s) => ({ label: s.sector, value: s.value })));
-      renderAllocation("equity", [
-        ...p.holdings.map((h) => ({ label: h.symbol, value: h.market_value })),
-        { label: "Cash", value: p.holdings_only ? 0 : t.cash },
+      renderAlloc("sector", p.sectors.map((s) => ({ label: s.sector, value: s.value, change: s.day_change_pct })));
+      renderAlloc("equity", [
+        ...p.holdings.map((h) => ({ label: h.symbol, value: h.market_value, change: h.day_change_pct })),
+        { label: "Cash", value: p.holdings_only ? 0 : t.cash, change: null },
       ]);
       renderCash(p.cash, p.holdings_only);
     }
@@ -410,6 +410,105 @@
 
     // Doughnut + legend for "<name>-chart" / "<name>-legend". Items are {label, value}; slices
     // that aren't positive (e.g. an overdrawn cash balance) are left out, largest first.
+    // Allocation cards (sector, equity): doughnut or heat map, picked in each card's dropdown and
+    // remembered per card in this browser. Only the visible view is drawn, so the doughnut never
+    // sizes itself while hidden. Items are {label, value, change} with change = today's change.
+    const ALLOC_VIEWS = ["doughnut", "heatmap"];
+    const allocView = {}, allocItems = {};
+    for (const name of ["sector", "equity"]) {
+      let stored = null;
+      try { stored = localStorage.getItem(`${name}View`); } catch { /* storage blocked */ }
+      allocView[name] = ALLOC_VIEWS.includes(stored) ? stored : "doughnut";
+      $(`${name}-view`).value = allocView[name];
+      $(`${name}-view`).addEventListener("change", (e) => {
+        allocView[name] = e.target.value;
+        try { localStorage.setItem(`${name}View`, allocView[name]); } catch { /* storage blocked */ }
+        if (allocItems[name]) renderAlloc(name, allocItems[name]);
+      });
+    }
+
+    function renderAlloc(name, items) {
+      allocItems[name] = items;
+      const heat = allocView[name] === "heatmap";
+      $(`${name}-doughnut`).hidden = heat;
+      $(`${name}-heatmap`).hidden = !heat;
+      const hint = $(`${name}-hint`);
+      hint.textContent = heat ? hint.dataset.heatmapHint : hint.dataset.doughnutHint;
+      if (heat) renderHeatmap(name, items);
+      else renderAllocation(name, items.map(({ label, value }) => ({ label, value })));
+    }
+
+    // Squarified treemap: rectangles whose areas match the values, kept close to square.
+    // Returns items with x, y, w, h in the same units as width / height.
+    function treemap(items, width, height) {
+      const total = items.reduce((sum, i) => sum + i.value, 0);
+      const nodes = items.map((i) => ({ ...i, area: (i.value / total) * width * height }));
+      const out = [];
+      let x = 0, y = 0, w = width, h = height, row = [];
+      const worst = (r, side) => {
+        const s = r.reduce((sum, n) => sum + n.area, 0);
+        const areas = r.map((n) => n.area);
+        return Math.max((side * side * Math.max(...areas)) / (s * s), (s * s) / (side * side * Math.min(...areas)));
+      };
+      const layRow = () => {
+        const s = row.reduce((sum, n) => sum + n.area, 0);
+        if (w >= h) {  // a column along the left edge
+          const cw = s / h;
+          let yy = y;
+          row.forEach((n) => { out.push({ ...n, x, y: yy, w: cw, h: n.area / cw }); yy += n.area / cw; });
+          x += cw; w -= cw;
+        } else {  // a row along the top edge
+          const rh = s / w;
+          let xx = x;
+          row.forEach((n) => { out.push({ ...n, x: xx, y, w: n.area / rh, h: rh }); xx += n.area / rh; });
+          y += rh; h -= rh;
+        }
+        row = [];
+      };
+      for (let i = 0; i < nodes.length;) {
+        const side = Math.min(w, h);
+        if (!row.length || worst([...row, nodes[i]], side) <= worst(row, side)) row.push(nodes[i++]);
+        else layRow();
+      }
+      if (row.length) layRow();
+      return out;
+    }
+
+    // Grey at 0%, full gain / loss colour at ±3% or more.
+    function heatColor(change) {
+      const hex = (c) => {
+        const m = /^#?([0-9a-f]{6})$/i.exec(c.trim());
+        const n = m ? parseInt(m[1], 16) : 0x6b7280;
+        return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+      };
+      const neutral = [107, 114, 128];
+      if (change == null) return `rgb(${neutral.join(",")})`;
+      const target = hex(cssVar(change >= 0 ? "--gain" : "--loss") || (change >= 0 ? "#0e7a43" : "#c22d2d"));
+      const t = Math.min(Math.abs(change) / 0.03, 1);
+      return `rgb(${neutral.map((c, i) => Math.round(c + (target[i] - c) * t)).join(",")})`;
+    }
+
+    function renderHeatmap(name, all) {
+      const el = $(`${name}-heatmap`);
+      const items = all.filter((s) => s.value > 0).sort((a, b) => b.value - a.value);
+      const total = items.reduce((sum, s) => sum + s.value, 0);
+      if (!items.length) {
+        el.innerHTML = '<p class="muted">Nothing to show yet.</p>';
+        return;
+      }
+      const width = el.clientWidth || 600, height = el.clientHeight || 260;
+      el.innerHTML = treemap(items, width, height).map((r) => {
+        const change = r.change;
+        const share = pct(r.value / total, { signed: false });
+        const today = change == null ? "" : pct(change);
+        const small = r.w < 90 || r.h < 48 ? " small" : "";
+        const label = `${r.label}: ${share} of portfolio${today ? `, ${today} today` : ""}`;
+        return `<div class="heat-tile${small}" role="listitem" title="${esc(label)}" aria-label="${esc(label)}"
+          style="left:${(r.x / width) * 100}%;top:${(r.y / height) * 100}%;width:${(r.w / width) * 100}%;height:${(r.h / height) * 100}%;background:${heatColor(change)}">
+          <strong>${esc(r.label)}</strong><span>${share}${today ? ` · ${today}` : ""}</span></div>`;
+      }).join("");
+    }
+
     function renderAllocation(name, items) {
       const shown = items.filter((s) => s.value > 0).sort((a, b) => b.value - a.value);
       const total = shown.reduce((sum, s) => sum + s.value, 0);

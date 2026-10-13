@@ -517,7 +517,7 @@ def snapshot(txns, account_labels, market, base="CAD"):
     for h in holdings:
         h["weight"] = _ratio(h["market_value"], total_value)
 
-    sector_totals = defaultdict(float)
+    sector_totals, sector_change = defaultdict(float), defaultdict(float)
     weight_sets = _parallel_map(
         lambda h: market.sector_weights(h["yahoo_symbol"], h["quote_type"]) if h["yahoo_symbol"] else {"Unclassified": 1.0},
         holdings,
@@ -525,11 +525,13 @@ def snapshot(txns, account_labels, market, base="CAD"):
     for h, weights in zip(holdings, weight_sets):
         for sector, w in weights.items():
             sector_totals[sector] += h["market_value"] * w
+            sector_change[sector] += h["day_change"] * w  # an ETF's move is split across its sectors
     if not holdings_only and cash_total > 0:
         sector_totals["Cash"] += cash_total
     sector_sum = sum(v for v in sector_totals.values() if v > 0)
     sectors = [
-        {"sector": s, "value": v, "pct": v / sector_sum}
+        {"sector": s, "value": v, "pct": v / sector_sum, "day_change": sector_change[s],
+         "day_change_pct": None if s == "Cash" else _ratio(sector_change[s], v - sector_change[s])}
         for s, v in sorted(sector_totals.items(), key=lambda kv: kv[1], reverse=True)
         if v > 0
     ]

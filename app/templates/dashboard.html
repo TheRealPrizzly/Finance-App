@@ -36,20 +36,40 @@
 
   <div class="grid-2">
     <section class="card">
-      <h2>Allocation by sector</h2>
-      <div class="alloc">
+      <div class="card-head">
+        <h2>Allocation by sector</h2>
+        <label class="sr-only" for="sector-view">Chart type</label>
+        <select id="sector-view" class="select-sm">
+          <option value="doughnut">Doughnut chart</option>
+          <option value="heatmap">Heat map</option>
+        </select>
+      </div>
+      <div class="alloc" id="sector-doughnut">
         <div class="donut-box"><canvas id="sector-chart" aria-label="Sector allocation chart" role="img"></canvas></div>
         <ul class="legend" id="sector-legend"></ul>
       </div>
-      <p class="hint">ETFs are broken down by the sectors they hold.</p>
+      <div class="heatmap" id="sector-heatmap" role="list" aria-label="Sector heat map" hidden></div>
+      <p class="hint" id="sector-hint"
+         data-doughnut-hint="ETFs are broken down by the sectors they hold."
+         data-heatmap-hint="Box size: share of your portfolio. Colour: today's change, deepest at ±3%. ETFs are split across the sectors they hold.">ETFs are broken down by the sectors they hold.</p>
     </section>
     <section class="card">
-      <h2>Allocation by equity</h2>
-      <div class="alloc">
+      <div class="card-head">
+        <h2>Allocation by equity</h2>
+        <label class="sr-only" for="equity-view">Chart type</label>
+        <select id="equity-view" class="select-sm">
+          <option value="doughnut">Doughnut chart</option>
+          <option value="heatmap">Heat map</option>
+        </select>
+      </div>
+      <div class="alloc" id="equity-doughnut">
         <div class="donut-box"><canvas id="equity-chart" aria-label="Allocation by equity chart" role="img"></canvas></div>
         <ul class="legend" id="equity-legend"></ul>
       </div>
-      <p class="hint">Each position's share of total value, including cash.</p>
+      <div class="heatmap" id="equity-heatmap" role="list" aria-label="Equity heat map" hidden></div>
+      <p class="hint" id="equity-hint"
+         data-doughnut-hint="Each position's share of total value, including cash."
+         data-heatmap-hint="Box size: share of total value, including cash. Colour: today's change, deepest at ±3%.">Each position's share of total value, including cash.</p>
     </section>
   </div>
 

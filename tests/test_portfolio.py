@@ -274,6 +274,24 @@ def test_sector_allocation_looks_through_etfs_and_includes_cash():
     assert sectors == {"Financial Services": pytest.approx(600), "Cash": pytest.approx(500), "Technology": pytest.approx(400)}
 
 
+def test_sectors_carry_todays_change_split_like_their_value():
+    market = FakeMarket(
+        quotes={"VFV.TO": (150.0, 148.0, "CAD"), "SHOP": (200.0, 210.0, "CAD")},
+        sectors={"VFV.TO": {"Technology": 0.4, "Financial Services": 0.6}, "SHOP": {"Technology": 1.0}},
+    )
+    txns = [txn(1, "2025-01-02", pf.DEPOSIT, net=5000),
+            txn(2, "2025-01-02", pf.BUY, "VFV.TO", 10, 100, 0, -1000),
+            txn(3, "2025-01-02", pf.BUY, "SHOP", 5, 100, 0, -500)]
+    sectors = {s["sector"]: s for s in pf.snapshot(txns, {}, market)["sectors"]}
+    tech, fin = sectors["Technology"], sectors["Financial Services"]
+    # VFV.TO +20 today (10 x 2): 40% tech, 60% financials; SHOP -50 today (5 x -10): all tech
+    assert tech["value"] == pytest.approx(600 + 1000)
+    assert tech["day_change"] == pytest.approx(8 - 50)
+    assert tech["day_change_pct"] == pytest.approx(-42 / (1600 + 42))
+    assert fin["day_change"] == pytest.approx(12) and fin["day_change_pct"] == pytest.approx(12 / (900 - 12))
+    assert sectors["Cash"]["day_change_pct"] is None
+
+
 def test_history_time_weighted_return_ignores_deposits():
     days = [date(2025, 1, 6), date(2025, 1, 7), date(2025, 1, 8)]  # Mon-Wed
     market = FakeMarket(
