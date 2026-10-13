@@ -259,15 +259,18 @@ def macro_app(app):
     return app
 
 
-def test_macros_tab(macro_app, client):
-    assert client.get("/macros").status_code == 302  # sign-in required
+def test_markets_tab(macro_app, client):
+    assert client.get("/markets").status_code == 302  # sign-in required
     login(client)
-    html = client.get("/macros").get_data(as_text=True)
-    assert '<body data-page="macros" class="has-sidenav">' in html
-    assert 'href="/macros" aria-current="page"' in html
+    html = client.get("/markets").get_data(as_text=True)
+    assert '<body data-page="markets" class="has-sidenav">' in html
+    assert 'href="/markets" aria-current="page">Markets</a>' in html
+    assert "<h1>Markets</h1>" in html and "Macros" not in html
     for heading in ("Pre-market", "Market sentiment", "Fear &amp; Greed Index", "Bonds &amp; rates", "US Treasury yield curve"):
         assert heading in html
     assert "https://www.cnn.com/markets/fear-and-greed" in html
+    resp = client.get("/macros")  # the tab's old name and address
+    assert resp.status_code == 301 and resp.headers["Location"] == "/markets"
     # The browser fetches CNN's feed itself, labelled with the server's indicator names.
     assert 'data-fear-greed-feed="https://production.dataviz.cnn.io/index/fearandgreed/graphdata"' in html
     meta = json.loads(re.search(r"data-fear-greed-meta='([^']*)'", html).group(1))
@@ -277,10 +280,10 @@ def test_macros_tab(macro_app, client):
 
 def test_macro_apis(macro_app, client):
     login(client)
-    premarket = client.get("/api/macros/premarket").get_json()
+    premarket = client.get("/api/markets/premarket").get_json()
     assert [f["symbol"] for f in premarket["futures"]] == ["ES=F"]
     assert premarket["session"] == "regular"
-    assert client.get("/api/macros/rates").get_json()["source"] == "treasury"
-    resp = client.get("/api/macros/sentiment")
+    assert client.get("/api/markets/rates").get_json()["source"] == "treasury"
+    resp = client.get("/api/markets/sentiment")
     assert resp.status_code == 502
     assert "Fear & Greed" in resp.get_json()["error"]

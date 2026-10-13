@@ -800,10 +800,10 @@
       </tr>`).join("")}</tbody>`;
   }
 
-  // ---- Macros tab ------------------------------------------------------------------
+  // ---- Markets tab -----------------------------------------------------------------
   // Pre-market futures and sectors (refreshed every minute), CNN's Fear & Greed Index and
   // the Treasury yield curve. Each section loads on its own, so one slow source can't hold up the rest.
-  function macros() {
+  function markets() {
     const urls = root.dataset;
     chartDefaults();
     const num = (v, digits = 2) => (v == null ? "—"
@@ -1085,6 +1085,6 @@
     document.addEventListener("visibilitychange", () => { if (!document.hidden) loadPremarket(); });
   }
 
-  const pages = { dashboard, performance, position, "txn-form": txnForm, macros };
+  const pages = { dashboard, performance, position, "txn-form": txnForm, markets };
   pages[document.body.dataset.page]?.();
 })();

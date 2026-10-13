@@ -186,14 +186,20 @@ def performance():
     )
 
 
-@bp.get("/macros")
+@bp.get("/markets")
 @login_required
-def macros():
+def markets():
     # The browser reads CNN's feed itself (see app.js), so it needs the feed URL and labels.
     return render_template(
-        "macros.html", fear_greed_url=FEAR_GREED_PAGE, fear_greed_feed=FEAR_GREED_URL,
+        "markets.html", fear_greed_url=FEAR_GREED_PAGE, fear_greed_feed=FEAR_GREED_URL,
         fear_greed_meta={"indicators": FEAR_GREED_INDICATORS, "compare": FEAR_GREED_COMPARE},
     )
+
+
+@bp.get("/macros")
+def old_markets_address():
+    """The Markets tab was called Macros; keep old bookmarks working."""
+    return redirect(url_for("views.markets"), 301)
 
 
 def macro_json(fetch):
@@ -203,19 +209,19 @@ def macro_json(fetch):
         return jsonify(error=str(exc)), 502
 
 
-@bp.get("/api/macros/premarket")
+@bp.get("/api/markets/premarket")
 @login_required
 def api_premarket():
     return macro_json(get_macro().premarket)
 
 
-@bp.get("/api/macros/sentiment")
+@bp.get("/api/markets/sentiment")
 @login_required
 def api_sentiment():
     return macro_json(get_macro().sentiment)
 
 
-@bp.get("/api/macros/rates")
+@bp.get("/api/markets/rates")
 @login_required
 def api_rates():
     return macro_json(get_macro().rates)

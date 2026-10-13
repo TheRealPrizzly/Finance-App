@@ -418,7 +418,7 @@ def test_section_sidebar(app, client):
     expected = {
         "/": ["kpis", "performance", "allocation", "cash-balances", "holdings-section", "earnings-section"],
         "/performance": ["performance", "annual"],
-        "/macros": ["premarket", "futures", "sector-moves", "sentiment", "fear-greed-index", "rates", "rate-kpis",
+        "/markets": ["premarket", "futures", "sector-moves", "sentiment", "fear-greed-index", "rates", "rate-kpis",
                     "yield-curve"],
         "/portfolios": ["portfolios", "create-portfolio", "import", "accounts", "add-account", "transactions"],
     }

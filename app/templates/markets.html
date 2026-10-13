@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}Macros · Portfolio Manager{% endblock %}
-{% block page %}macros{% endblock %}
+{% block title %}Markets · Portfolio Manager{% endblock %}
+{% block page %}markets{% endblock %}
 {% set sections = [
   ("premarket", "Pre-market", [("futures", "Index futures"), ("sector-moves", "Sectors")]),
   ("sentiment", "Market sentiment", [("fear-greed-index", "Fear & Greed Index")]),
@@ -9,7 +9,7 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>Macros</h1>
+    <h1>Markets</h1>
     <p class="muted" id="as-of">Loading market data…</p>
   </div>
 </div>

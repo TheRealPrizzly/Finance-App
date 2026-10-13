@@ -154,7 +154,7 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
 .legend .swatch { width: 12px; height: 12px; border-radius: 3px; }
 .legend .pct { font-variant-numeric: tabular-nums; color: var(--muted); }
 
-/* ---- Macros ------------------------------------------------------------- */
+/* ---- Markets ------------------------------------------------------------ */
 .group-title { font-size: 1.2rem; margin: 28px 0 12px; }
 .group-title:first-of-type { margin-top: 0; }
 .card h3 { font-size: 1.05rem; font-weight: 650; margin: 0; }

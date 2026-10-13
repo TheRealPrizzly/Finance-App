@@ -1,4 +1,4 @@
-"""Market-wide indicators for the Macros tab: index futures and sector ETFs before the
+"""Market-wide indicators for the Markets tab: index futures and sector ETFs before the
 open, CNN's Fear & Greed Index and the US Treasury yield curve.
 
 Futures and sector quotes come from Yahoo Finance through MarketData and share its

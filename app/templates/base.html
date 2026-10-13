@@ -20,7 +20,7 @@
       <nav class="nav" aria-label="Main">
         <a href="{{ url_for('views.dashboard') }}" {% if ep in ('views.dashboard', 'views.position') %}aria-current="page"{% endif %}>Dashboard</a>
         <a href="{{ url_for('views.performance') }}" {% if ep == 'views.performance' %}aria-current="page"{% endif %}>Performance</a>
-        <a href="{{ url_for('views.macros') }}" {% if ep == 'views.macros' %}aria-current="page"{% endif %}>Macros</a>
+        <a href="{{ url_for('views.markets') }}" {% if ep == 'views.markets' %}aria-current="page"{% endif %}>Markets</a>
         <a href="{{ url_for('views.portfolios') }}" {% if 'portfolio' in ep or 'account' in ep or 'transaction' in ep or ep == 'views.import_export' %}aria-current="page"{% endif %}>Portfolio Manager</a>
       </nav>
       <div class="user">
