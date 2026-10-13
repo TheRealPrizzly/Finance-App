@@ -163,6 +163,26 @@
         ];
         yFormat = (v) => money(v, BASE, { compact: true });
         note = `Dashed line: money you put in. Orange: what the same deposits would be worth if each had bought ${benchmark}.`;
+      } else if (mode === "benchmarks") {
+        // Both lines start at the portfolio's value on the first day of the range. The benchmark line
+        // invests that amount in the benchmark that day, then buys or sells it with the same deposits and
+        // withdrawals as the portfolio. benchmark_twr tracks the benchmark's price, so 1 + it works as one.
+        const start = pts[0];
+        let units = start.benchmark_twr == null ? null : start.value / (1 + start.benchmark_twr);
+        const benchLine = pts.map((p, i) => {
+          if (units == null || p.benchmark_twr == null) return null;
+          const index = 1 + p.benchmark_twr;
+          if (i > 0) units += (p.contributions - pts[i - 1].contributions) / index;
+          return units * index;
+        });
+        datasets = [
+          { label: "Portfolio value", data: pts.map((p) => p.value), borderColor: c1, backgroundColor: `${c1}22`, fill: true, borderWidth: 2 },
+          { label: "Starting value + net contributions", data: pts.map((p) => start.value + p.contributions - start.contributions),
+            borderColor: c3, borderDash: [4, 4], borderWidth: 1.5, stepped: true },
+          { label: `Same money in ${benchmark}`, data: benchLine, borderColor: c2, borderWidth: 1.5 },
+        ];
+        yFormat = (v) => money(v, BASE, { compact: true });
+        note = `Both lines start at your portfolio's value on the first day shown. Orange: that amount invested in ${benchmark} that day, with the same deposits and withdrawals since.`;
       } else {
         const b = pts[0];
         const rebase = (end, start) => (end == null || start == null ? null : (1 + end) / (1 + start) - 1);

@@ -6,6 +6,7 @@
         <div class="seg" role="group" aria-label="Chart" id="chart-mode">
           <button type="button" data-mode="growth" aria-pressed="true">Growth</button>
           <button type="button" data-mode="returns" aria-pressed="false">Returns vs {{ benchmark }}</button>
+          <button type="button" data-mode="benchmarks" aria-pressed="false">Benchmarks</button>
         </div>
         <div class="seg" role="group" aria-label="Time range" id="chart-range">
           {% for r in ('1M', '3M', '6M', 'YTD', '1Y', 'All') %}
