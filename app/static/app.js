@@ -1030,8 +1030,94 @@
       }
       $("rate-kpis").innerHTML = tiles.join("");
 
+      $("yield-table").innerHTML = `
+        <thead><tr><th>Maturity</th><th class="num">Yield</th>${comparisons.map((c) =>
+          `<th class="num" title="${c.date ? esc(longDate(c.date)) : ""}">vs ${esc(COMPARE[c.key])}</th>`).join("")}</tr></thead>
+        <tbody>${tenors.map((t) => `<tr><td>${esc(t)}</td><td class="num">${yieldText(at(latest, t))}</td>${comparisons.map((c) =>
+          `<td class="num">${bpsText(bps(at(latest, t), at(c, t)))}</td>`).join("")}</tr>`).join("")}</tbody>`;
+
+      // Spread views need the spread's history: the Yahoo fallback has no 2-year yield.
+      for (const b of $("yield-mode").querySelectorAll("button")) {
+        const missing = b.dataset.mode !== "curve" && !data.spreads?.[b.dataset.mode]?.length;
+        b.disabled = missing;
+        b.title = missing ? "Needs the U.S. Treasury's data, which couldn't be reached" : "";
+      }
+      if ($("yield-mode").querySelector(`[data-mode="${yieldView.mode}"]`).disabled) yieldView.mode = "curve";
       $("yield-status").hidden = true;
-      new Chart($("yield-chart"), {
+      ratesData = data;
+      drawYield();
+    }
+
+    // Yield chart: the curve itself, or the daily history of one spread ----------------
+    const SPREAD_LABELS = { "10Y-2Y": "10Y − 2Y", "10Y-3M": "10Y − 3M" };
+    const RANGE_DAYS = { "1Y": 365, "2Y": 730, "5Y": 1826 };
+    const yieldView = { mode: "curve", range: "5Y" };
+    let ratesData = null, yieldChart = null;
+    const withAlpha = (hex, a) => {
+      const n = parseInt(hex.replace("#", ""), 16);
+      return Number.isNaN(n) ? hex : `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+    };
+
+    function drawYield() {
+      const data = ratesData, mode = yieldView.mode, spread = mode !== "curve";
+      for (const b of $("yield-mode").querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.mode === mode));
+      for (const b of $("yield-range").querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.range === yieldView.range));
+      $("yield-range").hidden = !spread;
+      $("yield-table").hidden = spread;
+      $("yield-chart").setAttribute("aria-label", spread ? `${SPREAD_LABELS[mode]} Treasury yield spread over time` : "US Treasury yield curve");
+      yieldChart?.destroy();
+      yieldChart = spread ? spreadChart(data.spreads[mode], SPREAD_LABELS[mode]) : curveChart(data);
+
+      const latest = data.curves.find((c) => c.key === "latest");
+      const source = data.source === "treasury"
+        ? `Daily par yields from the <a href="${esc(data.source_url)}" target="_blank" rel="noopener">U.S. Treasury</a>${latest?.date ? `, as of ${esc(longDate(latest.date))}` : ""}. Published each business day after the close.`
+        : spread
+          ? "The U.S. Treasury site couldn't be reached, so this uses the 10-year and 13-week bill yields Yahoo Finance quotes."
+          : "The U.S. Treasury site couldn't be reached, so this shows the four Treasury yields Yahoo Finance quotes (the 3-month is the 13-week bill).";
+      $("yield-note").innerHTML = spread
+        ? `${source} The spread is the ${mode.split("-")[0]} yield minus the ${mode.split("-")[1]} yield. Below zero (shaded red) the curve is inverted: short-term Treasuries pay more than long-term ones, which has often come before US recessions.`
+        : source;
+    }
+
+    function spreadChart(points, label) {
+      const end = new Date(`${points[points.length - 1][0]}T00:00:00`);
+      end.setDate(end.getDate() - RANGE_DAYS[yieldView.range]);
+      const from = end.toISOString().slice(0, 10);
+      const shown = points.filter((p) => p[0] >= from);
+      const labels = shown.map((p) => p[0]);
+      return new Chart($("yield-chart"), {
+        type: "line",
+        data: {
+          labels,
+          datasets: [{
+            label, data: shown.map((p) => Math.round(p[1] * 100)), borderColor: cssVar("--chart-1"), borderWidth: 1.5,
+            pointRadius: 0, tension: 0,
+            fill: { target: { value: 0 }, above: withAlpha(cssVar("--gain"), 0.12), below: withAlpha(cssVar("--loss"), 0.2) },
+          }],
+        },
+        options: {
+          maintainAspectRatio: false,
+          animation: false,
+          interaction: { mode: "index", intersect: false },
+          scales: {
+            x: { grid: { display: false }, ticks: dateTicks(labels) },
+            y: { grace: "5%", ticks: { callback: (v) => `${v} bps` },
+              grid: { color: (ctx) => (ctx.tick.value === 0 ? cssVar("--muted") : cssVar("--border")) } },
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: {
+              title: (items) => longDate(labels[items[0].dataIndex]),
+              label: (c) => ` ${label}: ${bpsText(c.parsed.y)}${c.parsed.y < 0 ? " (inverted)" : ""}`,
+            } },
+          },
+        },
+      });
+    }
+
+    function curveChart(data) {
+      const { tenors, curves } = data;
+      return new Chart($("yield-chart"), {
         type: "line",
         data: {
           labels: tenors,
@@ -1057,17 +1143,20 @@
           },
         },
       });
-
-      $("yield-table").innerHTML = `
-        <thead><tr><th>Maturity</th><th class="num">Yield</th>${comparisons.map((c) =>
-          `<th class="num" title="${c.date ? esc(longDate(c.date)) : ""}">vs ${esc(COMPARE[c.key])}</th>`).join("")}</tr></thead>
-        <tbody>${tenors.map((t) => `<tr><td>${esc(t)}</td><td class="num">${yieldText(at(latest, t))}</td>${comparisons.map((c) =>
-          `<td class="num">${bpsText(bps(at(latest, t), at(c, t)))}</td>`).join("")}</tr>`).join("")}</tbody>`;
-
-      $("yield-note").innerHTML = data.source === "treasury"
-        ? `Daily par yield curve from the <a href="${esc(data.source_url)}" target="_blank" rel="noopener">U.S. Treasury</a>${latest.date ? `, as of ${esc(longDate(latest.date))}` : ""}. Published each business day after the close.`
-        : `The U.S. Treasury site couldn't be reached, so this shows the four Treasury yields Yahoo Finance quotes (the 3-month is the 13-week bill).`;
     }
+
+    $("yield-mode").addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-mode]");
+      if (!b || b.disabled || !ratesData) return;
+      yieldView.mode = b.dataset.mode;
+      drawYield();
+    });
+    $("yield-range").addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-range]");
+      if (!b || !ratesData) return;
+      yieldView.range = b.dataset.range;
+      drawYield();
+    });
 
     async function loadRates() {
       try {

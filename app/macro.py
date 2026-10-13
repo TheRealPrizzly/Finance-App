@@ -52,6 +52,8 @@ TREASURY_PAGE = ("https://home.treasury.gov/resource-center/data-chart-center/in
 # Used when the Treasury site can't be reached. ^IRX is the 13-week bill.
 YAHOO_YIELDS = (("^IRX", "3M"), ("^FVX", "5Y"), ("^TNX", "10Y"), ("^TYX", "30Y"))
 CURVE_AGES = (("1w", 7), ("1m", 30), ("1y", 365))  # comparison curves: key, days before the latest
+SPREADS = (("10Y", "2Y"), ("10Y", "3M"))  # charted as daily history: long tenor minus short tenor
+SPREAD_YEARS = 5
 
 SENTIMENT_TTL = 10 * 60
 RATES_TTL = 3 * 60 * 60
@@ -169,8 +171,21 @@ def parse_treasury_csv(text):
     return rows
 
 
+def spread_history(series):
+    """Daily spreads in percentage points, e.g. {"10Y-2Y": [[iso date, 0.44], ...]}, from
+    {tenor: {date: yield}}. Spreads missing either yield are left out."""
+    out = {}
+    for long, short in SPREADS:
+        a, b = series.get(long) or {}, series.get(short) or {}
+        points = [[d.isoformat(), round(a[d] - b[d], 4)] for d in sorted(a.keys() & b.keys())]
+        if points:
+            out[f"{long}-{short}"] = points
+    return out
+
+
 def yield_curves(rows):
-    """The latest curve plus the curves about a week, a month and a year earlier."""
+    """The latest curve plus the curves about a week, a month and a year earlier, and the
+    daily history of the 10Y − 2Y and 10Y − 3M spreads."""
     rows = sorted({r["date"]: r for r in rows}.values(), key=lambda r: r["date"])
     if not rows:
         raise ValueError("no yield curve data")
@@ -187,6 +202,10 @@ def yield_curves(rows):
         "tenors": tenors,
         "curves": [{"key": key, "date": r["date"].isoformat(), "yields": [r["yields"].get(t) for t in tenors]}
                    for key, r in curves],
+        "spreads": spread_history({
+            tenor: {r["date"]: r["yields"][tenor] for r in rows if tenor in r["yields"]}
+            for tenor in {t for pair in SPREADS for t in pair}
+        }),
     }
 
 
@@ -278,10 +297,18 @@ class MacroData:
     def _treasury(self):
         year = date.today().year
         rows = []
-        for y in (year - 1, year):  # last year's file has the curve a year ago, and early January's
-            r = self.http.get(TREASURY_URL.format(year=y), timeout=self.timeout, params={
-                "type": "daily_treasury_yield_curve", "field_tdr_date_value": y, "page": "", "_format": "csv"})
-            r.raise_for_status()
+        # One file per year. The last two are needed (the curve a year ago, and early January's);
+        # older ones only extend the spread history, so they may fail.
+        for y in range(year - SPREAD_YEARS, year + 1):
+            try:
+                r = self.http.get(TREASURY_URL.format(year=y), timeout=self.timeout, params={
+                    "type": "daily_treasury_yield_curve", "field_tdr_date_value": y, "page": "", "_format": "csv"})
+                r.raise_for_status()
+            except requests.RequestException:
+                if y >= year - 1:
+                    raise
+                log.warning("Treasury yields for %s are unavailable", y)
+                continue
             rows += parse_treasury_csv(r.text)
         return yield_curves(rows)
 
@@ -291,6 +318,8 @@ class MacroData:
         if not got:
             raise Unavailable("Treasury yields can't be reached right now.")
         when = max((q.get("time") or 0 for _, q in got), default=0)
+        start = date.today() - timedelta(days=365 * SPREAD_YEARS)
+        history = {tenor: self.market.history(symbol, start)[1] for symbol, tenor in YAHOO_YIELDS}
         return {
             "source": "yahoo",
             "source_url": TREASURY_PAGE,
@@ -300,6 +329,7 @@ class MacroData:
                  "yields": [q["price"] for _, q in got]},
                 {"key": "prev", "date": None, "yields": [q.get("prev_close") for _, q in got]},
             ],
+            "spreads": spread_history(history),  # Yahoo has no 2-year yield, so only 10Y − 3M
         }
 
 

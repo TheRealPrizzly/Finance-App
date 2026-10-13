@@ -134,6 +134,8 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
 .seg { display: inline-flex; background: var(--surface-2); border-radius: 8px; padding: 2px; }
 .seg button { border: 0; background: none; color: var(--muted); font: inherit; font-size: .85rem; font-weight: 500; padding: 4px 10px; border-radius: 6px; cursor: pointer; }
 .seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+.seg button:disabled { opacity: .45; cursor: not-allowed; }
+.seg[hidden] { display: none; }
 .chart-box { position: relative; height: 320px; }
 .chart-status { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); }
 .chart-status[hidden] { display: none; }

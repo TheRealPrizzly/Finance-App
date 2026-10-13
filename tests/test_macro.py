@@ -7,8 +7,8 @@ import requests
 
 from app import macro
 from app.macro import (
-    MacroData, Unavailable, fear_greed_rating, parse_fear_greed, parse_treasury_csv, session_move, tenor_label,
-    yield_curves,
+    MacroData, Unavailable, fear_greed_rating, parse_fear_greed, parse_treasury_csv, session_move, spread_history,
+    tenor_label, yield_curves,
 )
 from conftest import login
 
@@ -71,13 +71,16 @@ def test_missing_previous_close():
 
 
 class Market:
-    """Quotes for the futures and sector ETFs, as MarketData returns them."""
+    """Quotes and daily history as MarketData returns them."""
 
-    def __init__(self, quotes):
-        self._quotes = quotes
+    def __init__(self, quotes, history=None):
+        self._quotes, self._history = quotes, history or {}
 
     def quotes(self, symbols):
         return {s: self._quotes[s] for s in symbols if s in self._quotes}
+
+    def history(self, symbol, start, as_traded=False):
+        return "USD", self._history.get(symbol, {})
 
     def intraday(self, symbol):
         return 5000.0, [(1, 5000.0), (2, 5010.123456)]
@@ -161,6 +164,20 @@ def test_yield_curves_compare_with_a_week_a_month_and_a_year_earlier():
     assert year_ago["yields"][1] is None  # the 1.5-month bill wasn't published then
 
 
+def test_yield_curves_include_the_spread_history():
+    spreads = yield_curves(parse_treasury_csv(LAST_YEAR_CSV) + parse_treasury_csv(TREASURY_CSV))["spreads"]
+    assert spreads["10Y-2Y"] == [["2025-10-09", 0.55], ["2026-09-09", 0.5], ["2026-10-02", 0.5],
+                                 ["2026-10-08", 0.47], ["2026-10-09", 0.44]]
+    assert spreads["10Y-3M"][0] == ["2025-10-09", 0.0]
+    assert spreads["10Y-3M"][-1] == ["2026-10-09", 0.99]
+
+
+def test_spread_history_skips_days_missing_a_yield():
+    d1, d2, d3 = date(2026, 1, 2), date(2026, 1, 5), date(2026, 1, 6)
+    spreads = spread_history({"10Y": {d1: 4.5, d2: 4.6, d3: 4.7}, "2Y": {d1: 4.7, d3: 4.2}})
+    assert spreads == {"10Y-2Y": [["2026-01-02", -0.2], ["2026-01-06", 0.5]]}  # no 3M yields, so no 10Y-3M
+
+
 def test_yield_curves_without_data():
     with pytest.raises(ValueError):
         yield_curves([])
@@ -198,8 +215,10 @@ class Http:
 
 
 def treasury_routes():
+    """This year's and last year's files; older years (spread history only) are missing."""
     year = date.today().year
-    return {f"csv/{year}/": Response(TREASURY_CSV), f"csv/{year - 1}/": Response(LAST_YEAR_CSV)}
+    return {f"csv/{year}/": Response(TREASURY_CSV), f"csv/{year - 1}/": Response(LAST_YEAR_CSV),
+            "daily-treasury-rates.csv/": Response(status=404)}
 
 
 def test_sentiment_is_cached():
@@ -229,19 +248,35 @@ def test_failed_source_is_not_retried_straight_away():
 
 
 def test_rates_from_the_treasury():
-    data = MacroData(Market({}), http=Http(treasury_routes())).rates()
+    http = Http(treasury_routes())
+    data = MacroData(Market({}), http=http).rates()
     assert data["source"] == "treasury"
     assert data["curves"][0]["date"] == "2026-10-09"
+    assert data["spreads"]["10Y-2Y"][-1] == ["2026-10-09", 0.44]
+    # Five years back for the spread history; the older files failing doesn't matter.
+    year = date.today().year
+    assert [int(url.split("csv/")[1][:4]) for url in http.calls] == list(range(year - 5, year + 1))
+
+
+def test_rates_need_the_last_two_years():
+    year = date.today().year
+    routes = {**treasury_routes(), f"csv/{year - 1}/": Response(status=500)}
+    market = Market({"^TNX": quote(price=5.21, prev_close=5.24)})
+    data = MacroData(market, http=Http(routes)).rates()
+    assert data["source"] == "yahoo"  # rather than a curve with no year-ago comparison
 
 
 def test_rates_fall_back_to_yahoo():
-    market = Market({"^TNX": quote(price=5.21, prev_close=5.24, time=1791914875), "^IRX": quote(price=4.1, prev_close=4.1)})
+    d1, d2 = date(2026, 10, 8), date(2026, 10, 9)
+    market = Market({"^TNX": quote(price=5.21, prev_close=5.24, time=1791914875), "^IRX": quote(price=4.1, prev_close=4.1)},
+                    history={"^TNX": {d1: 5.24, d2: 5.21}, "^IRX": {d1: 4.12, d2: 4.1}})
     data = MacroData(market, http=Http({"treasury.gov": Response(status=403)})).rates()
     assert data["source"] == "yahoo"
     assert data["tenors"] == ["3M", "10Y"]
     assert [c["key"] for c in data["curves"]] == ["latest", "prev"]
     assert data["curves"][0]["yields"] == [4.1, 5.21]
     assert data["curves"][1]["yields"] == [4.1, 5.24]
+    assert data["spreads"] == {"10Y-3M": [["2026-10-08", 1.12], ["2026-10-09", 1.11]]}  # Yahoo has no 2-year yield
 
 
 def test_rates_unavailable_everywhere():

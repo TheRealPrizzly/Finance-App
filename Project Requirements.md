@@ -29,7 +29,7 @@
 | F10 | Cash balances | Cash per account and currency, converted to CAD | Must | Done |
 | F11 | Position breakdown | Per-symbol page: price chart with trades, cost basis per account, realized P/L, dividends, total return | Must | Done |
 | F12 | Import / export | CSV in the format in section 3; duplicate rows are skipped on re-import | Must | Done |
-| F13 | Markets tab | Pre-market: S&P 500 and Nasdaq 100 futures, sector moves (Select Sector SPDR ETFs). Market sentiment: CNN Fear & Greed Index. Bonds & rates: US Treasury yield curve | Must | Done |
+| F13 | Markets tab | Pre-market: S&P 500 and Nasdaq 100 futures, sector moves (Select Sector SPDR ETFs). Market sentiment: CNN Fear & Greed Index. Bonds & rates: US Treasury yield curve, with 5-year daily charts of the 10Y − 2Y and 10Y − 3M spreads | Must | Done |
 
 ## 3. Data & Integrations
 

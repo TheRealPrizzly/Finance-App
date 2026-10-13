@@ -56,7 +56,21 @@
     {% for _ in range(5) %}<div class="kpi skeleton"></div>{% endfor %}
   </section>
   <section class="card" id="yield-curve">
-    <div class="card-head"><h3>US Treasury yield curve</h3></div>
+    <div class="card-head">
+      <h3>US Treasury yield curve</h3>
+      <div class="toolbar">
+        <div class="seg" role="group" aria-label="Chart" id="yield-mode">
+          <button type="button" data-mode="curve" aria-pressed="true">Yield curve</button>
+          <button type="button" data-mode="10Y-2Y" aria-pressed="false">10Y − 2Y</button>
+          <button type="button" data-mode="10Y-3M" aria-pressed="false">10Y − 3M</button>
+        </div>
+        <div class="seg" role="group" aria-label="Time range" id="yield-range" hidden>
+          {% for r in ('1Y', '2Y', '5Y') %}
+            <button type="button" data-range="{{ r }}" aria-pressed="{{ 'true' if r == '5Y' else 'false' }}">{{ r }}</button>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
     <div class="chart-box">
       <canvas id="yield-chart" aria-label="US Treasury yield curve" role="img"></canvas>
       <div class="chart-status" id="yield-status">Loading…</div>
