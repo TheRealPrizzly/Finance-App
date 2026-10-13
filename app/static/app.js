@@ -142,7 +142,7 @@
       const end = new Date(`${points[points.length - 1].date}T00:00:00`);
       const start = new Date(end);
       if (range === "YTD") start.setMonth(0, 1);
-      else start.setMonth(end.getMonth() - { "1M": 1, "3M": 3, "6M": 6, "1Y": 12 }[range]);
+      else start.setMonth(end.getMonth() - { "1M": 1, "3M": 3, "6M": 6, "1Y": 12, "5Y": 60 }[range]);
       const iso = start.toISOString().slice(0, 10);
       const i = points.findIndex((p) => p.date >= iso);
       return Math.max(i - 1, 0);

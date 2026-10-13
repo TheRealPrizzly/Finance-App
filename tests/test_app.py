@@ -281,6 +281,9 @@ def test_performance_tab(app, client):
     upload(client, token)
     html = client.get("/performance").get_data(as_text=True)
     assert 'id="perf-chart"' in html and 'id="period-table"' in html
+    ranges = html[html.index('id="chart-range"'):html.index("</div>", html.index('id="chart-range"'))]
+    assert [r for r in ("1M", "3M", "6M", "YTD", "1Y", "5Y", "All") if f'data-range="{r}"' in ranges] ==         ["1M", "3M", "6M", "YTD", "1Y", "5Y", "All"]
+    assert ranges.index('data-range="1Y"') < ranges.index('data-range="5Y"') < ranges.index('data-range="All"')
     assert 'aria-current="page">Performance<' in html
     assert "/api/history" in html and 'data-page="performance"' in html
     assert 'id="holdings"' not in html  # only the performance section
