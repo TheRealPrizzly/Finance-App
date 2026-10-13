@@ -116,7 +116,8 @@
 
   // ---- performance section (dashboard and Performance tab) -------------------
   // Growth / returns chart with time ranges, and the period returns table.
-  function performanceSection(urls, benchmark) {
+  // onHistory(history, error) runs once the history has loaded (or failed), for extra sections.
+  function performanceSection(urls, benchmark, { onHistory } = {}) {
     let history = null;
     let mode = "growth";
     let range = "All";
@@ -130,7 +131,10 @@
         renderPerf();
       } catch (err) {
         $("perf-status").textContent = `Couldn't build history: ${err.message}`;
+        onHistory?.(null, err);
+        return;
       }
+      onHistory?.(history, null);
     }
 
     function rangeStart(points) {
@@ -616,8 +620,65 @@
   });
 
   function performance() {
+    const benchmark = root.dataset.benchmark;
     chartDefaults();
-    performanceSection(root.dataset, root.dataset.benchmark);
+    performanceSection(root.dataset, benchmark, { onHistory: (history, err) => renderAnnual(history, err, benchmark) });
+  }
+
+  // ---- performance by year (Performance tab) -------------------------------------
+  function renderAnnual(history, err, benchmark) {
+    const status = $("annual-status");
+    if (err) {
+      status.textContent = `Couldn't build history: ${err.message}`;
+      return;
+    }
+    const years = history.years || [];
+    if (!years.length) {
+      status.textContent = "Not enough history yet.";
+      return;
+    }
+    status.hidden = true;
+    const shortDate = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-CA", { month: "short", day: "numeric" });
+    const label = (y) => (y.ytd ? `${y.year} YTD` : y.partial ? `${y.year} (from ${shortDate(y.start)})` : String(y.year));
+    const diff = (y) => (y.portfolio == null || y.benchmark == null ? null : y.portfolio - y.benchmark);
+
+    const c1 = cssVar("--chart-1"), c2 = cssVar("--chart-2");
+    new Chart($("annual-chart"), {
+      type: "bar",
+      data: {
+        labels: years.map((y) => (y.ytd ? `${y.year} YTD` : y.partial ? `${y.year}*` : String(y.year))),
+        datasets: [
+          { label: "Portfolio", data: years.map((y) => y.portfolio), backgroundColor: c1, borderRadius: 3 },
+          { label: benchmark, data: years.map((y) => y.benchmark), backgroundColor: c2, borderRadius: 3 },
+        ],
+      },
+      options: {
+        maintainAspectRatio: false,
+        animation: false,
+        scales: { x: { grid: { display: false } }, y: { ticks: { callback: (v) => pct(v) }, grace: "5%" } },
+        plugins: {
+          legend: { position: "bottom", labels: { boxWidth: 12 } },
+          tooltip: {
+            callbacks: {
+              title: (items) => label(years[items[0].dataIndex]),
+              label: (c) => ` ${c.dataset.label}: ${pct(c.parsed.y)}`,
+            },
+          },
+        },
+      },
+    });
+
+    const cell = (v) => `<td class="num ${tone(v)}">${pct(v)}</td>`;
+    $("annual-table").innerHTML = `
+      <thead><tr><th>Year</th><th class="num">Portfolio</th><th class="num">${esc(benchmark)}</th><th class="num">Difference</th>
+        <th class="num">Start value</th><th class="num">Net contributions</th><th class="num">End value</th><th class="num">Gain</th></tr></thead>
+      <tbody>${[...years].reverse().map((y) => `<tr>
+        <td class="nowrap">${esc(label(y))}</td>${cell(y.portfolio)}${cell(y.benchmark)}${cell(diff(y))}
+        <td class="num nowrap">${money(y.start_value)}</td>
+        <td class="num nowrap">${money(y.contributions, BASE, { signed: true })}</td>
+        <td class="num nowrap">${money(y.end_value)}</td>
+        <td class="num nowrap ${tone(y.gain)}">${money(y.gain, BASE, { signed: true })}</td>
+      </tr>`).join("")}</tbody>`;
   }
 
   const pages = { dashboard, performance, position, "txn-form": txnForm };

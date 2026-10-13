@@ -315,6 +315,42 @@ def test_period_returns_include_five_years_between_one_year_and_inception():
     assert short["5Y"]["portfolio"] is None
 
 
+def test_annual_returns_chain_each_calendar_year():
+    points = [
+        {"date": "2023-06-01", "twr": 0.0, "benchmark_twr": 0.0, "value": 1000, "contributions": 1000},
+        {"date": "2023-12-29", "twr": 0.10, "benchmark_twr": 0.05, "value": 1200, "contributions": 1100},
+        {"date": "2024-12-31", "twr": 0.21, "benchmark_twr": 0.155, "value": 1500, "contributions": 1150},
+        {"date": "2025-03-03", "twr": 0.331, "benchmark_twr": 0.20, "value": 1800, "contributions": 1300},
+    ]
+    years = {y["year"]: y for y in pf.annual_returns(points, date(2025, 3, 3))}
+    assert list(years) == [2023, 2024, 2025]
+
+    first = years[2023]  # started in June: partial, measured from zero
+    assert first["partial"] and not first["ytd"] and first["start"] == "2023-06-01"
+    assert first["portfolio"] == pytest.approx(0.10) and first["benchmark"] == pytest.approx(0.05)
+    assert (first["start_value"], first["contributions"], first["end_value"]) == (0, 1100, 1200)
+    assert first["gain"] == pytest.approx(100)
+
+    full = years[2024]  # chained from the last 2023 point
+    assert not full["partial"] and not full["ytd"]
+    assert full["portfolio"] == pytest.approx(1.21 / 1.10 - 1) and full["benchmark"] == pytest.approx(1.155 / 1.05 - 1)
+    assert (full["start_value"], full["contributions"], full["end_value"]) == (1200, 50, 1500)
+    assert full["gain"] == pytest.approx(250)
+
+    current = years[2025]
+    assert current["ytd"] and current["portfolio"] == pytest.approx(1.331 / 1.21 - 1)
+    assert current["gain"] == pytest.approx(1800 - 1500 - 150)
+
+
+def test_annual_returns_without_benchmark_data():
+    points = [{"date": "2024-01-02", "twr": 0.0, "value": 100, "contributions": 100},
+              {"date": "2024-06-28", "twr": 0.05, "value": 105, "contributions": 100}]
+    (year,) = pf.annual_returns(points, date(2024, 7, 1))
+    assert year["benchmark"] is None and year["portfolio"] == pytest.approx(0.05)
+    assert not year["partial"]  # history began in the first week of January
+    assert pf.annual_returns([], date(2024, 7, 1)) == []
+
+
 def test_period_returns_annualizes_since_inception():
     points = [
         {"date": "2023-01-02", "twr": 0.0, "benchmark_twr": 0.0},

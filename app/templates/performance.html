@@ -24,6 +24,7 @@
      data-history-url="{{ url_for('views.api_history', account=account_id or None, portfolio=portfolio_id or None) }}"
      data-benchmark="{{ benchmark }}" data-base="{{ base_currency }}">
   {% include "_performance_section.html" %}
+  {% include "_annual_section.html" %}
 </div>
 {% endif %}
 {% endblock %}

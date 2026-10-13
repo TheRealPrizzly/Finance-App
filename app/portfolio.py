@@ -570,7 +570,7 @@ def history(txns, market, base="CAD", benchmark="VFV.TO", today=None):
     benchmark both as a return index and as "the same contributions invested in it"."""
     today = today or date.today()
     txns = sorted(with_opening_positions(txns), key=lambda t: (t.date, t.id))
-    empty = {"points": [], "periods": [], "benchmark": benchmark, "holdings_only": True}
+    empty = {"points": [], "periods": [], "years": [], "benchmark": benchmark, "holdings_only": True}
     if not txns:
         return empty
     holdings_only = is_holdings_only(txns)
@@ -658,10 +658,52 @@ def history(txns, market, base="CAD", benchmark="VFV.TO", today=None):
     return {
         "points": points,
         "periods": period_returns(points, today),
+        "years": annual_returns(points, today),
         "benchmark": benchmark,
         "holdings_only": holdings_only,
         "warnings": fx.warnings,
     }
+
+
+def annual_returns(points, today):
+    """Performance for each calendar year, oldest first.
+
+    Returns are time-weighted (deposits and withdrawals don't count as gains), chained
+    from the last point of the previous year; the first year starts from zero. Values
+    are in the base currency: gain = end value - start value - net contributions.
+    "partial" marks a first year that started after early January, "ytd" the current year."""
+    if not points:
+        return []
+    by_year = defaultdict(list)
+    for p in points:
+        by_year[int(p["date"][:4])].append(p)
+    out, prev = [], None  # prev: last point of the previous year
+    for year in sorted(by_year):
+        pts = by_year[year]
+        end = pts[-1]
+        base = prev or {"twr": 0.0, "benchmark_twr": 0.0, "value": 0.0, "contributions": 0.0}
+
+        def chained(key):
+            if key not in end or key not in base:
+                return None
+            return (1 + end[key]) / (1 + base[key]) - 1
+
+        start_value, contributions = base["value"], end["contributions"] - base["contributions"]
+        out.append({
+            "year": year,
+            "start": pts[0]["date"],
+            "end": end["date"],
+            "partial": prev is None and pts[0]["date"][5:] > "01-07",
+            "ytd": year == today.year,
+            "portfolio": chained("twr"),
+            "benchmark": chained("benchmark_twr"),
+            "start_value": start_value,
+            "contributions": contributions,
+            "end_value": end["value"],
+            "gain": end["value"] - start_value - contributions,
+        })
+        prev = end
+    return out
 
 
 def period_returns(points, today):

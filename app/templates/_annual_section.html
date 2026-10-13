@@ -1,0 +1,12 @@
+{# Calendar-year returns, portfolio vs benchmark; app.js fills it from the history API. #}
+<section class="card">
+  <div class="card-head">
+    <h2>Performance by year</h2>
+  </div>
+  <div class="chart-box">
+    <canvas id="annual-chart" aria-label="Yearly returns compared with {{ benchmark }}" role="img"></canvas>
+    <div class="chart-status" id="annual-status">Building history…</div>
+  </div>
+  <p class="hint">Time-weighted returns, so deposits and withdrawals don't count as gains. Gain is the change in value after net contributions.</p>
+  <div class="table-wrap"><table class="table compact" id="annual-table"></table></div>
+</section>

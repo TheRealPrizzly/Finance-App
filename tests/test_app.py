@@ -284,6 +284,9 @@ def test_performance_tab(app, client):
     assert 'aria-current="page">Performance<' in html
     assert "/api/history" in html and 'data-page="performance"' in html
     assert 'id="holdings"' not in html  # only the performance section
+    assert 'id="annual-chart"' in html and 'id="annual-table"' in html and "Performance by year" in html
+    assert 'id="annual-chart"' not in client.get("/?all=1").get_data(as_text=True)  # Performance tab only
+    assert client.get("/api/history").get_json()["years"]  # yearly figures come with the history
     assert 'id="perf-chart"' in client.get("/?all=1").get_data(as_text=True)  # still on the dashboard
 
     client.post("/settings/default-view", data={"csrf_token": token, "scope": "account:2"})
