@@ -1,0 +1,54 @@
+{# Fields of the "Add a mortgage" and "Edit mortgage" forms, filled from `mortgage_form`. #}
+{% set f = mortgage_form %}
+<div class="form-grid mortgage-fields">
+  <label>Name <input name="name" value="{{ f.get('name', '') }}" placeholder="e.g. Home, Cottage" required autocomplete="off"></label>
+  <label>Lender (optional) <input name="lender" value="{{ f.get('lender', '') }}" placeholder="e.g. RBC, TD" autocomplete="off"></label>
+  <label>Original amount ($)
+    <input name="principal" value="{{ f.get('principal', '') }}" inputmode="decimal" placeholder="e.g. 500000" required autocomplete="off">
+  </label>
+  <label>Start date
+    <input type="date" name="start_date" value="{{ f.get('start_date', '') }}" required>
+    <span class="hint">When the money was advanced. The first payment is one period later.</span>
+  </label>
+  <label>Interest rate (%)
+    <input name="rate" value="{{ f.get('rate', '') }}" inputmode="decimal" placeholder="e.g. 4.79" required autocomplete="off">
+  </label>
+  <label>Interest compounded
+    <select name="compounding">
+      {% for key, (text, _) in compoundings.items() %}<option value="{{ key }}" {% if f.get('compounding') == key %}selected{% endif %}>{{ text }}</option>{% endfor %}
+    </select>
+    <span class="hint">Semi-annually for most Canadian fixed-rate mortgages.</span>
+  </label>
+  <label>Amortization (years)
+    <input type="number" name="amortization_years" value="{{ f.get('amortization_years', '') }}" min="0" max="50" step="1" required>
+  </label>
+  <label>Amortization (extra months)
+    <input type="number" name="amortization_months" value="{{ f.get('amortization_months', '') }}" min="0" max="11" step="1">
+  </label>
+  <label>Payment frequency
+    <select name="frequency">
+      {% for key, (text, _) in frequencies.items() %}<option value="{{ key }}" {% if f.get('frequency') == key %}selected{% endif %}>{{ text }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Payment amount (optional)
+    <input name="payment" value="{{ f.get('payment', '') }}" inputmode="decimal" autocomplete="off">
+    <span class="hint">Leave blank to calculate it from the amount, rate and amortization.</span>
+  </label>
+  <label>Extra payment each time (optional)
+    <input name="extra_payment" value="{{ f.get('extra_payment', '') }}" inputmode="decimal" autocomplete="off">
+    <span class="hint">Prepaid on top of every regular payment.</span>
+  </label>
+  <label>Term ends (optional)
+    <input type="date" name="term_end" value="{{ f.get('term_end', '') }}">
+    <span class="hint">Your renewal date.</span>
+  </label>
+</div>
+<fieldset class="subfields">
+  <legend>Balance from a statement (optional)</legend>
+  <p class="hint">After a renewal, a rate change or a lump-sum payment, enter the balance from a recent statement.
+    The estimate then starts from it, and a blank payment amount is recalculated over the rest of the amortization.</p>
+  <div class="form-grid">
+    <label>Balance ($) <input name="balance" value="{{ f.get('balance', '') }}" inputmode="decimal" autocomplete="off"></label>
+    <label>Statement date <input type="date" name="balance_date" value="{{ f.get('balance_date', '') }}"></label>
+  </div>
+</fieldset>

@@ -11,6 +11,7 @@ A multi-user web app for tracking investments across brokerage accounts in Canad
 - A breakdown for each position
 - CSV import and export
 - A Markets tab: S&P 500 and Nasdaq futures, pre-market moves by sector, CNN's Fear & Greed Index and the US Treasury yield curve
+- A My Assets tab: net worth from your portfolios, accounts and other assets, minus your mortgages, and a payoff projection for each mortgage
 
 Requirements are tracked in [Project Requirements.md](Project%20Requirements.md).
 
@@ -39,6 +40,8 @@ Open http://localhost:5000. When `DEV_LOGIN=true`, you can click **Continue as l
 - **Book cost**: uses the average-cost method. Foreign purchases are converted to CAD at the exchange rate on the purchase date, so P/L includes currency gains.
 - **Returns**: these are time-weighted, so deposits and withdrawals don't distort them. That makes them directly comparable with VFV.TO.
 - **Holdings-only mode**: if you import trades but no deposits or withdrawals, buys are treated as contributions and cash is left out of the total.
+- **Net worth**: a portfolio or a set of accounts counts at its dashboard total value, at live prices. Other assets, such as a home, count at the value you enter. Mortgage balances are subtracted.
+- **Mortgages**: interest is compounded semi-annually (the Canadian standard for fixed rates) or monthly. Without a set payment, the payment is the one that pays the balance off over the amortization; accelerated bi-weekly and weekly payments are the monthly payment split in two or four. If you enter a balance from a statement, the projection starts from it. Estimates assume the current rate until the mortgage is paid off.
 - **Symbols**: CAD symbols without a suffix, such as `XEQT`, are matched to their TSX listing automatically (`XEQT.TO`). Symbols Yahoo doesn't know are valued at their last trade price.
 
 ## Deploy to PythonAnywhere (free)
@@ -102,6 +105,7 @@ The app runs at `https://<username>.pythonanywhere.com`. In the steps below, rep
 | Path | Purpose |
 |------|---------|
 | `app/portfolio.py` | Calculation engine (pure functions) |
+| `app/mortgage.py` | Mortgage payments and payoff projections (pure functions) |
 | `app/market.py` | Yahoo Finance client and caching |
 | `app/csv_io.py` | CSV import and export |
 | `app/views.py` | Pages and JSON API |

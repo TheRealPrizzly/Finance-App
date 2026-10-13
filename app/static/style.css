@@ -202,8 +202,24 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
 .fg-chip { display: inline-block; font-size: .78rem; font-weight: 600; padding: 1px 8px; border-radius: 999px; text-transform: capitalize; white-space: nowrap;
   color: var(--fg); background: color-mix(in srgb, var(--fg) 14%, transparent); }
 
+/* ---- My Assets ---------------------------------------------------------- */
+.table tbody.subtotal td { font-weight: 650; border-top: 1px solid var(--border); background: var(--surface-2); }
+.mortgage .kpis { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-bottom: 16px; }
+.mortgage-fields > label { align-content: start; }  /* inputs line up when a neighbour has a hint */
+.mortgage .kpi { box-shadow: none; background: var(--surface-2); border-color: transparent; min-height: 0; }
+.chart-head { margin: 4px 0 8px; }
+.chart-title { font-size: .95rem; font-weight: 650; margin: 0; }
+.kind-choice, .subfields { border: 0; padding: 0; margin: 16px 0 0; display: grid; gap: 8px; }
+.kind-choice legend, .subfields legend { font-size: .88rem; font-weight: 600; padding: 0; margin-bottom: 8px; }
+.kind-choice label.check { align-items: baseline; }
+.kind-fields { margin-top: 16px; }
+.kind-fields[hidden] { display: none; }
+.subfields { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+.subfields .hint { margin: 0 0 4px; max-width: 720px; }
+.error-items { margin: 0; padding-left: 1.2em; }
+
 /* ---- Tables ------------------------------------------------------------- */
-.table-wrap { overflow-x: auto; }
+.table-wrap { overflow-x: auto; position: relative; }  /* keeps .sr-only headers inside the scroller */
 .table-more { display: flex; justify-content: center; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
 .table-more:empty { display: none; }
 .table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }

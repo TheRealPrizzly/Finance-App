@@ -81,3 +81,42 @@ CREATE TABLE IF NOT EXISTS dismissed_warnings (
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (user_id, message)
 );
+
+-- Something the user owns, counted in their net worth: the live value of a portfolio or of chosen
+-- accounts, or a value entered by hand (a home, a car, ...).
+CREATE TABLE IF NOT EXISTS assets (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name          TEXT NOT NULL,
+    kind          TEXT NOT NULL,              -- 'portfolio', 'accounts' or 'manual'
+    portfolio_id  INTEGER REFERENCES portfolios(id) ON DELETE SET NULL,
+    value         REAL NOT NULL DEFAULT 0,    -- manual assets only, in the base currency
+    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS asset_accounts (
+    asset_id    INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+    account_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    PRIMARY KEY (asset_id, account_id)
+);
+
+-- A mortgage, amortized from its original amount, or from a statement balance when one is given.
+CREATE TABLE IF NOT EXISTS mortgages (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id              INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name                 TEXT NOT NULL,
+    lender               TEXT NOT NULL DEFAULT '',
+    principal            REAL NOT NULL,              -- original amount borrowed
+    start_date           TEXT NOT NULL,              -- YYYY-MM-DD; the first payment is one period later
+    rate                 REAL NOT NULL,              -- annual interest rate, percent
+    compounding          TEXT NOT NULL DEFAULT 'semi-annual',
+    amortization_months  INTEGER NOT NULL,
+    frequency            TEXT NOT NULL DEFAULT 'monthly',
+    payment              REAL,                       -- regular payment; NULL = calculated
+    extra_payment        REAL NOT NULL DEFAULT 0,    -- prepaid with every regular payment
+    term_end             TEXT,                       -- end of the current term (renewal date)
+    balance              REAL,                       -- balance from a statement, with ...
+    balance_date         TEXT,                       -- ... the date of that balance
+    created_at           TEXT NOT NULL DEFAULT (datetime('now'))
+);

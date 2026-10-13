@@ -11,6 +11,7 @@ from flask import (
 )
 
 from . import csv_io
+from . import mortgage as mg
 from . import portfolio as pf
 from .auth import login_required
 from .db import get_db
@@ -35,6 +36,22 @@ def money_filter(value, currency="CAD"):
         return "—"
     sign = "-" if value < 0 else ""
     return f"{sign}${abs(value):,.2f} {currency}"
+
+
+@bp.app_template_filter("amount")
+def amount_filter(value):
+    """Money in the base currency without the currency code, for pages that say which it is."""
+    if value is None:
+        return "—"
+    return f"{'-' if value < -0.005 else ''}${abs(value):,.2f}"
+
+
+@bp.app_template_filter("long_date")
+def long_date_filter(value, day=True):
+    if not value:
+        return "—"
+    d = date.fromisoformat(str(value)[:10])
+    return f"{d:%b} {d.day}, {d.year}" if day else f"{d:%B %Y}"
 
 
 @bp.app_template_filter("qty")
@@ -769,3 +786,409 @@ def export_csv():
 def import_template():
     return Response(csv_io.export([]), mimetype="text/csv",
                     headers={"Content-Disposition": "attachment; filename=transactions-template.csv"})
+
+
+# -- my assets: net worth ----------------------------------------------------------------------
+
+
+def assets_url(anchor="net-worth"):
+    """A section of the My Assets page."""
+    return url_for("views.assets", _anchor=anchor)
+
+
+def user_assets():
+    return get_db().execute(
+        "SELECT * FROM assets WHERE user_id = ? ORDER BY name COLLATE NOCASE, id", (g.user["id"],)
+    ).fetchall()
+
+
+def get_asset_or_404(asset_id):
+    row = get_db().execute("SELECT * FROM assets WHERE id = ? AND user_id = ?", (asset_id, g.user["id"])).fetchone()
+    if row is None:
+        abort(404)
+    return row
+
+
+def portfolio_members():
+    """{portfolio id: [account ids]} for the user's portfolios."""
+    out = {}
+    for r in get_db().execute(
+        """SELECT pa.portfolio_id, pa.account_id FROM portfolio_accounts pa
+           JOIN portfolios p ON p.id = pa.portfolio_id WHERE p.user_id = ? ORDER BY pa.account_id""",
+        (g.user["id"],),
+    ):
+        out.setdefault(r["portfolio_id"], []).append(r["account_id"])
+    return out
+
+
+def asset_members():
+    """{asset id: [account ids]} for assets made of chosen accounts."""
+    out = {}
+    for r in get_db().execute(
+        """SELECT aa.asset_id, aa.account_id FROM asset_accounts aa
+           JOIN assets s ON s.id = aa.asset_id WHERE s.user_id = ? ORDER BY aa.account_id""",
+        (g.user["id"],),
+    ):
+        out.setdefault(r["asset_id"], []).append(r["account_id"])
+    return out
+
+
+def asset_account_ids(asset, portfolios, members):
+    """The accounts whose value makes up `asset`, or None for a value entered by hand."""
+    if asset["kind"] == "manual":
+        return None
+    if asset["kind"] == "portfolio":
+        return portfolios.get(asset["portfolio_id"], [])
+    return members.get(asset["id"], [])
+
+
+def _parse_asset_form(form, accounts, portfolios):
+    """Validate the asset form. Returns (values, errors)."""
+    errors = []
+    v = {"name": form.get("name", "").strip(), "kind": form.get("kind", ""), "portfolio_id": None,
+         "account_ids": [], "value": 0.0}
+    if v["kind"] == "portfolio":
+        names = {p["id"]: p["name"] for p in portfolios}
+        raw = form.get("portfolio_id", "")
+        if raw.isdigit() and int(raw) in names:
+            v["portfolio_id"] = int(raw)
+            v["name"] = v["name"] or names[v["portfolio_id"]]
+        else:
+            errors.append("Choose a portfolio.")
+    elif v["kind"] == "accounts":
+        owned = {a["id"] for a in accounts}
+        v["account_ids"] = sorted({int(x) for x in form.getlist("account_ids") if x.isdigit() and int(x) in owned})
+        if not v["account_ids"]:
+            errors.append("Choose at least one account.")
+    elif v["kind"] == "manual":
+        raw = form.get("value", "").strip()
+        try:
+            v["value"] = csv_io.parse_number(raw)
+            if not raw:
+                errors.append("Enter what the asset is worth.")
+            elif v["value"] < 0:
+                errors.append("The value can't be negative. Enter debts as mortgages.")
+        except ValueError:
+            errors.append("The value must be a number.")
+    else:
+        errors.append("Choose what the asset is: a portfolio, accounts, or something else.")
+    if not v["name"]:
+        errors.insert(0, "Enter a name for the asset.")
+    return v, errors
+
+
+def _save_asset(asset_id, v):
+    db = get_db()
+    if asset_id is None:
+        asset_id = db.execute(
+            "INSERT INTO assets (user_id, name, kind, portfolio_id, value) VALUES (?, ?, ?, ?, ?)",
+            (g.user["id"], v["name"], v["kind"], v["portfolio_id"], v["value"]),
+        ).lastrowid
+    else:
+        db.execute(
+            """UPDATE assets SET name = ?, kind = ?, portfolio_id = ?, value = ?, updated_at = datetime('now')
+               WHERE id = ? AND user_id = ?""",
+            (v["name"], v["kind"], v["portfolio_id"], v["value"], asset_id, g.user["id"]),
+        )
+    db.execute("DELETE FROM asset_accounts WHERE asset_id = ?", (asset_id,))
+    db.executemany("INSERT INTO asset_accounts (asset_id, account_id) VALUES (?, ?)",
+                   [(asset_id, a) for a in v["account_ids"]])
+    db.commit()
+
+
+def render_my_assets(**extra):
+    """The My Assets page: net worth and mortgages."""
+    accounts = user_accounts()
+    mortgages = mortgage_projections(user_mortgages())
+    return render_template(
+        "assets.html", assets=user_assets(), accounts=accounts, portfolios=user_portfolios(),
+        labels={a["id"]: account_label(a) for a in accounts}, members=asset_members(), label=account_label,
+        mortgages=mortgages, mortgage_totals=mortgage_totals(mortgages),
+        mortgage_links=[(f"mortgage-{m['id']}", m["name"]) for m, _, _ in mortgages], today=date.today().isoformat(),
+        frequencies=mg.FREQUENCIES, compoundings=mg.COMPOUNDING, duration=mg.duration,
+        **{"asset_form": None, "asset_errors": [], "mortgage_form": new_mortgage_form(), "mortgage_errors": [], **extra},
+    )
+
+
+@bp.route("/assets", methods=["GET", "POST"])
+@login_required
+def assets():
+    """The My Assets page; a POST adds an asset."""
+    if request.method == "POST":
+        values, errors = _parse_asset_form(request.form, user_accounts(), user_portfolios())
+        if errors:
+            return render_my_assets(asset_form=request.form, asset_errors=errors)
+        _save_asset(None, values)
+        flash(f"Added {values['name']} to your assets.", "success")
+        return redirect(assets_url())
+    return render_my_assets()
+
+
+@bp.route("/assets/<int:asset_id>/edit", methods=["GET", "POST"])
+@login_required
+def edit_asset(asset_id):
+    asset = get_asset_or_404(asset_id)
+    accounts, portfolios = user_accounts(), user_portfolios()
+    if request.method == "POST":
+        values, errors = _parse_asset_form(request.form, accounts, portfolios)
+        if not errors:
+            _save_asset(asset_id, values)
+            flash(f"Updated {values['name']}.", "success")
+            return redirect(assets_url())
+        for e in errors:
+            flash(e, "error")
+        form = request.form
+    else:
+        form = None
+    return render_template("asset_form.html", asset=asset, accounts=accounts, portfolios=portfolios,
+                           asset_form=form, label=account_label, members=asset_members())
+
+
+@bp.post("/assets/<int:asset_id>/delete")
+@login_required
+def delete_asset(asset_id):
+    asset = get_asset_or_404(asset_id)
+    db = get_db()
+    db.execute("DELETE FROM assets WHERE id = ? AND user_id = ?", (asset_id, g.user["id"]))
+    db.commit()
+    flash(f"Removed {asset['name']} from your assets. Its accounts and transactions are unchanged.", "success")
+    return redirect(assets_url())
+
+
+def _and_list(names):
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+
+
+@bp.get("/api/assets")
+@login_required
+def api_assets():
+    """Each asset's value (live for portfolios and accounts), mortgage balances and net worth."""
+    labels = account_labels()
+    portfolios, members = portfolio_members(), asset_members()
+    market, base = get_market(), current_app.config["BASE_CURRENCY"]
+    values, totals, counted, warnings = [], {}, {}, []
+    for a in user_assets():
+        ids = asset_account_ids(a, portfolios, members)
+        if ids is None:
+            values.append({"id": a["id"], "kind": a["kind"], "value": a["value"]})
+            continue
+        if a["kind"] == "portfolio" and a["portfolio_id"] is None:
+            warnings.append(f"The portfolio behind {a['name']} was deleted, so it counts as $0. Edit it to choose another.")
+        elif not ids:
+            warnings.append(f"{a['name']} has no accounts, so it counts as $0.")
+        key = tuple(ids)
+        if key not in totals:  # the same accounts are only valued once
+            totals[key] = pf.snapshot(load_txns(ids), labels, market, base)["totals"]["total_value"] if ids else 0.0
+        for account_id in ids:
+            counted.setdefault(account_id, []).append(a["name"])
+        values.append({"id": a["id"], "kind": a["kind"], "value": totals[key]})
+    for account_id, names in counted.items():
+        if len(names) > 1:
+            warnings.append(f"{labels[account_id]} is part of {_and_list(names)}, so your net worth counts it "
+                            f"{len(names)} times.")
+    debts = [{"id": m["id"], "name": m["name"], "balance": p["balance"]}
+             for m, p, _ in mortgage_projections(user_mortgages()) if p]
+    total_assets = sum(v["value"] for v in values)
+    total_debts = sum(d["balance"] for d in debts)
+    return jsonify(assets=values, mortgages=debts, total_assets=total_assets, total_liabilities=total_debts,
+                   net_worth=total_assets - total_debts, warnings=visible_warnings(warnings),
+                   as_of=datetime.now().isoformat(timespec="seconds"))
+
+
+# -- my assets: mortgages ------------------------------------------------------------------------
+
+
+def user_mortgages():
+    return get_db().execute(
+        "SELECT * FROM mortgages WHERE user_id = ? ORDER BY start_date, id", (g.user["id"],)
+    ).fetchall()
+
+
+def get_mortgage_or_404(mortgage_id):
+    row = get_db().execute(
+        "SELECT * FROM mortgages WHERE id = ? AND user_id = ?", (mortgage_id, g.user["id"])
+    ).fetchone()
+    if row is None:
+        abort(404)
+    return row
+
+
+def mortgage_projections(rows, today=None):
+    """[(mortgage, projection, None)], or (mortgage, None, error) for one that can't be projected."""
+    out = []
+    for m in rows:
+        try:
+            out.append((m, mg.project(m, today), None))
+        except mg.NeverPaidOff as exc:
+            out.append((m, None, str(exc)))
+    return out
+
+
+def mortgage_totals(projections):
+    """What all the mortgages add up to, for the summary above them."""
+    ok = [p for _, p, _ in projections if p]
+    payoffs = [p["payoff_date"] for p in ok if p["payoff_date"]]
+    return {"balance": sum(p["balance"] for p in ok),
+            "monthly_cost": sum(p["monthly_cost"] for p in ok if p["balance"] > 0.005),
+            "interest_left": sum(p["interest_left"] for p in ok), "payoff_date": max(payoffs) if payoffs else None}
+
+
+def _num(value, places=2):
+    """A number for a form field: blank for None, without trailing zeros."""
+    if value is None:
+        return ""
+    return f"{value:.{places}f}".rstrip("0").rstrip(".")
+
+
+def new_mortgage_form():
+    return {"start_date": date.today().isoformat(), "compounding": "semi-annual", "frequency": "monthly",
+            "amortization_years": "25", "amortization_months": "0"}
+
+
+def mortgage_form_values(m):
+    """The mortgage form, filled in from a saved mortgage."""
+    return {"name": m["name"], "lender": m["lender"], "principal": _num(m["principal"]), "start_date": m["start_date"],
+            "rate": _num(m["rate"], 4), "compounding": m["compounding"], "frequency": m["frequency"],
+            "amortization_years": str(m["amortization_months"] // 12),
+            "amortization_months": str(m["amortization_months"] % 12),
+            "payment": _num(m["payment"]), "extra_payment": _num(m["extra_payment"] or None),
+            "term_end": m["term_end"] or "", "balance": _num(m["balance"]), "balance_date": m["balance_date"] or ""}
+
+
+def _parse_mortgage_form(form, today=None):
+    """Validate the mortgage form. Returns (values, errors)."""
+    today = today or date.today()
+    errors = []
+
+    def number(field, label, required=False):
+        raw = form.get(field, "").strip()
+        if not raw:
+            if required:
+                errors.append(f"Enter the {label}.")
+            return None
+        try:
+            return csv_io.parse_number(raw)
+        except ValueError:
+            errors.append(f"The {label} must be a number.")
+            return None
+
+    def day(field, label, required=False):
+        raw = form.get(field, "").strip()
+        if not raw:
+            if required:
+                errors.append(f"Enter the {label}.")
+            return None
+        try:
+            return date.fromisoformat(raw)
+        except ValueError:
+            errors.append(f"Enter a valid {label}.")
+            return None
+
+    name = form.get("name", "").strip()
+    if not name:
+        errors.append("Enter a name for the mortgage, such as Home.")
+    principal = number("principal", "original amount", required=True)
+    if principal is not None and principal <= 0:
+        errors.append("The original amount must be greater than zero.")
+    start = day("start_date", "start date", required=True)
+    rate = number("rate", "interest rate", required=True)
+    if rate is not None and not 0 <= rate <= 30:
+        errors.append("The interest rate must be between 0% and 30%.")
+    compounding = form.get("compounding", "")
+    if compounding not in mg.COMPOUNDING:
+        errors.append("Choose how often interest is compounded.")
+    frequency = form.get("frequency", "")
+    if frequency not in mg.FREQUENCIES:
+        errors.append("Choose how often you make payments.")
+    years = number("amortization_years", "amortization years") or 0
+    months = number("amortization_months", "amortization months") or 0
+    amortization = round(years * 12 + months)
+    if not 1 <= amortization <= 600:
+        errors.append("The amortization must be between 1 month and 50 years.")
+    payment = number("payment", "payment amount")
+    if payment is not None and payment <= 0:
+        errors.append("The payment must be greater than zero, or left blank to calculate it.")
+    extra = number("extra_payment", "extra payment") or 0.0
+    if extra < 0:
+        errors.append("The extra payment can't be negative.")
+    term_end = day("term_end", "term end date")
+    if start and term_end and term_end <= start:
+        errors.append("The term must end after the mortgage starts.")
+    balance = number("balance", "balance from your statement")
+    balance_date = day("balance_date", "statement date")
+    if (balance is None) != (balance_date is None):
+        errors.append("Enter both the balance from your statement and its date, or leave both blank.")
+    elif balance is not None:
+        if balance < 0:
+            errors.append("The balance from your statement can't be negative.")
+        if start and balance_date < start:
+            errors.append("The statement date can't be before the mortgage started.")
+        if balance_date > today:
+            errors.append("The statement date can't be in the future.")
+
+    values = {"name": name, "lender": form.get("lender", "").strip(), "principal": principal,
+              "start_date": start.isoformat() if start else None, "rate": rate, "compounding": compounding,
+              "amortization_months": amortization, "frequency": frequency, "payment": payment,
+              "extra_payment": extra, "term_end": term_end.isoformat() if term_end else None,
+              "balance": balance, "balance_date": balance_date.isoformat() if balance_date else None}
+    if not errors:
+        try:
+            mg.project(values, today)
+        except mg.NeverPaidOff as exc:
+            errors.append(str(exc))
+    return values, errors
+
+
+MORTGAGE_COLUMNS = ("name", "lender", "principal", "start_date", "rate", "compounding", "amortization_months",
+                    "frequency", "payment", "extra_payment", "term_end", "balance", "balance_date")
+
+
+@bp.post("/mortgages")
+@login_required
+def new_mortgage():
+    values, errors = _parse_mortgage_form(request.form)
+    if errors:
+        return render_my_assets(mortgage_form=request.form, mortgage_errors=errors)
+    db = get_db()
+    cur = db.execute(
+        f"INSERT INTO mortgages (user_id, {', '.join(MORTGAGE_COLUMNS)}) VALUES (?{', ?' * len(MORTGAGE_COLUMNS)})",
+        (g.user["id"], *(values[c] for c in MORTGAGE_COLUMNS)),
+    )
+    db.commit()
+    flash(f"Added the {values['name']} mortgage.", "success")
+    return redirect(assets_url(f"mortgage-{cur.lastrowid}"))
+
+
+@bp.route("/mortgages/<int:mortgage_id>/edit", methods=["GET", "POST"])
+@login_required
+def edit_mortgage(mortgage_id):
+    mortgage = get_mortgage_or_404(mortgage_id)
+    if request.method == "POST":
+        values, errors = _parse_mortgage_form(request.form)
+        if not errors:
+            db = get_db()
+            db.execute(
+                f"UPDATE mortgages SET {', '.join(f'{c} = ?' for c in MORTGAGE_COLUMNS)} WHERE id = ? AND user_id = ?",
+                (*(values[c] for c in MORTGAGE_COLUMNS), mortgage_id, g.user["id"]),
+            )
+            db.commit()
+            flash(f"Updated the {values['name']} mortgage.", "success")
+            return redirect(assets_url(f"mortgage-{mortgage_id}"))
+        for e in errors:
+            flash(e, "error")
+        form = request.form
+    else:
+        form = mortgage_form_values(mortgage)
+    return render_template("mortgage_form.html", mortgage=mortgage, mortgage_form=form,
+                           frequencies=mg.FREQUENCIES, compoundings=mg.COMPOUNDING)
+
+
+@bp.post("/mortgages/<int:mortgage_id>/delete")
+@login_required
+def delete_mortgage(mortgage_id):
+    mortgage = get_mortgage_or_404(mortgage_id)
+    db = get_db()
+    db.execute("DELETE FROM mortgages WHERE id = ? AND user_id = ?", (mortgage_id, g.user["id"]))
+    db.commit()
+    flash(f"Deleted the {mortgage['name']} mortgage.", "success")
+    return redirect(assets_url("mortgages"))

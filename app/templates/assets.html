@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% block title %}My Assets · Portfolio Manager{% endblock %}
+{% block page %}assets{% endblock %}
+{% set sections = [
+  ("net-worth", "My Net Worth", [("asset-list", "Assets"), ("add-asset", "Add an asset")]),
+  ("mortgages", "My Mortgages", mortgage_links + [("add-mortgage", "Add a mortgage")]),
+] %}
+{% macro kpi(label, value, sub="", tone="") %}
+  <div class="kpi"><div class="kpi-label">{{ label }}</div>
+    <div class="kpi-value {{ tone }}" title="{{ value }}">{{ value }}</div>
+    <div class="kpi-sub">{{ sub }}</div></div>
+{% endmacro %}
+{% macro form_errors(errors) %}
+  {% if errors %}
+  <div class="alert alert-error" role="alert">
+    {% if errors|length == 1 %}{{ errors[0] }}{% else %}<ul class="error-items">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+  </div>
+  {% endif %}
+{% endmacro %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>My Assets</h1>
+    <p class="muted" id="as-of">{% if assets %}Loading live values…{% else %}Values in {{ base_currency }}.{% endif %}</p>
+  </div>
+</div>
+
+<div id="app" data-assets-url="{{ url_for('views.api_assets') }}" data-base="{{ base_currency }}" data-today="{{ today }}">
+  <div id="notices"></div>
+
+  {# ---- My Net Worth ---- #}
+  <h2 class="group-title" id="net-worth">My Net Worth</h2>
+  <section class="kpis" id="worth-kpis" aria-live="polite">
+    {% for _ in range(3) %}<div class="kpi skeleton"></div>{% endfor %}
+  </section>
+
+  {% if assets or mortgages %}
+  <section class="card flush" id="asset-list">
+    <div class="table-wrap">
+      <table class="table" id="assets-table">
+        <thead>
+          <tr><th>Asset</th><th>What it is</th><th class="num">Value</th><th class="num">Share</th><th><span class="sr-only">Actions</span></th></tr>
+        </thead>
+        <tbody>
+          {% for a in assets %}
+          <tr data-asset="{{ a.id }}">
+            <td>{{ a.name }}</td>
+            <td>
+              {% if a.kind == 'portfolio' %}
+                {% set p = portfolios|selectattr('id', 'equalto', a.portfolio_id)|first %}
+                {% if p %}<a href="{{ url_for('views.dashboard', portfolio=p.id) }}">Portfolio · {{ p.name }}</a>
+                {% else %}<span class="loss">Portfolio deleted</span>{% endif %}
+              {% elif a.kind == 'accounts' %}
+                {% for id in members.get(a.id, []) %}<div><a href="{{ url_for('views.dashboard', account=id) }}">{{ labels[id] }}</a></div>
+                {% else %}<span class="loss">No accounts</span>{% endfor %}
+              {% else %}
+                <span class="muted">Value entered {{ a.updated_at|long_date }}</span>
+              {% endif %}
+            </td>
+            <td class="num nowrap" data-value>{% if a.kind == 'manual' %}{{ a.value|amount }}{% else %}<span class="muted">Loading…</span>{% endif %}</td>
+            <td class="num" data-share>—</td>
+            <td><div class="row-actions"><a class="btn btn-ghost btn-sm" href="{{ url_for('views.edit_asset', asset_id=a.id) }}">Edit</a></div></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="muted">No assets yet. Add one below.</td></tr>
+          {% endfor %}
+        </tbody>
+        <tbody class="subtotal">
+          <tr><td colspan="2">Total assets</td><td class="num nowrap" id="total-assets">—</td><td colspan="2"></td></tr>
+        </tbody>
+        {% if mortgages %}
+        <tbody>
+          {% for m, p, err in mortgages %}
+          <tr>
+            <td>{{ m.name }}</td>
+            <td><a href="#mortgage-{{ m.id }}">Mortgage{% if m.lender %} · {{ m.lender }}{% endif %}</a></td>
+            <td class="num nowrap">{% if p %}<span class="loss">−{{ p.balance|amount }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+            <td colspan="2"></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        {% endif %}
+        <tfoot>
+          <tr><td colspan="2">Net worth</td><td class="num nowrap" id="net-worth-total">—</td><td colspan="2"></td></tr>
+        </tfoot>
+      </table>
+    </div>
+  </section>
+  {% else %}
+  <section class="card empty" id="asset-list">
+    <h2>No assets yet</h2>
+    <p class="muted">Add your portfolios or accounts, and things like your home or savings, to see your net worth.
+      Mortgages you add below are subtracted from it.</p>
+  </section>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('views.assets') }}" class="card form" id="add-asset"{% if asset_errors %} data-errors{% endif %}>
+    <h2>Add an asset</h2>
+    <p class="hint">Portfolios and accounts are valued at live prices, the same way as on the dashboard.</p>
+    {{ form_errors(asset_errors) }}
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% with asset=None %}{% include "_asset_fields.html" %}{% endwith %}
+    <div class="form-actions"><button class="btn btn-primary" type="submit">Add asset</button></div>
+  </form>
+
+  {# ---- My Mortgages ---- #}
+  <h2 class="group-title" id="mortgages">My Mortgages</h2>
+  {% if mortgages|length > 1 %}
+  <section class="kpis" id="mortgage-kpis">
+    {{ kpi("Total owed", mortgage_totals.balance|amount, "Across %d mortgages" % mortgages|length) }}
+    {{ kpi("Payments", mortgage_totals.monthly_cost|amount, "A month, on average") }}
+    {{ kpi("Interest still to pay", mortgage_totals.interest_left|amount, "If rates stay the same") }}
+    {{ kpi("Mortgage-free", mortgage_totals.payoff_date|long_date(false), "Estimated final payment") }}
+  </section>
+  {% endif %}
+
+  {% for m, p, err in mortgages %}
+  <section class="card mortgage" id="mortgage-{{ m.id }}">
+    <div class="card-head">
+      <div>
+        <h3>{{ m.name }}</h3>
+        <div class="hint">{% if m.lender %}{{ m.lender }} · {% endif %}{{ '%g' % m.rate }}% · {{ frequencies[m.frequency][0] }} payments · {{ duration(m.amortization_months) }} amortization</div>
+      </div>
+      <a class="btn btn-secondary btn-sm" href="{{ url_for('views.edit_mortgage', mortgage_id=m.id) }}">Edit</a>
+    </div>
+    {% if err %}
+    <div class="alert alert-error">{{ err }} <a href="{{ url_for('views.edit_mortgage', mortgage_id=m.id) }}">Edit the mortgage</a> to fix it.</div>
+    {% else %}
+    <div class="kpis">
+      {{ kpi("Outstanding balance", p.balance|amount,
+             "of %s borrowed · %.0f%% paid off" % (m.principal|amount, (p.paid_pct or 0) * 100)) }}
+      {{ kpi("Regular payment", p.payment|amount,
+             frequencies[m.frequency][0] ~ (" + %s extra" % (p.extra_payment|amount) if p.extra_payment else "")
+             ~ (" · calculated" if p.payment_calculated else "")) }}
+      {% if p.payoff_date and p.balance > 0.005 %}
+        {{ kpi("Estimated final payment", p.payoff_date|long_date(false),
+               "In %s · %d payment%s left" % (duration(p.months_left), p.payments_left, "" if p.payments_left == 1 else "s")) }}
+      {% else %}
+        {{ kpi("Estimated final payment", "Paid off", (p.payoff_date|long_date) if p.payoff_date else "", "gain") }}
+      {% endif %}
+      {{ kpi("Interest still to pay", p.interest_left|amount, "At %g%% until paid off" % m.rate) }}
+      {% if p.term_end %}
+        {{ kpi("Balance at renewal", p.term_end_balance|amount, "Term ends " ~ (p.term_end|long_date)) }}
+      {% endif %}
+      {% if p.interest_saved %}
+        {{ kpi("Saved by extra payments", p.interest_saved|amount,
+               "In interest · paid off %s sooner" % duration(p.months_saved), "gain") }}
+      {% endif %}
+    </div>
+    <div class="card-head chart-head">
+      <h4 class="chart-title">Estimated payback</h4>
+      <div class="seg" role="group" aria-label="Chart">
+        <button type="button" data-mode="balance" aria-pressed="true">Balance</button>
+        <button type="button" data-mode="years" aria-pressed="false">Principal &amp; interest by year</button>
+      </div>
+    </div>
+    <div class="chart-box">
+      <canvas role="img" aria-label="Estimated balance of the {{ m.name }} mortgage until it is paid off"
+              data-chart='{{ p.chart|tojson }}'></canvas>
+    </div>
+    <p class="hint">
+      {% if m.balance is not none and m.balance_date %}Projected from the {{ m.balance|amount }} balance on your {{ m.balance_date|long_date }} statement.
+      {% else %}Projected from the {{ m.principal|amount }} borrowed on {{ m.start_date|long_date }}.{% endif %}
+      Assumes {{ '%g' % m.rate }}% interest, compounded {{ 'semi-annually' if m.compounding == 'semi-annual' else 'monthly' }}, until the mortgage is paid off;
+      the solid line is the estimated balance so far, the dashed line what is still to come. Your lender's figures may differ slightly.
+    </p>
+    {% endif %}
+  </section>
+  {% else %}
+  <section class="card empty">
+    <h2>No mortgages yet</h2>
+    <p class="muted">Add a mortgage below to see its outstanding balance, when it will be paid off, and a chart of the payback.</p>
+  </section>
+  {% endfor %}
+
+  <form method="post" action="{{ url_for('views.new_mortgage') }}" class="card form" id="add-mortgage"{% if mortgage_errors %} data-errors{% endif %}>
+    <h2>Add a mortgage</h2>
+    <p class="hint">Enter the mortgage as it was when it started. The amounts are in {{ base_currency }}.</p>
+    {{ form_errors(mortgage_errors) }}
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% include "_mortgage_fields.html" %}
+    <div class="form-actions"><button class="btn btn-primary" type="submit">Add mortgage</button></div>
+  </form>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% endblock %}

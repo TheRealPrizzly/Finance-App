@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Edit asset · Portfolio Manager{% endblock %}
+{% block page %}asset-form{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a class="back" href="{{ url_for('views.assets', _anchor='net-worth') }}">← My Assets</a>
+    <h1>Edit asset</h1>
+  </div>
+</div>
+<form method="post" class="card form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% include "_asset_fields.html" %}
+  <div class="form-actions">
+    <button class="btn btn-primary" type="submit">Save</button>
+    <a class="btn btn-ghost" href="{{ url_for('views.assets', _anchor='net-worth') }}">Cancel</a>
+  </div>
+</form>
+<form method="post" action="{{ url_for('views.delete_asset', asset_id=asset.id) }}" class="danger-zone"
+      onsubmit="return confirm('Remove this asset from your net worth? Its accounts and transactions are kept.')">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button class="btn btn-danger" type="submit">Remove asset</button>
+</form>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% endblock %}

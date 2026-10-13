@@ -1,0 +1,47 @@
+{# Fields of the "Add an asset" and "Edit asset" forms. `asset_form` is the submitted form after an error.
+   app.js shows only the fields for the kind of asset chosen. #}
+{% set f = asset_form %}
+{% set kind = f.get('kind', '') if f else (asset.kind if asset else 'portfolio') %}
+{% set chosen_portfolio = f.get('portfolio_id', '') if f else (asset.portfolio_id|string if asset and asset.portfolio_id else '') %}
+{% set chosen_accounts = f.getlist('account_ids') if f else (members.get(asset.id, [])|map('string')|list if asset else []) %}
+<div class="form-grid">
+  <label>Name
+    <input name="name" value="{{ f.get('name', '') if f else (asset.name if asset else '') }}" placeholder="e.g. Retirement, Home, Car" autocomplete="off">
+    <span class="hint">For a portfolio, leave it blank to use the portfolio's name.</span>
+  </label>
+</div>
+<fieldset class="kind-choice" data-asset-kind>
+  <legend>What is it?</legend>
+  <label class="check"><input type="radio" name="kind" value="portfolio" {% if kind == 'portfolio' %}checked{% endif %}>
+    <span>A portfolio <span class="hint">· its total value</span></span></label>
+  <label class="check"><input type="radio" name="kind" value="accounts" {% if kind == 'accounts' %}checked{% endif %}>
+    <span>Accounts <span class="hint">· the total value of the accounts you pick</span></span></label>
+  <label class="check"><input type="radio" name="kind" value="manual" {% if kind == 'manual' %}checked{% endif %}>
+    <span>Something else <span class="hint">· a home, a car, savings… enter its value</span></span></label>
+</fieldset>
+<div class="form-grid kind-fields" data-kind="portfolio">
+  {% if portfolios %}
+  <label>Portfolio
+    <select name="portfolio_id">
+      {% for p in portfolios %}<option value="{{ p.id }}" {% if p.id|string == chosen_portfolio %}selected{% endif %}>{{ p.name }}</option>{% endfor %}
+    </select>
+  </label>
+  {% else %}
+  <p class="hint">No portfolios yet. <a href="{{ url_for('views.portfolios', _anchor='create-portfolio') }}">Create a portfolio</a>, or pick accounts instead.</p>
+  {% endif %}
+</div>
+<fieldset class="check-list kind-fields" data-kind="accounts">
+  <legend>Accounts</legend>
+  {% for a in accounts %}
+    <label class="check"><input type="checkbox" name="account_ids" value="{{ a.id }}" {% if a.id|string in chosen_accounts %}checked{% endif %}> {{ label(a) }}</label>
+  {% else %}
+    <p class="hint">No accounts yet. <a href="{{ url_for('views.portfolios', _anchor='accounts') }}">Add an account</a> or import a CSV first.</p>
+  {% endfor %}
+</fieldset>
+<div class="form-grid kind-fields" data-kind="manual">
+  <label>Value ({{ base_currency }})
+    <input name="value" inputmode="decimal" placeholder="e.g. 650000" autocomplete="off"
+           value="{{ f.get('value', '') if f else ('%.2f' % asset.value if asset and asset.kind == 'manual' else '') }}">
+    <span class="hint">What it would sell for today. Update it from time to time.</span>
+  </label>
+</div>

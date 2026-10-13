@@ -432,3 +432,122 @@ def test_section_sidebar(app, client):
     for path in ("/position/VFV.TO", "/transactions/new"):
         html = client.get(path).get_data(as_text=True)
         assert 'class="sidenav"' not in html and "sidenav.js" not in html, path
+
+
+MORTGAGE = {"name": "Home", "lender": "RBC", "principal": "500,000", "start_date": "2022-06-01", "rate": "5",
+            "compounding": "semi-annual", "amortization_years": "25", "amortization_months": "0",
+            "frequency": "monthly", "payment": "", "extra_payment": "", "term_end": "2027-06-01",
+            "balance": "", "balance_date": ""}
+
+
+def test_my_assets_net_worth(client):
+    token = login(client)
+    upload(client, token)
+    client.post("/portfolios", data={"csrf_token": token, "name": "Retirement", "account_ids": ["1", "2"]})
+    html = client.get("/assets").get_data(as_text=True)
+    assert "My Net Worth" in html and "My Mortgages" in html and 'aria-current="page">My Assets' in html
+
+    # A portfolio (named after it when the name is blank), chosen accounts, and a value entered by hand.
+    resp = client.post("/assets", data={"csrf_token": token, "kind": "portfolio", "portfolio_id": "1", "name": ""})
+    assert resp.headers["Location"].endswith("/assets#net-worth")
+    client.post("/assets", data={"csrf_token": token, "kind": "accounts", "account_ids": ["2"], "name": "RRSP"})
+    client.post("/assets", data={"csrf_token": token, "kind": "manual", "value": "$650,000", "name": "House"})
+    client.post("/mortgages", data={"csrf_token": token, **MORTGAGE})
+
+    whole = client.get("/api/portfolio?portfolio=1").get_json()["totals"]["total_value"]
+    rrsp = client.get("/api/portfolio?account=2").get_json()["totals"]["total_value"]
+    data = client.get("/api/assets").get_json()
+    values = {a["id"]: a["value"] for a in data["assets"]}
+    assert values == {1: whole, 2: rrsp, 3: 650000}
+    assert data["total_assets"] == whole + rrsp + 650000
+    assert len(data["mortgages"]) == 1 and 400000 < data["total_liabilities"] < 500000
+    assert data["net_worth"] == data["total_assets"] - data["total_liabilities"]
+    # The RRSP is in the portfolio too, so it is counted twice.
+    assert any("counts it 2 times" in w for w in data["warnings"])
+
+    html = client.get("/assets").get_data(as_text=True)
+    assert "Portfolio · Retirement" in html and "$650,000.00" in html and 'id="mortgage-1"' in html
+
+    # Edit: the house is revalued; deleting the portfolio leaves its asset at $0 with a warning.
+    assert client.get("/assets/3/edit").status_code == 200
+    client.post("/assets/3/edit", data={"csrf_token": token, "kind": "manual", "value": "700000", "name": "House"})
+    client.post("/portfolios/1/delete", data={"csrf_token": token})
+    data = client.get("/api/assets").get_json()
+    values = {a["id"]: a["value"] for a in data["assets"]}
+    assert values[3] == 700000 and values[1] == 0
+    assert any("was deleted" in w for w in data["warnings"])
+    assert "Portfolio deleted" in client.get("/assets").get_data(as_text=True)
+
+    client.post("/assets/1/delete", data={"csrf_token": token})
+    assert [a["id"] for a in client.get("/api/assets").get_json()["assets"]] == [3, 2]  # sorted by name
+
+
+def test_asset_form_errors(client):
+    token = login(client)
+    html = client.post("/assets", data={"csrf_token": token, "kind": "manual", "value": "", "name": ""}).get_data(as_text=True)
+    assert "Enter a name for the asset." in html and "Enter what the asset is worth." in html
+    assert "data-errors" in html
+    html = client.post("/assets", data={"csrf_token": token, "kind": "accounts", "name": "X"}).get_data(as_text=True)
+    assert "Choose at least one account." in html
+    html = client.post("/assets", data={"csrf_token": token, "kind": "portfolio", "portfolio_id": "99", "name": "X"}).get_data(as_text=True)
+    assert "Choose a portfolio." in html
+    html = client.post("/assets", data={"csrf_token": token, "kind": "manual", "value": "-5", "name": "X"}).get_data(as_text=True)
+    assert "can&#39;t be negative" in html
+    assert client.get("/api/assets").get_json()["assets"] == []
+
+
+def test_mortgages(client):
+    token = login(client)
+    resp = client.post("/mortgages", data={"csrf_token": token, **MORTGAGE})
+    assert resp.headers["Location"].endswith("/assets#mortgage-1")
+    html = client.get("/assets").get_data(as_text=True)
+    assert "Outstanding balance" in html and "Estimated final payment" in html and "June 2047" in html
+    assert "$2,908.03" in html and "Balance at renewal" in html
+    assert re.search(r'<canvas[^>]+data-chart=', html)
+    assert 'href="#mortgage-1">Home</a>' in html  # in the section sidebar
+
+    # Edit page is filled in from the saved mortgage; saving an extra payment shows what it saves.
+    html = client.get("/mortgages/1/edit").get_data(as_text=True)
+    assert 'name="principal" value="500000"' in html and 'value="accelerated-bi-weekly"' in html
+    client.post("/mortgages/1/edit", data={"csrf_token": token, **MORTGAGE, "extra_payment": "250"})
+    assert "Saved by extra payments" in client.get("/assets").get_data(as_text=True)
+
+    # A second mortgage adds a summary across both.
+    client.post("/mortgages", data={"csrf_token": token, **MORTGAGE, "name": "Cottage", "principal": "200000"})
+    html = client.get("/assets").get_data(as_text=True)
+    assert 'id="mortgage-kpis"' in html and "Mortgage-free" in html
+
+    client.post("/mortgages/1/delete", data={"csrf_token": token})
+    assert [m["name"] for m in client.get("/api/assets").get_json()["mortgages"]] == ["Cottage"]
+
+
+def test_mortgage_form_errors(client):
+    token = login(client)
+    cases = {
+        "Enter the original amount.": {"principal": ""},
+        "The interest rate must be between 0% and 30%.": {"rate": "45"},
+        "The amortization must be between 1 month and 50 years.": {"amortization_years": "0"},
+        "never be paid off": {"payment": "1000"},
+        "Enter both the balance from your statement and its date": {"balance": "400000"},
+        "The statement date can&#39;t be in the future.": {"balance": "1", "balance_date": "2999-01-01"},
+        "The term must end after the mortgage starts.": {"term_end": "2020-01-01"},
+        "Choose how often you make payments.": {"frequency": "yearly"},
+    }
+    for message, change in cases.items():
+        html = client.post("/mortgages", data={"csrf_token": token, **MORTGAGE, **change}).get_data(as_text=True)
+        assert message in html, message
+        assert 'value="RBC"' in html  # what was typed is kept
+    assert client.get("/api/assets").get_json()["mortgages"] == []
+
+
+def test_assets_and_mortgages_are_private(app, client):
+    token = login(client)
+    client.post("/assets", data={"csrf_token": token, "kind": "manual", "value": "1000", "name": "Car"})
+    client.post("/mortgages", data={"csrf_token": token, **MORTGAGE})
+    login_as(app, client, "someone-else", "else@example.com")
+    data = client.get("/api/assets").get_json()
+    assert data["assets"] == [] and data["mortgages"] == []
+    for path in ("/assets/1/edit", "/mortgages/1/edit"):
+        assert client.get(path).status_code == 404
+    assert client.post("/mortgages/1/delete", data={"csrf_token": "token"}).status_code == 404
+    assert client.post("/assets/1/delete", data={"csrf_token": "token"}).status_code == 404

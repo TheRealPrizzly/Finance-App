@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Edit mortgage · Portfolio Manager{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a class="back" href="{{ url_for('views.assets', _anchor='mortgage-%d' % mortgage.id) }}">← My Assets</a>
+    <h1>Edit mortgage</h1>
+  </div>
+</div>
+<form method="post" class="card form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% include "_mortgage_fields.html" %}
+  <div class="form-actions">
+    <button class="btn btn-primary" type="submit">Save</button>
+    <a class="btn btn-ghost" href="{{ url_for('views.assets', _anchor='mortgage-%d' % mortgage.id) }}">Cancel</a>
+  </div>
+</form>
+<form method="post" action="{{ url_for('views.delete_mortgage', mortgage_id=mortgage.id) }}" class="danger-zone"
+      onsubmit="return confirm('Delete this mortgage? This cannot be undone.')">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button class="btn btn-danger" type="submit">Delete mortgage</button>
+</form>
+{% endblock %}

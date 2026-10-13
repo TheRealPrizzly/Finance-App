@@ -1174,6 +1174,160 @@
     document.addEventListener("visibilitychange", () => { if (!document.hidden) loadPremarket(); });
   }
 
-  const pages = { dashboard, performance, position, "txn-form": txnForm, markets };
+  // ---- My Assets tab ---------------------------------------------------------------
+  // Asset forms show only the fields for the kind of asset chosen (portfolio, accounts or a value).
+  function assetForms() {
+    document.querySelectorAll("[data-asset-kind]").forEach((group) => {
+      const form = group.closest("form");
+      const update = () => {
+        const kind = form.querySelector('input[name="kind"]:checked')?.value;
+        form.querySelectorAll("[data-kind]").forEach((el) => { el.hidden = el.dataset.kind !== kind; });
+      };
+      group.addEventListener("change", update);
+      update();
+    });
+  }
+
+  function myAssets() {
+    const urls = root.dataset;
+    const monthName = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-CA", { month: "long", year: "numeric" });
+    chartDefaults();
+    assetForms();
+    // A form that came back with errors is further down the page: bring it into view.
+    document.querySelector("form[data-errors]")?.scrollIntoView({ block: "start" });
+
+    // Net worth: portfolio and account values are live, so they come from the API.
+    async function loadWorth() {
+      let data;
+      try {
+        data = await getJSON(urls.assetsUrl);
+      } catch (err) {
+        $("as-of").textContent = `Couldn't load values: ${err.message}`;
+        $("worth-kpis").innerHTML = "";
+        return;
+      }
+      const updated = new Date(data.as_of).toLocaleTimeString("en-CA", { hour: "numeric", minute: "2-digit" });
+      const live = data.assets.some((a) => a.kind !== "manual");
+      $("as-of").textContent = live
+        ? `Portfolios and accounts at live prices from Yahoo Finance · updated ${updated} · values in ${BASE}`
+        : `Values in ${BASE}`;
+      notices(data.warnings.map((w) => ["warning", w]));
+
+      const investments = data.assets.filter((a) => a.kind !== "manual").reduce((s, a) => s + a.value, 0);
+      const count = data.mortgages.length;
+      $("worth-kpis").innerHTML = [
+        kpi("Net worth", money(data.net_worth), "Assets minus mortgages", data.net_worth < 0 ? "loss" : ""),
+        kpi("Total assets", money(data.total_assets),
+          `${money(investments)} investments · ${money(data.total_assets - investments)} other`),
+        kpi("Mortgages owed", money(data.total_liabilities), count ? `${count} mortgage${count === 1 ? "" : "s"}` : "No mortgages"),
+      ].join("");
+
+      for (const a of data.assets) {
+        const row = document.querySelector(`tr[data-asset="${a.id}"]`);
+        if (!row) continue;
+        row.querySelector("[data-value]").textContent = money(a.value);
+        row.querySelector("[data-share]").textContent = data.total_assets > 0 ? pct(a.value / data.total_assets, { signed: false }) : "—";
+      }
+      if ($("total-assets")) $("total-assets").textContent = money(data.total_assets);
+      if ($("net-worth-total")) {
+        $("net-worth-total").textContent = money(data.net_worth);
+        $("net-worth-total").className = `num nowrap ${data.net_worth < 0 ? "loss" : ""}`;
+      }
+    }
+
+    // Mortgages: each card carries its projection; the chart shows the balance or a yearly split.
+    function balanceChart(canvas, d) {
+      const labels = d.dates;
+      const now = labels.findIndex((iso) => iso >= urls.today);  // the month we are in
+      const c1 = cssVar("--chart-1"), c3 = cssVar("--chart-3");
+      const datasets = [{
+        label: "Balance", data: d.balance, borderColor: c1, backgroundColor: `${c1}22`, fill: true, borderWidth: 2,
+        // Solid up to this month, dashed for the months still to come.
+        segment: { borderDash: (ctx) => (now >= 0 && ctx.p0DataIndex >= now ? [6, 4] : undefined) },
+        pointRadius: labels.map((_, i) => (i === now ? 4 : 0)), pointBackgroundColor: c1,
+        pointBorderColor: cssVar("--surface"), pointBorderWidth: 2, pointHoverRadius: 4,
+      }];
+      if (d.base_balance) {
+        datasets.push({ label: "Without extra payments", data: d.base_balance, borderColor: c3, borderDash: [4, 4],
+          borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 3 });
+      }
+      return new Chart(canvas, {
+        type: "line",
+        data: { labels, datasets },
+        options: {
+          maintainAspectRatio: false,
+          animation: false,
+          interaction: { mode: "index", intersect: false },
+          scales: {
+            x: { grid: { display: false },
+              ticks: { maxTicksLimit: 8, autoSkip: true, maxRotation: 0,
+                callback: (v) => new Date(`${labels[v]}T00:00:00`).getFullYear() } },
+            y: { beginAtZero: true, ticks: { callback: (v) => money(v, BASE, { compact: true }) } },
+          },
+          plugins: {
+            legend: { display: !!d.base_balance, position: "bottom", labels: { boxWidth: 12 } },
+            tooltip: { callbacks: {
+              title: (items) => `End of ${monthName(labels[items[0].dataIndex])}${items[0].dataIndex === now ? " (this month)" : ""}`,
+              label: (c) => ` ${c.dataset.label}: ${money(c.parsed.y)}`,
+            } },
+          },
+        },
+      });
+    }
+
+    function yearsChart(canvas, d) {
+      const years = d.years;
+      const c1 = cssVar("--chart-1"), c2 = cssVar("--chart-2"), surface = cssVar("--surface");
+      const bar = { borderColor: surface, borderWidth: { top: 2 }, borderSkipped: "bottom", stack: "paid" };
+      return new Chart(canvas, {
+        type: "bar",
+        data: {
+          labels: years.map((y) => y.year),
+          datasets: [
+            { label: "Principal", data: years.map((y) => y.principal), backgroundColor: c1, ...bar },
+            { label: "Interest", data: years.map((y) => y.interest), backgroundColor: c2, borderRadius: { topLeft: 4, topRight: 4 }, ...bar },
+          ],
+        },
+        options: {
+          maintainAspectRatio: false,
+          animation: false,
+          interaction: { mode: "index", intersect: false },
+          scales: {
+            x: { stacked: true, grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true } },
+            y: { stacked: true, ticks: { callback: (v) => money(v, BASE, { compact: true }) } },
+          },
+          plugins: {
+            legend: { position: "bottom", labels: { boxWidth: 12 } },
+            tooltip: { callbacks: {
+              label: (c) => ` ${c.dataset.label}: ${money(c.parsed.y)}`,
+              footer: (items) => `Paid in ${items[0].label}: ${money(items.reduce((s, i) => s + i.parsed.y, 0))}`,
+            } },
+          },
+        },
+      });
+    }
+
+    document.querySelectorAll(".mortgage").forEach((card) => {
+      const canvas = card.querySelector("canvas[data-chart]");
+      if (!canvas || !window.Chart) return;
+      const data = JSON.parse(canvas.dataset.chart);
+      let chart = null;
+      const draw = (mode) => {
+        chart?.destroy();
+        card.querySelectorAll("button[data-mode]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === mode)));
+        chart = mode === "years" ? yearsChart(canvas, data) : balanceChart(canvas, data);
+      };
+      card.querySelector(".seg").addEventListener("click", (e) => {
+        const b = e.target.closest("button[data-mode]");
+        if (b) draw(b.dataset.mode);
+      });
+      draw("balance");
+    });
+
+    loadWorth();
+    setInterval(() => { if (!document.hidden) loadWorth(); }, REFRESH_MS);
+  }
+
+  const pages = { dashboard, performance, position, "txn-form": txnForm, markets, assets: myAssets, "asset-form": assetForms };
   pages[document.body.dataset.page]?.();
 })();
