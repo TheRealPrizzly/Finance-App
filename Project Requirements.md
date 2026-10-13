@@ -35,7 +35,7 @@
 
 - **Asset types supported:** Stocks, ETFs, crypto and anything else Yahoo Finance quotes; cash in any currency
 - **Market data source / API:** Yahoo Finance (unofficial endpoints, no API key). Unofficial: may change or rate-limit without notice
-- **Macros sources:** CNN's Fear & Greed JSON feed (unofficial, behind cnn.com/markets/fear-and-greed) and the US Treasury's daily par yield curve CSV; if the Treasury can't be reached, the yield curve falls back to the four Treasury yields Yahoo quotes
+- **Macros sources:** CNN's Fear & Greed JSON feed (unofficial, behind cnn.com/markets/fear-and-greed; fetched by the visitor's browser, since PythonAnywhere's free tier blocks the server from reaching CNN, with the server as a fallback) and the US Treasury's daily par yield curve CSV; if the Treasury can't be reached, the yield curve falls back to the four Treasury yields Yahoo quotes
 - **Base currency & multi-currency support:** Base currency is CAD (Canadian dollars) and should allow for multi-currency support
 - **Data import/export formats:** Transaction Date, Action,	Symbol, Quantity, Price, Costs, Net Amount, Currency, Account #, Activity Type, Account Type
 

@@ -12,6 +12,8 @@
 <div id="app"
      data-premarket-url="{{ url_for('views.api_premarket') }}"
      data-sentiment-url="{{ url_for('views.api_sentiment') }}"
+     data-fear-greed-feed="{{ fear_greed_feed }}"
+     data-fear-greed-meta='{{ fear_greed_meta|tojson }}'
      data-rates-url="{{ url_for('views.api_rates') }}">
 
   <h2 class="group-title">Pre-market</h2>

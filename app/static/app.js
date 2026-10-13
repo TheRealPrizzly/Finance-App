@@ -954,12 +954,45 @@
       $("fg-note").textContent = `From CNN Business${updated ? ` (updated ${updated})` : ""}. 0 is extreme fear and 100 is extreme greed; the index averages the seven indicators above.`;
     }
 
-    async function loadSentiment() {
-      try {
-        renderFearGreed(await getJSON(urls.sentimentUrl));
-      } catch (err) {
-        $("fear-greed").innerHTML = `<p class="muted">${esc(err.message)} Open it on CNN with the button above.</p>`;
+    // The browser reads CNN's feed directly: it allows cross-site reads, while hosts like
+    // PythonAnywhere's free tier block the server from reaching CNN. Same shape as the server's
+    // copy (macro.parse_fear_greed), which is the fallback.
+    async function cnnFearGreed() {
+      const res = await fetch(urls.fearGreedFeed, { headers: { Accept: "application/json" } });
+      if (!res.ok) throw new Error(`CNN returned ${res.status}`);
+      const d = await res.json();
+      const fg = d.fear_and_greed || {};
+      if (fg.score == null) throw new Error("No Fear & Greed score in CNN's response");
+      const meta = JSON.parse(urls.fearGreedMeta);
+      const byDay = new Map();
+      for (const p of d.fear_and_greed_historical?.data || []) {
+        if (p.x && p.y != null) byDay.set(new Date(p.x).toISOString().slice(0, 10), p.y);
       }
+      return {
+        score: fg.score,
+        rating: fg.rating || fgRating(fg.score),
+        updated: fg.timestamp,
+        compare: meta.compare.filter(([key]) => fg[key] != null)
+          .map(([key, label]) => ({ label, score: fg[key], rating: fgRating(fg[key]) })),
+        indicators: meta.indicators.filter(([key]) => d[key]?.score != null)
+          .map(([key, name, detail]) => ({ key, name, detail, score: d[key].score, rating: d[key].rating || fgRating(d[key].score) })),
+        history: [...byDay].sort((a, b) => a[0].localeCompare(b[0])),
+      };
+    }
+
+    async function loadSentiment() {
+      let data;
+      try {
+        data = await cnnFearGreed();
+      } catch {
+        try {
+          data = await getJSON(urls.sentimentUrl);
+        } catch (err) {
+          $("fear-greed").innerHTML = `<p class="muted">${esc(err.message)} Open it on CNN with the button above.</p>`;
+          return;
+        }
+      }
+      renderFearGreed(data);
     }
 
     // Treasury yields -------------------------------------------------------------

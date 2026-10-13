@@ -1,3 +1,5 @@
+import json
+import re
 from datetime import date
 
 import pytest
@@ -266,6 +268,11 @@ def test_macros_tab(macro_app, client):
     for heading in ("Pre-market", "Market sentiment", "Fear &amp; Greed Index", "Bonds &amp; rates", "US Treasury yield curve"):
         assert heading in html
     assert "https://www.cnn.com/markets/fear-and-greed" in html
+    # The browser fetches CNN's feed itself, labelled with the server's indicator names.
+    assert 'data-fear-greed-feed="https://production.dataviz.cnn.io/index/fearandgreed/graphdata"' in html
+    meta = json.loads(re.search(r"data-fear-greed-meta='([^']*)'", html).group(1))
+    assert meta["indicators"][0] == ["market_momentum_sp500", "Market momentum", "S&P 500 vs its 125-day moving average"]
+    assert meta["compare"][0] == ["previous_close", "Previous close"]
 
 
 def test_macro_apis(macro_app, client):

@@ -14,7 +14,9 @@ from . import csv_io
 from . import portfolio as pf
 from .auth import login_required
 from .db import get_db
-from .macro import FEAR_GREED_PAGE, Unavailable, get_macro
+from .macro import (
+    FEAR_GREED_COMPARE, FEAR_GREED_INDICATORS, FEAR_GREED_PAGE, FEAR_GREED_URL, Unavailable, get_macro,
+)
 from .market import get_market
 
 bp = Blueprint("views", __name__)
@@ -187,7 +189,11 @@ def performance():
 @bp.get("/macros")
 @login_required
 def macros():
-    return render_template("macros.html", fear_greed_url=FEAR_GREED_PAGE)
+    # The browser reads CNN's feed itself (see app.js), so it needs the feed URL and labels.
+    return render_template(
+        "macros.html", fear_greed_url=FEAR_GREED_PAGE, fear_greed_feed=FEAR_GREED_URL,
+        fear_greed_meta={"indicators": FEAR_GREED_INDICATORS, "compare": FEAR_GREED_COMPARE},
+    )
 
 
 def macro_json(fetch):
