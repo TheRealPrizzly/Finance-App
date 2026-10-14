@@ -745,6 +745,8 @@ def annualized(since_inception, years):
 
 # -- single position -----------------------------------------------------------
 
+SMA_LOOKBACK_DAYS = 200  # longest moving average on the position chart, in trading days
+
 
 def position_detail(txns, symbol, account_labels, market, base="CAD", today=None):
     """One symbol: live holding, per-account cost basis, returns and price history.
@@ -766,7 +768,10 @@ def position_detail(txns, symbol, account_labels, market, base="CAD", today=None
 
     ysym = market.resolve(symbol, txns[0].currency)
     chart_start = min(txns[0].date, today - timedelta(days=365))
-    currency, closes = market.history(ysym, chart_start - timedelta(days=7), as_traded=True) if ysym else (None, {})
+    # Enough earlier closes that the longest moving average is defined from the chart's first day.
+    lookback_start = chart_start - timedelta(days=SMA_LOOKBACK_DAYS * 7 // 5 + 21)
+    currency, closes = market.history(ysym, lookback_start, as_traded=True) if ysym else (None, {})
+    closes = sorted(closes.items())
     quote = market.quotes([ysym]).get(ysym) if ysym else None
 
     return {
@@ -795,7 +800,8 @@ def position_detail(txns, symbol, account_labels, market, base="CAD", today=None
             }
             for l in sorted(lots.values(), key=lambda l: account_labels.get(l.account_id, ""))
         ],
-        "prices": [{"date": d.isoformat(), "close": c} for d, c in sorted(closes.items()) if d >= chart_start],
+        "prices": [{"date": d.isoformat(), "close": c} for d, c in closes if d >= chart_start],
+        "lookback_closes": [c for d, c in closes if d < chart_start][-(SMA_LOOKBACK_DAYS - 1):],
         "trades": [
             {"date": t.date.isoformat(), "kind": t.kind, "quantity": abs(t.quantity), "price": t.price}
             for t in txns if t.kind in (BUY, SELL)

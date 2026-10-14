@@ -18,6 +18,8 @@
   --chart-1: #2457d6;
   --chart-2: #e07a00;
   --chart-3: #8792a5;
+  /* Moving averages on the position chart */
+  --sma-10: #e0a000; --sma-20: #c2368a; --sma-50: #e8622c; --sma-100: #9b7bf0; --sma-200: #8a4b14;
   /* Fear & Greed bands, extreme fear to extreme greed */
   --fg-0: #c22d2d; --fg-1: #e8833a; --fg-2: #9aa1ad; --fg-3: #4fae6d; --fg-4: #0e7a43;
   --radius: 12px;
@@ -44,6 +46,7 @@
   --chart-1: #7aa2ff;
   --chart-2: #ffad5c;
   --chart-3: #8d939e;
+  --sma-10: #b88600; --sma-20: #d94f93; --sma-50: #e86a2a; --sma-100: #957cea; --sma-200: #b87a40;
   --fg-0: #ff7b7b; --fg-1: #ffad5c; --fg-2: #8d939e; --fg-3: #7fd6a0; --fg-4: #4cd28a;
   --shadow: none;
   color-scheme: dark;

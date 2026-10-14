@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -233,6 +233,17 @@ def test_position_page_dates_opening_shares_from_the_account_history():
     assert detail["holding"] is None
     assert detail["realized"] == pytest.approx(2498.78 - 6 * 410)  # cost at 2021-09-24, not 2021-10-04
 
+
+def test_position_page_sends_earlier_closes_for_the_moving_averages():
+    start = date(2024, 1, 1)
+    closes = {start + timedelta(days=i): 100.0 + i for i in range(800)}
+    market = FakeMarket(quotes={"VOO": (900.0, 899.0, "USD")}, history={"VOO": ("USD", closes)})
+    txns = [txn(1, "2025-06-02", pf.BUY, "VOO", 1, 617, 0, -617, currency="USD")]
+    detail = pf.position_detail(txns, "VOO", {}, market, base="USD", today=date(2026, 1, 15))
+    chart_start = date.fromisoformat(detail["prices"][0]["date"])
+    assert chart_start == date(2025, 1, 15)
+    assert len(detail["lookback_closes"]) == pf.SMA_LOOKBACK_DAYS - 1
+    assert detail["lookback_closes"][-1] == closes[chart_start - timedelta(days=1)]
 
 def test_holdings_only_mode_treats_buys_as_contributions():
     market = FakeMarket(quotes={"XEQT": (35.0, 34.0, "CAD")})

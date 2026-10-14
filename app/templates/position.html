@@ -15,8 +15,16 @@
   <section class="kpis" id="kpis">{% for _ in range(6) %}<div class="kpi skeleton"></div>{% endfor %}</section>
   <section class="card">
     <div class="card-head"><h2>Price history</h2><span class="hint" id="price-currency"></span></div>
+    <div class="card-head chart-controls">
+      <div class="picks" role="group" aria-label="Simple moving averages" id="sma-picks">
+        {% for n in (10, 20, 50, 100, 200) %}
+        <button type="button" class="pick" data-sma="{{ n }}" aria-pressed="false" style="--pick: var(--sma-{{ n }})"
+          title="{{ n }}-day simple moving average"><span class="dot"></span>SMA {{ n }}</button>
+        {% endfor %}
+      </div>
+    </div>
     <div class="chart-box"><canvas id="price-chart" aria-label="Price history chart with trades" role="img"></canvas></div>
-    <p class="hint">Triangles mark your buys (▲) and sells (▼).</p>
+    <p class="hint">Triangles mark your buys (▲) and sells (▼). Moving averages (SMA) average the last 10 to 200 daily closes; the 100- and 200-day ones are dashed.</p>
   </section>
   <section class="card">
     <h2>By account</h2>
