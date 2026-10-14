@@ -1196,3 +1196,15 @@ def delete_mortgage(mortgage_id):
     db.commit()
     flash(f"Deleted the {mortgage['name']} mortgage.", "success")
     return redirect(assets_url("mortgages"))
+
+
+@bp.get("/api/mortgages/continued")
+@login_required
+def api_mortgages_continued():
+    """The payback of the chosen mortgages (?ids=1,2) when each one's payments carry on to the
+    others once it is paid off."""
+    ids = {int(i) for i in request.args.get("ids", "").split(",") if i.strip().isdigit()}
+    chosen = [m for m, p, _ in mortgage_projections(user_mortgages()) if p and m["id"] in ids]
+    if len(chosen) < 2:
+        return jsonify(error="Choose at least two mortgages."), 400
+    return jsonify(mg.project_continued(chosen))

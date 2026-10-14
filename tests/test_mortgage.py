@@ -107,3 +107,38 @@ def test_duration():
     assert mg.duration(12) == "1 year"
     assert mg.duration(1) == "1 month"
     assert mg.duration(0) == "0 months"
+
+
+def test_continued_contributions():
+    # At 0%, the $12,000 one is paid off after 12 payments of $1,000; from then on the $120,000 one
+    # gets $2,000 a month, so it is paid off in 4.5 years more instead of 9.
+    small = mortgage(id=1, principal=12000.0, rate=0.0, start_date="2026-01-01", payment=1000.0)
+    big = mortgage(id=2, principal=120000.0, rate=0.0, start_date="2026-01-01", payment=1000.0)
+    c = mg.project_continued([small, big], today=date(2025, 12, 1))
+    by_id = {m["id"]: m for m in c["mortgages"]}
+    assert by_id[1]["payoff_date"] == "2027-01-01"
+    assert by_id[2]["payoff_date"] == "2031-07-01"
+    assert c["payoff_date"] == "2031-07-01" and c["base_payoff_date"] == "2036-01-01"
+    assert c["months_saved"] == 54 and c["sooner"] == "4 years 6 months" and c["interest_saved"] == 0
+    # Balances are on the same months as each mortgage's own chart.
+    assert len(by_id[2]["balance"]) == len(mg.project(big, today=date(2025, 12, 1))["chart"]["dates"])
+
+    # A mortgage paid off before today carries nothing over: the past doesn't change.
+    c = mg.project_continued([small, big], today=date(2027, 6, 1))
+    assert c["payoff_date"] == "2036-01-01" and c["months_saved"] == 0
+
+
+def test_continued_contributions_go_to_the_highest_rate():
+    small = mortgage(id=1, principal=20000.0, rate=4.0, amortization_months=24)
+    low = mortgage(id=2, principal=300000.0, rate=3.0)
+    high = mortgage(id=3, principal=300000.0, rate=6.0)
+    today = date(2022, 6, 1)
+    c = mg.project_continued([small, low, high], today=today)
+    by_id = {m["id"]: m for m in c["mortgages"]}
+    alone = {m["id"]: mg.project(m, today=today)["chart"] for m in (small, low, high)}
+    assert by_id[3]["payoff_date"] < mg.project(high, today=today)["payoff_date"]
+    # The 3% one gets nothing until the 6% one is paid off, then everything.
+    before = sum(d < by_id[3]["payoff_date"] for d in alone[2]["dates"])
+    assert before > 100 and by_id[2]["balance"][:before] == alone[2]["balance"][:before]
+    assert by_id[3]["payoff_date"] < by_id[2]["payoff_date"] < mg.project(low, today=today)["payoff_date"]
+    assert c["interest_saved"] > 0 and c["months_saved"] > 0

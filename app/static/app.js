@@ -1239,15 +1239,31 @@
     function mortgageChart(card, mortgages) {
       const canvas = card.querySelector("canvas");
       const status = card.querySelector(".chart-status");
-      const state = { mode: "balance", combined: false, shown: new Set(mortgages.map((m) => m.id)) };
+      const state = { mode: "balance", combined: false, continued: false, shown: new Set(mortgages.map((m) => m.id)) };
+      const note = card.querySelector("[data-continued-note]");
+      const continuedBox = card.querySelector("[data-continued]");
+      const pickText = status.textContent;
       const colorOf = (m) => {
-        const i = mortgages.indexOf(m);
+        const i = mortgages.findIndex((x) => x.id === m.id);
         return i === 0 ? cssVar("--chart-1") : SECTOR_COLORS[i % SECTOR_COLORS.length];
       };
       card.querySelectorAll(".pick").forEach((b) => {
         const m = mortgages.find((x) => String(x.id) === b.dataset.id);
         if (mortgages.indexOf(m) > 0) b.style.setProperty("--pick", colorOf(m));
       });
+      // Continued contributions depend on which mortgages are paid together, so the server works
+      // them out for each set picked.
+      const continuedCache = new Map();
+      const continuedFor = (picked) => {
+        const ids = picked.map((m) => m.id).sort((a, b) => a - b).join(",");
+        if (!continuedCache.has(ids)) {
+          continuedCache.set(ids, getJSON(`${card.dataset.continuedUrl}?ids=${ids}`).catch((err) => {
+            continuedCache.delete(ids);
+            throw err;
+          }));
+        }
+        return continuedCache.get(ids);
+      };
       const sum = (values) => {
         const known = values.filter((v) => v != null);
         return known.length ? Math.round(known.reduce((s, v) => s + v, 0) * 100) / 100 : null;
@@ -1279,8 +1295,8 @@
           pointRadius: labels.map((_, i) => (i === now ? 4 : 0)), pointBackgroundColor: color,
           pointBorderColor: surface, pointBorderWidth: 2, pointHoverRadius: 4,
         });
-        const base = (data) => ({ label: "Without extra payments", data, borderColor: c3, borderDash: [4, 4],
-          borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 3 });
+        const base = (data) => ({ label: picked[0].continued ? "Without continued contributions" : "Without extra payments",
+          data, borderColor: c3, borderDash: [4, 4], borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 3 });
 
         let datasets;
         if (combined) {
@@ -1362,21 +1378,52 @@
         });
       }
 
-      let chart = null;
-      function draw() {
+      let chart = null, drawn = 0;
+      const clear = (message) => {
         chart?.destroy();
         chart = null;
-        const picked = mortgages.filter((m) => state.shown.has(m.id));
+        status.textContent = message;
+        status.hidden = !message;
+      };
+      async function draw() {
+        const run = ++drawn;
+        let picked = mortgages.filter((m) => state.shown.has(m.id));
         const combined = state.combined && picked.length > 1;
+        const continued = state.continued && picked.length > 1;
         card.querySelectorAll("button[data-mode]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === state.mode)));
         card.querySelectorAll(".pick").forEach((b) => b.setAttribute("aria-pressed", String(state.shown.has(Number(b.dataset.id)))));
         card.querySelectorAll("button[data-combine]").forEach((b) => {
           b.setAttribute("aria-pressed", String(b.dataset.combine === String(state.combined)));
           b.disabled = picked.length < 2;
         });
+        if (continuedBox) continuedBox.disabled = picked.length < 2;
         card.querySelector("[data-balance-only]").hidden = state.mode !== "balance";
-        status.hidden = picked.length > 0;
-        if (!picked.length) return;
+        if (note) note.hidden = true;
+        if (!picked.length) {
+          clear(pickText);
+          return;
+        }
+
+        if (continued) {
+          let c;
+          try {
+            c = await continuedFor(picked);
+          } catch (err) {
+            if (run === drawn) clear(`Couldn't work out continued contributions: ${err.message}`);
+            return;
+          }
+          if (run !== drawn) return;  // the picks changed while it loaded
+          const byId = new Map(c.mortgages.map((x) => [x.id, x]));
+          picked = picked.map((m) => ({ ...m, balance: byId.get(m.id).balance, years: byId.get(m.id).years,
+            base_balance: m.balance, continued: true }));
+          note.textContent = c.months_saved > 0 || c.interest_saved >= 0.01
+            ? `With continued contributions, these mortgages would be paid off by ${monthName(c.payoff_date)}, `
+              + `${c.sooner} sooner, with ${money(c.interest_saved)} less interest. `
+              + "Once one is paid off, its payments go to the remaining mortgage with the highest rate."
+            : "Continued contributions change nothing here: no mortgage is paid off while another still has a balance to pay.";
+          note.hidden = false;
+        }
+        clear("");
         const names = picked.map((m) => m.name).join(", ");
         canvas.setAttribute("aria-label", `${state.mode === "years" ? "Principal and interest paid each year" : "Estimated balance until paid off"}`
           + ` for ${combined ? "the combined " : ""}${names} mortgage${picked.length === 1 ? "" : "s"}`);
@@ -1392,6 +1439,11 @@
           if (state.shown.has(id)) state.shown.delete(id);
           else state.shown.add(id);
         } else return;
+        draw();
+      });
+      card.addEventListener("change", (e) => {
+        if (!e.target.matches("[data-continued]")) return;
+        state.continued = e.target.checked;
         draw();
       });
       draw();

@@ -78,9 +78,10 @@ def regular_payment(balance, annual_pct, compounding, months, frequency):
     return round(payment + 0.004999, 2)
 
 
-def amortize(balance, start, after, frequency, rate, payment):
+def amortize(balance, start, after, frequency, rate, payment, boost=None):
     """The payments made after `after` until `balance` is paid off, as
-    (date, paid, interest, principal, balance after) tuples."""
+    (date, paid, interest, principal, balance after) tuples. `boost(day)`, if given, is an
+    amount added to the payment made on `day`."""
     if balance <= 0.005:
         return []
     if balance * rate >= payment:
@@ -93,10 +94,11 @@ def amortize(balance, start, after, frequency, rate, payment):
     while balance > 0.005:
         if len(rows) >= limit:
             raise NeverPaidOff(f"At this payment the mortgage would take more than {MAX_YEARS} years to pay off.")
+        day = payment_date(start, frequency, k)
         interest = round(balance * rate, 2)
-        paid = min(payment, round(balance + interest, 2))
+        paid = min(payment + (boost(day) if boost else 0.0), round(balance + interest, 2))
         balance = round(balance + interest - paid, 2)
-        rows.append((payment_date(start, frequency, k), paid, interest, paid - interest, balance))
+        rows.append((day, paid, interest, paid - interest, balance))
         k += 1
     return rows
 
@@ -127,31 +129,63 @@ def _monthly_balances(rows, anchor_date, anchor_balance, months):
     return out
 
 
-def project(m, today=None):
-    """Payment, balances and payoff projection for mortgage `m`, as of `today`.
+def _month_grid(first, last):
+    """The end of each month from `first` to `last`."""
+    months, d = [], _month_end(first)
+    while d <= _month_end(last):
+        months.append(d)
+        d = _month_end(add_months(d.replace(day=1), 1))
+    return months
+
+
+def _by_year(rows):
+    """Principal and interest paid each calendar year."""
+    by_year = {}
+    for r in rows:
+        y = by_year.setdefault(r[0].year, [0.0, 0.0])
+        y[0] += r[3]
+        y[1] += r[2]
+    return [{"year": y, "principal": round(v[0], 2), "interest": round(v[1], 2)} for y, v in sorted(by_year.items())]
+
+
+def _terms(m):
+    """What the schedule of mortgage `m` is worked out from.
 
     The schedule starts from the original amount on the start date, or, when a balance from a
     statement is given, from that balance on its date. Without a set payment, the payment is
     the one that pays the starting balance off by the end of the amortization period."""
-    today = today or date.today()
     frequency = m["frequency"]
     per_year = FREQUENCIES[frequency][1]
-    rate = periodic_rate(m["rate"], m["compounding"], per_year)
     start = date.fromisoformat(m["start_date"])
     if m["balance"] is not None and m["balance_date"]:
         anchor_date, anchor_balance = date.fromisoformat(m["balance_date"]), m["balance"]
     else:
         anchor_date, anchor_balance = start, m["principal"]
     amortization_end = add_months(start, m["amortization_months"])
-
     payment = m["payment"]
     if not payment:
         months_left = months_between(anchor_date, amortization_end)
         if months_left <= 0:
             raise NeverPaidOff("The amortization period has already ended. Enter the payment amount instead.")
         payment = regular_payment(anchor_balance, m["rate"], m["compounding"], months_left, frequency)
-    extra = m["extra_payment"] or 0.0
-    rows = amortize(anchor_balance, start, anchor_date, frequency, rate, payment + extra)
+    return {"frequency": frequency, "per_year": per_year, "rate": periodic_rate(m["rate"], m["compounding"], per_year),
+            "start": start, "anchor_date": anchor_date, "anchor_balance": anchor_balance,
+            "amortization_end": amortization_end, "payment": payment, "extra": m["extra_payment"] or 0.0}
+
+
+def _schedule(t, extra=True, boost=None):
+    """The payments of a mortgage with terms `t` (see `_terms`), with or without its extra payment."""
+    return amortize(t["anchor_balance"], t["start"], t["anchor_date"], t["frequency"], t["rate"],
+                    t["payment"] + (t["extra"] if extra else 0.0), boost)
+
+
+def project(m, today=None):
+    """Payment, balances and payoff projection for mortgage `m`, as of `today`."""
+    today = today or date.today()
+    t = _terms(m)
+    frequency, per_year, payment, extra = t["frequency"], t["per_year"], t["payment"], t["extra"]
+    anchor_date, anchor_balance, amortization_end = t["anchor_date"], t["anchor_balance"], t["amortization_end"]
+    rows = _schedule(t)
 
     balance_now = _balance_on(rows, anchor_balance, today)
     payoff = rows[-1][0] if rows else None
@@ -159,20 +193,11 @@ def project(m, today=None):
     term_end = date.fromisoformat(m["term_end"]) if m["term_end"] else None
 
     # Without the extra payments, to show what they save.
-    base_rows = amortize(anchor_balance, start, anchor_date, frequency, rate, payment) if extra else None
+    base_rows = _schedule(t, extra=False) if extra else None
     base_payoff = base_rows[-1][0] if base_rows else None
 
     # Chart: the balance at the end of each month, with and without the extra payments.
-    last = max(payoff or anchor_date, base_payoff or anchor_date)
-    months, d = [], _month_end(anchor_date)
-    while d <= _month_end(last):
-        months.append(d)
-        d = _month_end(add_months(d.replace(day=1), 1))
-    by_year = {}
-    for r in rows:
-        y = by_year.setdefault(r[0].year, [0.0, 0.0])
-        y[0] += r[3]
-        y[1] += r[2]
+    months = _month_grid(anchor_date, max(payoff or anchor_date, base_payoff or anchor_date))
 
     return {
         "payment": payment,
@@ -199,8 +224,77 @@ def project(m, today=None):
             "dates": [d.isoformat() for d in months],
             "balance": _monthly_balances(rows, anchor_date, anchor_balance, months),
             "base_balance": _monthly_balances(base_rows, anchor_date, anchor_balance, months) if base_rows else None,
-            "years": [{"year": y, "principal": round(v[0], 2), "interest": round(v[1], 2)} for y, v in sorted(by_year.items())],
+            "years": _by_year(rows),
         },
+    }
+
+
+def project_continued(ms, today=None):
+    """Payoff projection for mortgages `ms` paid together, with continued contributions: once one
+    is paid off, everything that was being paid on it goes towards the remaining mortgage with
+    the highest rate, until they are all paid off. Mortgages already paid off by `today` carry
+    nothing over, so nothing changes before `today`.
+
+    Each mortgage's balances are on the same months as its own projection's chart."""
+    today = today or date.today()
+    ms = {m["id"]: m for m in ms}
+    terms = {i: _terms(m) for i, m in ms.items()}
+    steps = {i: [] for i in ms}  # mortgage id -> [(after this day, monthly amount carried over to it)]
+
+    def boost(i):
+        if not steps[i]:
+            return None
+        per_year = terms[i]["per_year"]
+
+        def extra(day):
+            monthly = 0.0
+            for after, amount in steps[i]:
+                if day > after:
+                    monthly = amount
+            return round(monthly * 12 / per_year, 2)
+        return extra
+
+    base = {i: _schedule(t) for i, t in terms.items()}
+    rows, left, carried = dict(base), set(ms), 0.0
+    while left:
+        for i in left:
+            rows[i] = _schedule(terms[i], boost=boost(i))
+        # The next one paid off: its payments, with what was carried over to it, move on to another.
+        done = min(left, key=lambda i: (rows[i][-1][0] if rows[i] else date.min, i))
+        left.remove(done)
+        payoff = rows[done][-1][0] if rows[done] else None
+        if not left or payoff is None or payoff <= today:
+            continue
+        t = terms[done]
+        carried += (t["payment"] + t["extra"]) * t["per_year"] / 12
+        target = max(left, key=lambda i: (ms[i]["rate"], -i))
+        steps[target].append((payoff, carried))
+
+    def interest_left(schedules):
+        return sum(r[2] for s in schedules for r in s if r[0] > today)
+
+    def payoff_of(schedules):
+        days = [s[-1][0] for s in schedules if s]
+        return max(days) if days else None
+
+    out = []
+    for i, t in terms.items():
+        own_payoff = base[i][-1][0] if base[i] else t["anchor_date"]
+        no_extra = _schedule(t, extra=False) if t["extra"] and base[i] else None
+        months = _month_grid(t["anchor_date"], max(own_payoff, no_extra[-1][0] if no_extra else own_payoff))
+        out.append({"id": i, "payoff_date": rows[i][-1][0].isoformat() if rows[i] else None,
+                    "balance": _monthly_balances(rows[i], t["anchor_date"], t["anchor_balance"], months),
+                    "years": _by_year(rows[i])})
+    payoff, base_payoff = payoff_of(rows.values()), payoff_of(base.values())
+    months_saved = months_between(payoff, base_payoff) if payoff and base_payoff else 0
+    return {
+        "mortgages": out,
+        "payoff_date": payoff.isoformat() if payoff else None,
+        "base_payoff_date": base_payoff.isoformat() if base_payoff else None,
+        "months_saved": months_saved,
+        "sooner": duration(months_saved),
+        "interest_left": round(interest_left(rows.values()), 2),
+        "interest_saved": round(interest_left(base.values()) - interest_left(rows.values()), 2),
     }
 
 

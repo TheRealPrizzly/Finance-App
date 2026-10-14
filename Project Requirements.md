@@ -31,7 +31,7 @@
 | F12 | Import / export | CSV in the format in section 3; duplicate rows are skipped on re-import | Must | Done |
 | F13 | Markets tab | Pre-market: S&P 500 and Nasdaq 100 futures, sector moves (Select Sector SPDR ETFs). Market sentiment: CNN Fear & Greed Index. Bonds & rates: US Treasury yield curve, with 5-year daily charts of the 10Y − 2Y and 10Y − 3M spreads | Must | Done |
 | F14 | My Assets: net worth | Track assets: a portfolio or chosen accounts (live total value) or a value entered by hand. Net worth = assets − mortgage balances. Warns when an account is counted in more than one asset | Must | Done |
-| F15 | My Assets: mortgages | Track multiple mortgages: amount, start date, rate, compounding, amortization, payment frequency (incl. accelerated), optional payment, extra payment, term end and statement balance. Shows outstanding balance, payment, estimated final payment date, interest still to pay, balance at renewal, savings from extra payments, and one payback chart (balance, or principal and interest by year) that shows any of the mortgages, side by side or combined | Must | Done |
+| F15 | My Assets: mortgages | Track multiple mortgages: amount, start date, rate, compounding, amortization, payment frequency (incl. accelerated), optional payment, extra payment, term end and statement balance. Shows outstanding balance, payment, estimated final payment date, interest still to pay, balance at renewal, savings from extra payments, and one payback chart (balance, or principal and interest by year) that shows any of the mortgages, side by side or combined, optionally with continued contributions (a paid-off mortgage's payments go to the remaining one with the highest rate) | Must | Done |
 
 ## 3. Data & Integrations
 
@@ -75,3 +75,4 @@
 | 2026-10-09 | Hosting decided: PythonAnywhere free tier |
 | 2026-10-13 | My Assets tab added: net worth (F14) and mortgages (F15) |
 | 2026-10-13 | Mortgage payback charts merged into one chart that can show any mortgages, separately or combined (F15) |
+| 2026-10-13 | Continued contributions option added to the mortgage payback chart (F15) |

@@ -209,6 +209,11 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
 .mortgage .kpi { box-shadow: none; background: var(--surface-2); border-color: transparent; min-height: 0; }
 .chart-head { margin: 4px 0 8px; }
 .chart-controls { align-items: flex-start; }
+.chart-options { align-items: center; gap: 12px; }
+.chart-options label.check { font-size: .85rem; color: var(--muted); }
+.chart-options label.check:has(input:disabled) { opacity: .45; cursor: not-allowed; }
+.continued-note { margin: 0 0 8px; padding: 8px 12px; border-radius: 8px; background: var(--ok-bg); color: var(--ok-text); font-size: .88rem; }
+.continued-note[hidden] { display: none; }
 .picks { display: flex; flex-wrap: wrap; gap: 6px; }
 .pick { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: none; color: var(--muted); font: inherit;
   font-size: .85rem; font-weight: 500; padding: 3px 10px; border-radius: 999px; cursor: pointer; }

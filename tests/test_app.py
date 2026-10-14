@@ -519,7 +519,11 @@ def test_mortgages(client):
     assert 'id="mortgage-kpis"' in html and "Mortgage-free" in html
     # ...and one chart that can show either of them, or both combined.
     assert html.count('class="pick"') == 2 and 'data-combine="true"' in html
-    assert html.count('id="mortgage-chart"') == 1
+    assert html.count('id="mortgage-chart"') == 1 and "data-continued" in html
+    # With continued contributions, the Cottage's payments go to the Home once it is paid off.
+    data = client.get("/api/mortgages/continued?ids=1,2").get_json()
+    assert [m["id"] for m in data["mortgages"]] == [1, 2] and data["months_saved"] > 0 and data["interest_saved"] > 0
+    assert client.get("/api/mortgages/continued?ids=1").status_code == 400
 
     client.post("/mortgages/1/delete", data={"csrf_token": token})
     assert [m["name"] for m in client.get("/api/assets").get_json()["mortgages"]] == ["Cottage"]
@@ -548,7 +552,9 @@ def test_assets_and_mortgages_are_private(app, client):
     token = login(client)
     client.post("/assets", data={"csrf_token": token, "kind": "manual", "value": "1000", "name": "Car"})
     client.post("/mortgages", data={"csrf_token": token, **MORTGAGE})
+    client.post("/mortgages", data={"csrf_token": token, **MORTGAGE, "name": "Cottage"})
     login_as(app, client, "someone-else", "else@example.com")
+    assert client.get("/api/mortgages/continued?ids=1,2").status_code == 400
     data = client.get("/api/assets").get_json()
     assert data["assets"] == [] and data["mortgages"] == []
     for path in ("/assets/1/edit", "/mortgages/1/edit"):

@@ -115,7 +115,7 @@
   {% endif %}
 
   {% if mortgage_charts %}
-  <section class="card" id="mortgage-chart">
+  <section class="card" id="mortgage-chart" data-continued-url="{{ url_for('views.api_mortgages_continued') }}">
     <div class="card-head">
       <h3>Estimated payback</h3>
       <div class="seg" role="group" aria-label="Chart" data-group="mode">
@@ -130,11 +130,16 @@
         <button type="button" class="pick" data-id="{{ c.id }}" aria-pressed="true"><span class="dot"></span>{{ c.name }}</button>
         {% endfor %}
       </div>
-      <div class="seg" role="group" aria-label="Show the mortgages" data-group="combine">
-        <button type="button" data-combine="false" aria-pressed="true">Separate</button>
-        <button type="button" data-combine="true" aria-pressed="false">Combined</button>
+      <div class="toolbar chart-options">
+        <label class="check" title="Once a mortgage is paid off, keep paying the same amount towards the others">
+          <input type="checkbox" data-continued> Continued contributions</label>
+        <div class="seg" role="group" aria-label="Show the mortgages" data-group="combine">
+          <button type="button" data-combine="false" aria-pressed="true">Separate</button>
+          <button type="button" data-combine="true" aria-pressed="false">Combined</button>
+        </div>
       </div>
     </div>
+    <p class="continued-note" data-continued-note hidden></p>
     {% endif %}
     <div class="chart-box">
       <canvas role="img" aria-label="Estimated mortgage balances until they are paid off"></canvas>
