@@ -208,6 +208,13 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
 .mortgage-fields > label { align-content: start; }  /* inputs line up when a neighbour has a hint */
 .mortgage .kpi { box-shadow: none; background: var(--surface-2); border-color: transparent; min-height: 0; }
 .chart-head { margin: 4px 0 8px; }
+.chart-controls { align-items: flex-start; }
+.picks { display: flex; flex-wrap: wrap; gap: 6px; }
+.pick { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: none; color: var(--muted); font: inherit;
+  font-size: .85rem; font-weight: 500; padding: 3px 10px; border-radius: 999px; cursor: pointer; }
+.pick .dot { width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--pick, var(--chart-1)); }
+.pick[aria-pressed="true"] { color: var(--text); background: var(--surface-2); border-color: transparent; }
+.pick[aria-pressed="true"] .dot { background: var(--pick, var(--chart-1)); }
 .chart-title { font-size: .95rem; font-weight: 650; margin: 0; }
 .kind-choice, .subfields { border: 0; padding: 0; margin: 16px 0 0; display: grid; gap: 8px; }
 .kind-choice legend, .subfields legend { font-size: .88rem; font-weight: 600; padding: 0; margin-bottom: 8px; }

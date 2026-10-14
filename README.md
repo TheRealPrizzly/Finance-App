@@ -11,7 +11,7 @@ A multi-user web app for tracking investments across brokerage accounts in Canad
 - A breakdown for each position
 - CSV import and export
 - A Markets tab: S&P 500 and Nasdaq futures, pre-market moves by sector, CNN's Fear & Greed Index and the US Treasury yield curve
-- A My Assets tab: net worth from your portfolios, accounts and other assets, minus your mortgages, and a payoff projection for each mortgage
+- A My Assets tab: net worth from your portfolios, accounts and other assets, minus your mortgages, and a payoff projection for your mortgages, one at a time, side by side or combined
 
 Requirements are tracked in [Project Requirements.md](Project%20Requirements.md).
 

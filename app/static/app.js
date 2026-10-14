@@ -1235,94 +1235,170 @@
       }
     }
 
-    // Mortgages: each card carries its projection; the chart shows the balance or a yearly split.
-    function balanceChart(canvas, d) {
-      const labels = d.dates;
-      const now = labels.findIndex((iso) => iso >= urls.today);  // the month we are in
-      const c1 = cssVar("--chart-1"), c3 = cssVar("--chart-3");
-      const datasets = [{
-        label: "Balance", data: d.balance, borderColor: c1, backgroundColor: `${c1}22`, fill: true, borderWidth: 2,
-        // Solid up to this month, dashed for the months still to come.
-        segment: { borderDash: (ctx) => (now >= 0 && ctx.p0DataIndex >= now ? [6, 4] : undefined) },
-        pointRadius: labels.map((_, i) => (i === now ? 4 : 0)), pointBackgroundColor: c1,
-        pointBorderColor: cssVar("--surface"), pointBorderWidth: 2, pointHoverRadius: 4,
-      }];
-      if (d.base_balance) {
-        datasets.push({ label: "Without extra payments", data: d.base_balance, borderColor: c3, borderDash: [4, 4],
+    // Mortgages: one payback chart that shows any of the mortgages, each on its own or combined into one.
+    function mortgageChart(card, mortgages) {
+      const canvas = card.querySelector("canvas");
+      const status = card.querySelector(".chart-status");
+      const state = { mode: "balance", combined: false, shown: new Set(mortgages.map((m) => m.id)) };
+      const colorOf = (m) => {
+        const i = mortgages.indexOf(m);
+        return i === 0 ? cssVar("--chart-1") : SECTOR_COLORS[i % SECTOR_COLORS.length];
+      };
+      card.querySelectorAll(".pick").forEach((b) => {
+        const m = mortgages.find((x) => String(x.id) === b.dataset.id);
+        if (mortgages.indexOf(m) > 0) b.style.setProperty("--pick", colorOf(m));
+      });
+      const sum = (values) => {
+        const known = values.filter((v) => v != null);
+        return known.length ? Math.round(known.reduce((s, v) => s + v, 0) * 100) / 100 : null;
+      };
+      const options = (scales, plugins) => ({
+        maintainAspectRatio: false,
+        animation: false,
+        interaction: { mode: "index", intersect: false },
+        scales: { ...scales, y: { ...scales.y, ticks: { callback: (v) => money(v, BASE, { compact: true }) } } },
+        plugins: { ...plugins, legend: { position: "bottom", labels: { boxWidth: 12 }, ...plugins.legend } },
+      });
+
+      function balanceChart(picked, combined) {
+        // Each mortgage's months start at its own start (or statement) date, so line them up.
+        const labels = [...new Set(picked.flatMap((m) => m.dates))].sort();
+        const now = labels.findIndex((iso) => iso >= urls.today);  // the month we are in
+        const align = (m, values) => {
+          const at = new Map(m.dates.map((d, i) => [d, values[i]]));
+          return labels.map((d) => at.get(d) ?? null);
+        };
+        const cols = new Map(picked.map((m) => [m, {
+          balance: align(m, m.balance), base: align(m, m.base_balance || m.balance) }]));
+        const total = (key) => labels.map((_, i) => sum(picked.map((m) => cols.get(m)[key][i])));
+        const surface = cssVar("--surface"), c3 = cssVar("--chart-3");
+        const line = (label, data, color, fill) => ({
+          label, data, borderColor: color, backgroundColor: `${color}22`, fill, borderWidth: 2,
+          // Solid up to this month, dashed for the months still to come.
+          segment: { borderDash: (ctx) => (now >= 0 && ctx.p0DataIndex >= now ? [6, 4] : undefined) },
+          pointRadius: labels.map((_, i) => (i === now ? 4 : 0)), pointBackgroundColor: color,
+          pointBorderColor: surface, pointBorderWidth: 2, pointHoverRadius: 4,
+        });
+        const base = (data) => ({ label: "Without extra payments", data, borderColor: c3, borderDash: [4, 4],
           borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 3 });
-      }
-      return new Chart(canvas, {
-        type: "line",
-        data: { labels, datasets },
-        options: {
-          maintainAspectRatio: false,
-          animation: false,
-          interaction: { mode: "index", intersect: false },
-          scales: {
+
+        let datasets;
+        if (combined) {
+          datasets = [line("Total balance", total("balance"), cssVar("--chart-1"), true)];
+          if (picked.some((m) => m.base_balance)) datasets.push(base(total("base")));
+        } else if (picked.length === 1) {
+          const m = picked[0];
+          datasets = [line("Balance", cols.get(m).balance, colorOf(m), true)];
+          if (m.base_balance) datasets.push(base(cols.get(m).base));
+        } else {
+          datasets = picked.map((m) => line(m.name, cols.get(m).balance, colorOf(m), false));
+        }
+        return new Chart(canvas, {
+          type: "line",
+          data: { labels, datasets },
+          options: options({
             x: { grid: { display: false },
               ticks: { maxTicksLimit: 8, autoSkip: true, maxRotation: 0,
                 callback: (v) => new Date(`${labels[v]}T00:00:00`).getFullYear() } },
-            y: { beginAtZero: true, ticks: { callback: (v) => money(v, BASE, { compact: true }) } },
-          },
-          plugins: {
-            legend: { display: !!d.base_balance, position: "bottom", labels: { boxWidth: 12 } },
-            tooltip: { callbacks: {
-              title: (items) => `End of ${monthName(labels[items[0].dataIndex])}${items[0].dataIndex === now ? " (this month)" : ""}`,
-              label: (c) => ` ${c.dataset.label}: ${money(c.parsed.y)}`,
-            } },
-          },
-        },
-      });
-    }
+            y: { beginAtZero: true },
+          }, {
+            legend: { display: datasets.length > 1 },
+            tooltip: {
+              filter: (item) => item.parsed.y != null,
+              callbacks: {
+                title: (items) => `End of ${monthName(labels[items[0].dataIndex])}${items[0].dataIndex === now ? " (this month)" : ""}`,
+                label: (c) => ` ${c.dataset.label}: ${money(c.parsed.y)}`,
+                // The combined line also lists what each mortgage adds to it.
+                afterBody: (items) => (combined ? picked
+                  .map((m) => [m.name, cols.get(m).balance[items[0].dataIndex]])
+                  .filter(([, v]) => v != null)
+                  .map(([name, v]) => `   ${name}: ${money(v)}`) : []),
+              },
+            },
+          }),
+        });
+      }
 
-    function yearsChart(canvas, d) {
-      const years = d.years;
-      const c1 = cssVar("--chart-1"), c2 = cssVar("--chart-2"), surface = cssVar("--surface");
-      const bar = { borderColor: surface, borderWidth: { top: 2 }, borderSkipped: "bottom", stack: "paid" };
-      return new Chart(canvas, {
-        type: "bar",
-        data: {
-          labels: years.map((y) => y.year),
-          datasets: [
-            { label: "Principal", data: years.map((y) => y.principal), backgroundColor: c1, ...bar },
-            { label: "Interest", data: years.map((y) => y.interest), backgroundColor: c2, borderRadius: { topLeft: 4, topRight: 4 }, ...bar },
-          ],
-        },
-        options: {
-          maintainAspectRatio: false,
-          animation: false,
-          interaction: { mode: "index", intersect: false },
-          scales: {
+      function yearsChart(picked, combined) {
+        const years = [...new Set(picked.flatMap((m) => m.years.map((y) => y.year)))].sort((a, b) => a - b);
+        const byYear = (m, key) => {
+          const at = new Map(m.years.map((y) => [y.year, y[key]]));
+          return years.map((y) => at.get(y) ?? null);
+        };
+        const bar = { borderColor: cssVar("--surface"), borderWidth: { top: 2 }, borderSkipped: "bottom" };
+        const top = { borderRadius: { topLeft: 4, topRight: 4 } };
+        let datasets;
+        if (combined || picked.length === 1) {
+          const total = (key) => years.map((_, i) => sum(picked.map((m) => byYear(m, key)[i])));
+          datasets = [
+            { label: "Principal", data: total("principal"), backgroundColor: cssVar("--chart-1"), stack: "paid", ...bar },
+            { label: "Interest", data: total("interest"), backgroundColor: cssVar("--chart-2"), stack: "paid", ...top, ...bar },
+          ];
+        } else {
+          // A bar for each mortgage: principal in its colour, interest in a lighter shade of it.
+          datasets = picked.flatMap((m) => {
+            const color = colorOf(m), stack = `m${m.id}`;
+            return [
+              { label: `${m.name} · principal`, data: byYear(m, "principal"), backgroundColor: color, stack, ...bar },
+              { label: `${m.name} · interest`, data: byYear(m, "interest"), backgroundColor: `${color}66`, stack, ...top, ...bar },
+            ];
+          });
+        }
+        return new Chart(canvas, {
+          type: "bar",
+          data: { labels: years, datasets },
+          options: options({
             x: { stacked: true, grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true } },
-            y: { stacked: true, ticks: { callback: (v) => money(v, BASE, { compact: true }) } },
-          },
-          plugins: {
-            legend: { position: "bottom", labels: { boxWidth: 12 } },
-            tooltip: { callbacks: {
-              label: (c) => ` ${c.dataset.label}: ${money(c.parsed.y)}`,
-              footer: (items) => `Paid in ${items[0].label}: ${money(items.reduce((s, i) => s + i.parsed.y, 0))}`,
-            } },
-          },
-        },
+            y: { stacked: true },
+          }, {
+            tooltip: {
+              filter: (item) => item.parsed.y != null,
+              callbacks: {
+                label: (c) => ` ${c.dataset.label}: ${money(c.parsed.y)}`,
+                footer: (items) => `Paid in ${items[0].label}: ${money(items.reduce((s, i) => s + i.parsed.y, 0))}`,
+              },
+            },
+          }),
+        });
+      }
+
+      let chart = null;
+      function draw() {
+        chart?.destroy();
+        chart = null;
+        const picked = mortgages.filter((m) => state.shown.has(m.id));
+        const combined = state.combined && picked.length > 1;
+        card.querySelectorAll("button[data-mode]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === state.mode)));
+        card.querySelectorAll(".pick").forEach((b) => b.setAttribute("aria-pressed", String(state.shown.has(Number(b.dataset.id)))));
+        card.querySelectorAll("button[data-combine]").forEach((b) => {
+          b.setAttribute("aria-pressed", String(b.dataset.combine === String(state.combined)));
+          b.disabled = picked.length < 2;
+        });
+        card.querySelector("[data-balance-only]").hidden = state.mode !== "balance";
+        status.hidden = picked.length > 0;
+        if (!picked.length) return;
+        const names = picked.map((m) => m.name).join(", ");
+        canvas.setAttribute("aria-label", `${state.mode === "years" ? "Principal and interest paid each year" : "Estimated balance until paid off"}`
+          + ` for ${combined ? "the combined " : ""}${names} mortgage${picked.length === 1 ? "" : "s"}`);
+        chart = state.mode === "years" ? yearsChart(picked, combined) : balanceChart(picked, combined);
+      }
+      card.addEventListener("click", (e) => {
+        const b = e.target.closest("button");
+        if (!b || b.disabled) return;
+        if (b.dataset.mode) state.mode = b.dataset.mode;
+        else if (b.dataset.combine) state.combined = b.dataset.combine === "true";
+        else if (b.dataset.id) {
+          const id = Number(b.dataset.id);
+          if (state.shown.has(id)) state.shown.delete(id);
+          else state.shown.add(id);
+        } else return;
+        draw();
       });
+      draw();
     }
 
-    document.querySelectorAll(".mortgage").forEach((card) => {
-      const canvas = card.querySelector("canvas[data-chart]");
-      if (!canvas || !window.Chart) return;
-      const data = JSON.parse(canvas.dataset.chart);
-      let chart = null;
-      const draw = (mode) => {
-        chart?.destroy();
-        card.querySelectorAll("button[data-mode]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === mode)));
-        chart = mode === "years" ? yearsChart(canvas, data) : balanceChart(canvas, data);
-      };
-      card.querySelector(".seg").addEventListener("click", (e) => {
-        const b = e.target.closest("button[data-mode]");
-        if (b) draw(b.dataset.mode);
-      });
-      draw("balance");
-    });
+    const mortgageData = $("mortgage-chart-data");
+    if (mortgageData && window.Chart) mortgageChart($("mortgage-chart"), JSON.parse(mortgageData.textContent));
 
     loadWorth();
     setInterval(() => { if (!document.hidden) loadWorth(); }, REFRESH_MS);

@@ -900,11 +900,15 @@ def render_my_assets(**extra):
     """The My Assets page: net worth and mortgages."""
     accounts = user_accounts()
     mortgages = mortgage_projections(user_mortgages())
+    # One payback chart for all the mortgages, which can show any of them, side by side or combined.
+    mortgage_charts = [{"id": m["id"], "name": m["name"], **p["chart"]} for m, p, _ in mortgages if p]
+    mortgage_links = [("mortgage-chart", "Payback chart")] if mortgage_charts else []
+    mortgage_links += [(f"mortgage-{m['id']}", m["name"]) for m, _, _ in mortgages]
     return render_template(
         "assets.html", assets=user_assets(), accounts=accounts, portfolios=user_portfolios(),
         labels={a["id"]: account_label(a) for a in accounts}, members=asset_members(), label=account_label,
-        mortgages=mortgages, mortgage_totals=mortgage_totals(mortgages),
-        mortgage_links=[(f"mortgage-{m['id']}", m["name"]) for m, _, _ in mortgages], today=date.today().isoformat(),
+        mortgages=mortgages, mortgage_totals=mortgage_totals(mortgages), mortgage_charts=mortgage_charts,
+        mortgage_links=mortgage_links, today=date.today().isoformat(),
         frequencies=mg.FREQUENCIES, compoundings=mg.COMPOUNDING, duration=mg.duration,
         **{"asset_form": None, "asset_errors": [], "mortgage_form": new_mortgage_form(), "mortgage_errors": [], **extra},
     )

@@ -114,6 +114,38 @@
   </section>
   {% endif %}
 
+  {% if mortgage_charts %}
+  <section class="card" id="mortgage-chart">
+    <div class="card-head">
+      <h3>Estimated payback</h3>
+      <div class="seg" role="group" aria-label="Chart" data-group="mode">
+        <button type="button" data-mode="balance" aria-pressed="true">Balance</button>
+        <button type="button" data-mode="years" aria-pressed="false">Principal &amp; interest by year</button>
+      </div>
+    </div>
+    {% if mortgage_charts|length > 1 %}
+    <div class="card-head chart-controls">
+      <div class="picks" role="group" aria-label="Mortgages to show">
+        {% for c in mortgage_charts %}
+        <button type="button" class="pick" data-id="{{ c.id }}" aria-pressed="true"><span class="dot"></span>{{ c.name }}</button>
+        {% endfor %}
+      </div>
+      <div class="seg" role="group" aria-label="Show the mortgages" data-group="combine">
+        <button type="button" data-combine="false" aria-pressed="true">Separate</button>
+        <button type="button" data-combine="true" aria-pressed="false">Combined</button>
+      </div>
+    </div>
+    {% endif %}
+    <div class="chart-box">
+      <canvas role="img" aria-label="Estimated mortgage balances until they are paid off"></canvas>
+      <div class="chart-status" hidden>Pick a mortgage to see its payback.</div>
+    </div>
+    <p class="hint"><span data-balance-only>Solid lines are the estimated balance so far, dashed lines what is still to come.</span>
+      Each estimate assumes the mortgage's current rate until it is paid off; see the details below.</p>
+    <script type="application/json" id="mortgage-chart-data">{{ mortgage_charts|tojson }}</script>
+  </section>
+  {% endif %}
+
   {% for m, p, err in mortgages %}
   <section class="card mortgage" id="mortgage-{{ m.id }}">
     <div class="card-head">
@@ -147,22 +179,11 @@
                "In interest · paid off %s sooner" % duration(p.months_saved), "gain") }}
       {% endif %}
     </div>
-    <div class="card-head chart-head">
-      <h4 class="chart-title">Estimated payback</h4>
-      <div class="seg" role="group" aria-label="Chart">
-        <button type="button" data-mode="balance" aria-pressed="true">Balance</button>
-        <button type="button" data-mode="years" aria-pressed="false">Principal &amp; interest by year</button>
-      </div>
-    </div>
-    <div class="chart-box">
-      <canvas role="img" aria-label="Estimated balance of the {{ m.name }} mortgage until it is paid off"
-              data-chart='{{ p.chart|tojson }}'></canvas>
-    </div>
     <p class="hint">
       {% if m.balance is not none and m.balance_date %}Projected from the {{ m.balance|amount }} balance on your {{ m.balance_date|long_date }} statement.
       {% else %}Projected from the {{ m.principal|amount }} borrowed on {{ m.start_date|long_date }}.{% endif %}
-      Assumes {{ '%g' % m.rate }}% interest, compounded {{ 'semi-annually' if m.compounding == 'semi-annual' else 'monthly' }}, until the mortgage is paid off;
-      the solid line is the estimated balance so far, the dashed line what is still to come. Your lender's figures may differ slightly.
+      Assumes {{ '%g' % m.rate }}% interest, compounded {{ 'semi-annually' if m.compounding == 'semi-annual' else 'monthly' }}, until the mortgage is paid off.
+      Your lender's figures may differ slightly.
     </p>
     {% endif %}
   </section>

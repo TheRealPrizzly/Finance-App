@@ -503,8 +503,9 @@ def test_mortgages(client):
     html = client.get("/assets").get_data(as_text=True)
     assert "Outstanding balance" in html and "Estimated final payment" in html and "June 2047" in html
     assert "$2,908.03" in html and "Balance at renewal" in html
-    assert re.search(r'<canvas[^>]+data-chart=', html)
-    assert 'href="#mortgage-1">Home</a>' in html  # in the section sidebar
+    assert 'id="mortgage-chart"' in html and 'id="mortgage-chart-data"' in html
+    assert 'class="pick"' not in html  # nothing to pick between with one mortgage
+    assert 'href="#mortgage-1">Home</a>' in html and 'href="#mortgage-chart"' in html  # in the section sidebar
 
     # Edit page is filled in from the saved mortgage; saving an extra payment shows what it saves.
     html = client.get("/mortgages/1/edit").get_data(as_text=True)
@@ -516,6 +517,9 @@ def test_mortgages(client):
     client.post("/mortgages", data={"csrf_token": token, **MORTGAGE, "name": "Cottage", "principal": "200000"})
     html = client.get("/assets").get_data(as_text=True)
     assert 'id="mortgage-kpis"' in html and "Mortgage-free" in html
+    # ...and one chart that can show either of them, or both combined.
+    assert html.count('class="pick"') == 2 and 'data-combine="true"' in html
+    assert html.count('id="mortgage-chart"') == 1
 
     client.post("/mortgages/1/delete", data={"csrf_token": token})
     assert [m["name"] for m in client.get("/api/assets").get_json()["mortgages"]] == ["Cottage"]
