@@ -22,7 +22,7 @@
   --sma-10: #e0a000; --sma-20: #c2368a; --sma-50: #e8622c; --sma-100: #9b7bf0; --sma-200: #8a4b14;
   /* Research chart indicators (the SMAs share the position chart's colours) */
   --ind-sma10: var(--sma-10); --ind-sma20: var(--sma-20); --ind-sma50: var(--sma-50); --ind-sma100: var(--sma-100); --ind-sma200: var(--sma-200);
-  --ind-ma200w: #3c4454; --ind-ema10: #0f9fb0; --ind-ema20: #0b6b78; --ind-rsi: #7b5cd6;
+  --ind-ma200w: #3c4454; --ind-ema10: #0f9fb0; --ind-ema20: #0b6b78; --ind-rsi: #7b5cd6; --ind-bb: #4f6d8f;
   /* Symbols compared on the Research chart, in hues the indicators don't use */
   --cmp-1: #6d28d9; --cmp-2: #65a30d; --cmp-3: #1e3a8a; --cmp-4: #be123c; --cmp-5: #111827;
   /* Corporate events on the Research chart (earnings use --gain / --loss), and their letters */
@@ -54,7 +54,7 @@
   --chart-2: #ffad5c;
   --chart-3: #8d939e;
   --sma-10: #b88600; --sma-20: #d94f93; --sma-50: #e86a2a; --sma-100: #957cea; --sma-200: #b87a40;
-  --ind-ma200w: #d5d8de; --ind-ema10: #4fd3e3; --ind-ema20: #2aa0ae; --ind-rsi: #b9a3ff;
+  --ind-ma200w: #d5d8de; --ind-ema10: #4fd3e3; --ind-ema20: #2aa0ae; --ind-rsi: #b9a3ff; --ind-bb: #a9bdd6;
   --cmp-1: #a78bfa; --cmp-2: #a3e635; --cmp-3: #93c5fd; --cmp-4: #fb7185; --cmp-5: #f5f5f5;
   --ev-div: #5fd0e6; --ev-split: #f0b45a; --ev-text: #15181e;
   --fg-0: #ff7b7b; --fg-1: #ffad5c; --fg-2: #8d939e; --fg-3: #7fd6a0; --fg-4: #4cd28a;

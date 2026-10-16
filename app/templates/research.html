@@ -12,6 +12,7 @@
   ("ma200w", "200 week MA", "Average of the last 200 weekly closes"),
   ("ema10", "10 EMA", "10-day exponential moving average"),
   ("ema20", "20 EMA", "20-day exponential moving average"),
+  ("bb", "Bollinger Bands", "20-day SMA with bands 2 standard deviations above and below"),
 ] %}
 {% block content %}
 <div id="app" data-api="{{ url_for('views.api_research', symbol='SYMBOL') }}" data-symbol="{{ symbol }}" data-base="{{ base_currency }}">

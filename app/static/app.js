@@ -1493,6 +1493,16 @@
     });
     return out;
   }
+  // Bollinger Bands: [upper, middle, lower] at each close, the n-bar SMA plus and minus k standard deviations.
+  function bollingerLine(values, n = 20, k = 2) {
+    return values.map((_, i) => {
+      if (i < n - 1) return null;
+      const last = values.slice(i - n + 1, i + 1);
+      const mean = last.reduce((s, v) => s + v, 0) / n;
+      const sd = Math.sqrt(last.reduce((s, v) => s + (v - mean) ** 2, 0) / n);
+      return [mean + k * sd, mean, mean - k * sd];
+    });
+  }
   function rsiLine(values, n = 14) {  // Wilder's smoothing
     const out = new Array(values.length).fill(null);
     let gain = 0, loss = 0;
@@ -1535,6 +1545,7 @@
     ma200w: { label: "200-week MA", line: (c, dates) => weeklyMaLine(dates, c, 200), dashed: true, daily: true },
     ema10: { label: "10 EMA", line: (c) => emaLine(c, 10) },
     ema20: { label: "20 EMA", line: (c) => emaLine(c, 20) },
+    bb: { label: "BB (20, 2)", line: (c) => bollingerLine(c), bands: true },
     rsi: { label: "RSI (14)", line: (c) => rsiLine(c), pane: true },
   };
   const RESEARCH_RANGES = { "1M": [0, 1], "6M": [0, 6], "1Y": [1, 0], "3Y": [3, 0], "5Y": [5, 0], "10Y": [10, 0] };  // [years, months]
@@ -1888,6 +1899,15 @@
       for (const [key, def] of Object.entries(RESEARCH_INDICATORS)) {
         if (def.pane || !shown.has(key)) continue;
         const color = cssVar(`--ind-${key}`);
+        if (def.bands) {  // upper, middle and lower lines, shaded between the outer two; one legend entry
+          const band = (j) => ind[key].map((b) => f(b?.[j] ?? null));
+          const style = { ...line, borderColor: color, backgroundColor: color, borderWidth: 1.25, order: 1 };
+          datasets.push({ ...style, label: def.label, tipLabel: `${def.label} upper`, data: band(0),
+            fill: "+2", backgroundColor: translucent(color, 0.08) },
+          { ...style, label: `${def.label} middle`, data: band(1), borderDash: [6, 4], noLegend: true },
+          { ...style, label: `${def.label} lower`, data: band(2), noLegend: true });
+          continue;
+        }
         datasets.push({ ...line, label: def.label, data: ind[key].map(f), borderColor: color, backgroundColor: color,
           borderWidth: 1.5, borderDash: def.dashed ? [6, 4] : [], order: 1 });
       }
@@ -2024,7 +2044,7 @@
               const r = rows[c.dataIndex];
               return ` O ${price(r.o)}  H ${price(r.h)}  L ${price(r.l)}  C ${price(r.c)}`;
             }
-            return ` ${ds.label}: ${fmt(c.parsed.y)}`;
+            return ` ${ds.tipLabel || ds.label}: ${fmt(c.parsed.y)}`;
           },
         },
       };
@@ -2138,11 +2158,12 @@
           : "Triangles mark your buys (▲) and sells (▼).");
       }
       if (unit === "bar") {
-        notes.push(`Each ${ta ? "candle" : "point"} is a ${parseInt(d.interval, 10)}-minute bar. The SMAs, EMAs and RSI count bars; the 200-day and 200-week averages use daily closes.`);
+        notes.push(`Each ${ta ? "candle" : "point"} is a ${parseInt(d.interval, 10)}-minute bar. The SMAs, EMAs, Bollinger Bands and RSI count bars; the 200-day and 200-week averages use daily closes.`);
       } else if (unit !== "day") {
         notes.push(`Each ${ta ? "candle" : "point"} is one ${unit}; the averages are as of its last day${showVolume ? " and the volume is its total" : ""}.`);
       }
       if (ta) notes.push("Green candles closed higher than they opened, red ones lower.");
+      if (shown.has("bb")) notes.push("Bollinger Bands (20, 2) are the 20-bar SMA (dashed) with bands two standard deviations above and below it.");
       notes.push("Scroll or pinch over the chart to zoom, and drag to move along it.");
       $("r-note").replaceChildren(...notes.map((text) => Object.assign(document.createElement("li"), { textContent: text })));
     }
