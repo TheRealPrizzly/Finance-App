@@ -1856,7 +1856,7 @@
         datasets.push({ ...line, label: def.label, data: ind[key].map(f), borderColor: color, backgroundColor: color,
           borderWidth: 1.5, borderDash: def.dashed ? [6, 4] : [], order: 1 });
       }
-      // Buy and sell triangles (Default mode) on the main line and on each compared line. Those on
+      // Buy and sell triangles on the main line and on each compared line. Those on
       // a compared line are outlined in its colour; only the first pair goes in the legend.
       const gain = cssVar("--gain"), loss = cssVar("--loss");
       let tradeCount = 0;
