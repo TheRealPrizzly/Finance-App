@@ -1560,8 +1560,28 @@
   };
   const RESEARCH_RANGES = { "1M": [0, 1], "6M": [0, 6], "1Y": [1, 0], "3Y": [3, 0], "5Y": [5, 0], "10Y": [10, 0] };  // [years, months]
   const INTRADAY_RANGES = ["1D", "1W"];
-  const DEFAULT_RANGE = "YTD";
   const CHART_STYLES = ["candles", "line", "colored", "baseline"];
+  // Each mode's settings when nothing is saved for it, and after its Reset.
+  const RESEARCH_DEFAULTS = {
+    default: { style: "line", ind: [], trades: true, volume: true, events: true, range: "YTD", notes: false },
+    ta: { style: "candles", ind: ["rsi", "bb", "sma10", "sma20", "sma50", "sma200"], trades: false, volume: true, events: true,
+      range: "YTD", notes: false },
+  };
+  // Settings are saved per mode under this key. The older "research" key saved every setting of both
+  // modes on any change, so it kept defaults from before these and is dropped.
+  const RESEARCH_STORAGE = "research.v2";
+  const presetRange = (r) => r in RESEARCH_RANGES || ["1D", "1W", "YTD", "Max"].includes(r);
+  // A mode's settings: what was saved for it, where still valid, and its defaults for the rest.
+  function modeSettings(mode, saved = {}) {
+    const d = RESEARCH_DEFAULTS[mode];
+    const flag = (k) => (typeof saved[k] === "boolean" ? saved[k] : d[k]);
+    return {
+      style: CHART_STYLES.includes(saved.style) ? saved.style : d.style,
+      ind: new Set(Array.isArray(saved.ind) ? saved.ind.filter((k) => k in RESEARCH_INDICATORS) : d.ind),
+      trades: flag("trades"), volume: flag("volume"), events: flag("events"), notes: flag("notes"),
+      range: presetRange(saved.range) ? saved.range : d.range,
+    };
+  }
   const COMPARE_COLORS = ["--cmp-1", "--cmp-2", "--cmp-3", "--cmp-4", "--cmp-5"];  // CSS tokens, one per compared symbol
   const MAX_COMPARES = COMPARE_COLORS.length;
 
@@ -1572,45 +1592,30 @@
     const menu = $("ta-menu");
 
     const saved = {};
-    try { Object.assign(saved, JSON.parse(localStorage.getItem("research") || "{}")); } catch { /* storage blocked */ }
+    try {
+      Object.assign(saved, JSON.parse(localStorage.getItem(RESEARCH_STORAGE) || "{}"));
+      localStorage.removeItem("research");
+    } catch { /* storage blocked */ }
     const state = {
       symbol: root.dataset.symbol,
       mode: saved.mode === "ta" ? "ta" : "default",
-      range: saved.range in RESEARCH_RANGES || ["1D", "1W", "YTD", "Max"].includes(saved.range) ? saved.range : DEFAULT_RANGE,
-      from: "", to: "",  // a picked date range (range "custom")
-      ind: {  // indicators shown in each mode
-        default: new Set(saved.ind?.default || []),
-        ta: new Set(saved.ind?.ta || ["rsi", "bb", "sma10", "sma20", "sma50", "sma200"]),
-      },
-      trades: {  // buy and sell markers shown in each mode
-        default: saved.trades?.default ?? true,
-        ta: saved.trades?.ta ?? false,
-      },
-      volume: {  // the volume pane, in each mode
-        default: saved.volume?.default ?? true,
-        ta: saved.volume?.ta ?? true,
-      },
-      style: {  // the chart type in each mode
-        default: CHART_STYLES.includes(saved.style?.default) ? saved.style.default : "line",
-        ta: CHART_STYLES.includes(saved.style?.ta) ? saved.style.ta : "candles",
-      },
-      events: {  // dividend, earnings and split badges, in each mode
-        default: saved.events?.default ?? true,
-        ta: saved.events?.ta ?? true,
-      },
-      notes: saved.notes ?? false,  // the notes under the chart, in both modes; hidden at first
+      // Each mode's chart type, indicators, toggles, time range and notes.
+      modes: { default: modeSettings("default", saved.modes?.default), ta: modeSettings("ta", saved.modes?.ta) },
+      range: "", from: "", to: "",  // the range shown: the mode's, or "custom" for picked dates
       main: null,
       compares: [],  // {symbol, color, data}
       zoom: null,  // {from, to}: the first and last bars zoomed to, or null for the whole range
     };
+    const cur = () => state.modes[state.mode];
+    state.range = cur().range;
     const save = () => {
       try {
-        localStorage.setItem("research", JSON.stringify({
-          mode: state.mode, range: state.range === "custom" ? DEFAULT_RANGE : state.range,
-          ind: { default: [...state.ind.default], ta: [...state.ind.ta] },
-          style: state.style, trades: state.trades, volume: state.volume, events: state.events, notes: state.notes,
+        localStorage.setItem(RESEARCH_STORAGE, JSON.stringify({
+          mode: state.mode,
+          modes: Object.fromEntries(Object.entries(state.modes).map(([m, s]) => [m, { ...s, ind: [...s.ind] }])),
         }));
       } catch { /* storage blocked */ }
+      syncReset();
     };
 
     // ---- data
@@ -1876,10 +1881,10 @@
       const xView = { min: win.lo, max: win.hi };
       syncZoom();
 
-      const style = state.style[state.mode];
+      const style = cur().style;
       const candle = style === "candles";
       const up = cssVar("--gain"), down = cssVar("--loss");
-      const shown = state.ind[state.mode];
+      const shown = cur().ind;
       const compares = state.compares.filter((c) => c.data);
       const relative = compares.length > 0;  // comparing: every line is its change since the first bar
       const tradesButton = $("r-trades");
@@ -1889,13 +1894,13 @@
       const volumeButton = $("r-volume");
       volumeButton.disabled = !hasVolume;
       volumeButton.title = hasVolume ? "Show trading volume below the chart" : `Yahoo Finance has no volume for ${d.symbol}`;
-      const showVolume = hasVolume && state.volume[state.mode];
+      const showVolume = hasVolume && cur().volume;
       const events = d.events || { dividends: [], earnings: [], splits: [] };
       const eventsButton = $("r-events");
       eventsButton.disabled = !events.dividends.length && !events.earnings.length && !events.splits.length;
       eventsButton.title = eventsButton.disabled ? `Yahoo Finance lists no dividends, earnings or splits for ${d.symbol}`
         : "Show dividends, earnings and splits";
-      const ev = state.events[state.mode] ? eventMarks(events, rows, unit) : eventMarks(null, rows, unit);
+      const ev = cur().events ? eventMarks(events, rows, unit) : eventMarks(null, rows, unit);
       const baseClose = rows[0].c;
       const f = relative ? (v) => (v == null ? null : v / baseClose - 1) : (v) => v;
       const price = priceFormat(d.currency);
@@ -1944,7 +1949,7 @@
       const gain = cssVar("--gain"), loss = cssVar("--loss");
       let tradeCount = 0;
       const addMarks = (trades, closes, toY, { symbol, currency, outline } = {}) => {
-        if (!state.trades[state.mode]) return;
+        if (!cur().trades) return;
         const marks = tradeMarks(trades, rows, unit, closes);
         if (!marks.count) return;
         const legend = tradeCount === 0;
@@ -2369,60 +2374,67 @@
     };
     const styleMenu = $("style-menu");
     const syncMenu = () => {
-      menu.querySelectorAll("[data-ind]").forEach((cb) => { cb.checked = state.ind[state.mode].has(cb.dataset.ind); });
-      const style = state.style[state.mode];
-      styleMenu.querySelectorAll("input[name=r-style]").forEach((r) => { r.checked = r.value === style; });
-      $("style-current").innerHTML = styleMenu.querySelector(`[data-style="${style}"]`).innerHTML;
-      $("r-trades").setAttribute("aria-pressed", String(state.trades[state.mode]));
-      $("r-volume").setAttribute("aria-pressed", String(state.volume[state.mode]));
-      $("r-events").setAttribute("aria-pressed", String(state.events[state.mode]));
+      const s = cur();
+      menu.querySelectorAll("[data-ind]").forEach((cb) => { cb.checked = s.ind.has(cb.dataset.ind); });
+      styleMenu.querySelectorAll("input[name=r-style]").forEach((r) => { r.checked = r.value === s.style; });
+      $("style-current").innerHTML = styleMenu.querySelector(`[data-style="${s.style}"]`).innerHTML;
+      $("r-trades").setAttribute("aria-pressed", String(s.trades));
+      $("r-volume").setAttribute("aria-pressed", String(s.volume));
+      $("r-events").setAttribute("aria-pressed", String(s.events));
+      $("r-note").hidden = !s.notes;
+      $("r-notes").setAttribute("aria-expanded", String(s.notes));
+    };
+    // Reset is there while the mode's settings or the time shown differ from its defaults.
+    const syncReset = () => {
+      const s = cur(), d = modeSettings(state.mode);
+      const same = state.range === d.range && ["style", "trades", "volume", "events", "notes"].every((k) => s[k] === d[k])
+        && s.ind.size === d.ind.size && [...d.ind].every((k) => s.ind.has(k));
+      $("r-reset").disabled = same;
+      $("r-reset").title = `Put ${state.mode === "ta" ? "TA" : "PA"} mode back to its default settings`;
+    };
+    // Show the current mode's settings, and its time range if another one is showing.
+    const showMode = () => {
+      const newRange = state.range !== cur().range;
+      if (newRange) Object.assign(state, { range: cur().range, from: "", to: "", zoom: null });
+      pressed("r-mode", "mode", state.mode);
+      pressed("r-range", "range", state.range);
+      syncMenu();
+      save();
+      if (newRange) refresh(); else draw();
     };
 
-    $("r-trades").addEventListener("click", () => {
-      state.trades[state.mode] = !state.trades[state.mode];
-      syncMenu();
-      save();
-      draw();
-    });
+    for (const key of ["trades", "volume", "events"]) {
+      $(`r-${key}`).addEventListener("click", () => {
+        cur()[key] = !cur()[key];
+        syncMenu();
+        save();
+        draw();
+      });
+    }
 
-    $("r-volume").addEventListener("click", () => {
-      state.volume[state.mode] = !state.volume[state.mode];
-      syncMenu();
-      save();
-      draw();
-    });
-
-    $("r-events").addEventListener("click", () => {
-      state.events[state.mode] = !state.events[state.mode];
-      syncMenu();
-      save();
-      draw();
-    });
-
-    const showNotes = () => {
-      $("r-note").hidden = !state.notes;
-      $("r-notes").setAttribute("aria-expanded", String(state.notes));
-    };
     $("r-notes").addEventListener("click", () => {
-      state.notes = !state.notes;
-      showNotes();
+      cur().notes = !cur().notes;
+      syncMenu();
       save();
     });
-    showNotes();
 
     $("r-mode").addEventListener("click", (e) => {
       const b = e.target.closest("button");
       if (!b || b.dataset.mode === state.mode) return;
       state.mode = b.dataset.mode;
-      pressed("r-mode", "mode", state.mode);
-      syncMenu();
-      save();
-      draw();
+      showMode();
+    });
+
+    $("r-reset").addEventListener("click", () => {
+      state.modes[state.mode] = modeSettings(state.mode);
+      state.zoom = null;
+      state.range = "";  // so showMode puts the default range back
+      showMode();
     });
 
     styleMenu.addEventListener("change", (e) => {
       if (e.target.name !== "r-style") return;
-      state.style[state.mode] = e.target.value;
+      cur().style = e.target.value;
       styleMenu.open = false;
       syncMenu();
       save();
@@ -2432,7 +2444,7 @@
     menu.addEventListener("change", (e) => {
       const key = e.target.dataset.ind;
       if (!key) return;
-      if (e.target.checked) state.ind[state.mode].add(key); else state.ind[state.mode].delete(key);
+      if (e.target.checked) cur().ind.add(key); else cur().ind.delete(key);
       save();
       draw();
     });
@@ -2440,7 +2452,7 @@
     $("r-range").addEventListener("click", (e) => {
       const b = e.target.closest("button");
       if (!b) return;
-      state.range = b.dataset.range;
+      state.range = cur().range = b.dataset.range;
       state.from = state.to = "";
       state.zoom = null;
       pressed("r-range", "range", state.range);
@@ -2458,6 +2470,7 @@
       $("r-to").value = to;
       Object.assign(state, { range: "custom", from, to, zoom: null });
       pressed("r-range", "range", null);
+      syncReset();
       refresh();
     }));
 
@@ -2522,6 +2535,7 @@
     pressed("r-mode", "mode", state.mode);
     pressed("r-range", "range", state.range);
     syncMenu();
+    syncReset();
     refresh();
   }
 

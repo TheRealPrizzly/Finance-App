@@ -102,6 +102,7 @@
           <button type="button" data-mode="default" aria-pressed="true" title="Price action">PA</button>
           <button type="button" data-mode="ta" aria-pressed="false" title="Technical analysis">TA</button>
         </div>
+        <button type="button" class="btn btn-ghost btn-sm reset-mode" id="r-reset"><span aria-hidden="true">↺</span> Reset</button>
         <div class="seg seg-wrap" role="group" aria-label="Time range" id="r-range">
           {% for r in ('1D', '1W', '1M', '6M', 'YTD', '1Y', '3Y', '5Y', '10Y', 'Max') %}
           <button type="button" data-range="{{ r }}" aria-pressed="false">{{ r }}</button>
