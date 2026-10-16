@@ -423,7 +423,7 @@ def _price(v):
 @bp.get("/api/research/<symbol>")
 @login_required
 def api_research(symbol):
-    """Bars for the Research chart. ?span=1D or 1W gives intraday bars (plus daily bars for the
+    """Bars for the Research chart, as [time, open, high, low, close, volume]. ?span=1D or 1W gives intraday bars (plus daily bars for the
     200-day and 200-week averages); otherwise daily bars from RESEARCH_LOOKBACK before ?start
     (an ISO date, or "max" for the whole history)."""
     symbol = symbol.strip().upper()
@@ -450,13 +450,13 @@ def api_research(symbol):
         "currency": currency or (quote or {}).get("currency"),
         "quote": quote,
         "interval": "1d",
-        "daily": [[d.isoformat(), *map(_price, ohlc)] for d, *ohlc in daily],
+        "daily": [[d.isoformat(), *map(_price, ohlc), volume] for d, *ohlc, volume in daily],
         "trades": research_trades(ysym, currency, splits) if currency else [],
     }
     if span:
         _, bars = market.intraday_candles(ysym, span)
         data["interval"] = INTRADAY_SPANS[span][1]
-        data["bars"] = [[t.isoformat(timespec="minutes"), *map(_price, ohlc)] for t, *ohlc in bars]
+        data["bars"] = [[t.isoformat(timespec="minutes"), *map(_price, ohlc), volume] for t, *ohlc, volume in bars]
     return jsonify(data)
 
 

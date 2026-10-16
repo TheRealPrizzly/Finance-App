@@ -187,8 +187,8 @@ class YahooClient:
         return (prev / divisor if prev else None), points
 
     def candles(self, symbol, interval="1d", start=None, end=None, span=None):
-        """Split-adjusted OHLC bars, either between two dates or over a Yahoo range like "5d".
-        Returns (currency, [(exchange-local datetime, open, high, low, close)], [(split date, ratio)])."""
+        """Split-adjusted OHLC bars and volumes, either between two dates or over a Yahoo range like "5d".
+        Returns (currency, [(exchange-local datetime, open, high, low, close, volume)], [(split date, ratio)])."""
         params = {"interval": interval, "events": "split"}
         if span:
             params["range"] = span
@@ -204,16 +204,17 @@ class YahooClient:
         offset = meta.get("gmtoffset") or 0
         currency, divisor = _major_unit(meta.get("currency"))
         q = ((res.get("indicators") or {}).get("quote") or [{}])[0]
-        cols = [q.get(k) or [] for k in ("open", "high", "low", "close")]
+        cols = [q.get(k) or [] for k in ("open", "high", "low", "close", "volume")]
         rows = []
         for i, ts in enumerate(res.get("timestamp") or []):
-            o, h, l, close = (col[i] if i < len(col) else None for col in cols)
+            o, h, l, close, volume = (col[i] if i < len(col) else None for col in cols)
             if close is None:
                 continue
             o = close if o is None else o
             h = max(o, close) if h is None else h
             l = min(o, close) if l is None else l
-            rows.append((_utc(ts + offset).replace(tzinfo=None), o / divisor, h / divisor, l / divisor, close / divisor))
+            rows.append((_utc(ts + offset).replace(tzinfo=None), o / divisor, h / divisor, l / divisor, close / divisor,
+                         int(volume or 0)))
         splits = [
             (_utc(sp["date"] + offset).date(), sp["numerator"] / sp["denominator"])
             for sp in ((res.get("events") or {}).get("splits") or {}).values()
@@ -374,8 +375,8 @@ class MarketData:
         return prev, points
 
     def daily_candles(self, yahoo_symbol, start=None):
-        """Split-adjusted daily OHLC bars since ``start`` (None: as far back as Yahoo goes).
-        Returns (currency, [(date, open, high, low, close)], splits)."""
+        """Split-adjusted daily OHLC bars and volumes since ``start`` (None: as far back as Yahoo goes).
+        Returns (currency, [(date, open, high, low, close, volume)], splits)."""
         start = start or MAX_START
         cached = self._candles.get(yahoo_symbol)
         if not (cached and cached[1] <= start and time.time() - cached[0] < HISTORY_TTL):
@@ -387,7 +388,7 @@ class MarketData:
                 if not cached:
                     return None, [], []
             else:
-                by_day = {dt.date(): (dt.date(), *ohlc) for dt, *ohlc in rows}  # Yahoo can repeat today's bar
+                by_day = {dt.date(): (dt.date(), *ohlcv) for dt, *ohlcv in rows}  # Yahoo can repeat today's bar
                 cached = (time.time(), start, currency, sorted(by_day.values()), splits)
                 with self._lock:
                     self._candles[yahoo_symbol] = cached
@@ -395,8 +396,8 @@ class MarketData:
         return currency, [r for r in rows if r[0] >= start], splits
 
     def intraday_candles(self, yahoo_symbol, span):
-        """Intraday OHLC bars for a span in INTRADAY_SPANS.
-        Returns (currency, [(exchange-local datetime, open, high, low, close)])."""
+        """Intraday OHLC bars and volumes for a span in INTRADAY_SPANS.
+        Returns (currency, [(exchange-local datetime, open, high, low, close, volume)])."""
         key = (yahoo_symbol, span)
         cached = self._candles.get(key)
         if cached and time.time() - cached[0] < INTRADAY_TTL:

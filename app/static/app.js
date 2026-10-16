@@ -1563,6 +1563,10 @@
         default: saved.trades?.default ?? true,
         ta: saved.trades?.ta ?? false,
       },
+      volume: {  // the volume pane, in each mode
+        default: saved.volume?.default ?? false,
+        ta: saved.volume?.ta ?? false,
+      },
       main: null,
       compares: [],  // {symbol, color, data}
     };
@@ -1571,7 +1575,7 @@
         localStorage.setItem("research", JSON.stringify({
           mode: state.mode, range: state.range === "custom" ? "1Y" : state.range,
           ind: { default: [...state.ind.default], ta: [...state.ind.ta] },
-          trades: state.trades,
+          trades: state.trades, volume: state.volume,
         }));
       } catch { /* storage blocked */ }
     };
@@ -1636,12 +1640,12 @@
 
     // The bars shown, each indicator's value at each, and what one bar is: "bar" (intraday), "day", "week" or "month".
     function series(d) {
-      const daily = d.daily.map(([t, o, h, l, c]) => ({ t, o, h, l, c, from: t }));
+      const daily = d.daily.map(([t, o, h, l, c, v]) => ({ t, o, h, l, c, v: v || 0, from: t }));
       const dCloses = daily.map((r) => r.c), dDates = daily.map((r) => r.t);
       const dailyInd = Object.fromEntries(Object.entries(RESEARCH_INDICATORS).map(([k, def]) => [k, def.line(dCloses, dDates)]));
 
       if (INTRADAY_RANGES.includes(state.range)) {
-        const bars = (d.bars || []).map(([t, o, h, l, c]) => ({ t, o, h, l, c }));
+        const bars = (d.bars || []).map(([t, o, h, l, c, v]) => ({ t, o, h, l, c, v: v || 0 }));
         const days = [...new Set(bars.map((b) => b.t.slice(0, 10)))].slice(state.range === "1D" ? -1 : -5);
         const first = bars.findIndex((b) => b.t >= days[0]);
         const bCloses = bars.map((b) => b.c), bDates = bars.map((b) => b.t);
@@ -1675,7 +1679,7 @@
       const rows = groups.map(({ start, end }) => {
         const part = daily.slice(start, end + 1);
         return { t: daily[end].t, from: daily[start].t, o: daily[start].o, c: daily[end].c,
-          h: Math.max(...part.map((r) => r.h)), l: Math.min(...part.map((r) => r.l)) };
+          h: Math.max(...part.map((r) => r.h)), l: Math.min(...part.map((r) => r.l)), v: part.reduce((sum, r) => sum + r.v, 0) };
       });
       const ind = Object.fromEntries(Object.entries(dailyInd).map(([k, vals]) => [k, groups.map((g) => vals[g.end])]));
       return { rows, ind, unit, startClose: daily[lo - 1]?.c ?? daily[lo]?.o };
@@ -1718,15 +1722,23 @@
     }
 
     // ---- drawing
-    let chart = null, rsiChart = null;
-    const AXIS_WIDTH = 76;  // both panes' y axes are this wide, so their bars line up
+    let chart = null, volumeChart = null, rsiChart = null;
+    const AXIS_WIDTH = 76;  // every pane's y axis is this wide, so their bars line up
     const fixWidth = (scale) => { scale.width = AXIS_WIDTH; };
     function clearCharts() {
       chart?.destroy();
+      volumeChart?.destroy();
       rsiChart?.destroy();
-      chart = rsiChart = null;
-      $("rsi-box").hidden = true;
+      chart = volumeChart = rsiChart = null;
+      $("volume-box").hidden = $("rsi-box").hidden = true;
     }
+    const translucent = (color, alpha) => {  // a #rrggbb colour at some opacity
+      const m = /^#([0-9a-f]{6})$/i.exec(color);
+      if (!m) return color;
+      const n = parseInt(m[1], 16);
+      return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+    };
+    const compactNumber = new Intl.NumberFormat("en-CA", { notation: "compact", maximumFractionDigits: 1 });
     function status(text) {
       $("r-status").hidden = !text;
       $("r-status").textContent = text || "";
@@ -1800,6 +1812,11 @@
       const tradesButton = $("r-trades");
       tradesButton.disabled = !d.trades.length && !compares.some((c) => c.data.trades?.length);
       tradesButton.title = tradesButton.disabled ? "You haven't bought or sold the symbols on this chart" : "Show your buys and sells";
+      const hasVolume = rows.some((r) => r.v > 0);
+      const volumeButton = $("r-volume");
+      volumeButton.disabled = !hasVolume;
+      volumeButton.title = hasVolume ? "Show trading volume below the chart" : `Yahoo Finance has no volume for ${d.symbol}`;
+      const showVolume = hasVolume && state.volume[state.mode];
       const baseClose = rows[0].c;
       const f = relative ? (v) => (v == null ? null : v / baseClose - 1) : (v) => v;
       const price = priceFormat(d.currency);
@@ -1932,6 +1949,34 @@
         },
       });
 
+      // Volume pane: each bar is green when its candle closed at or above its open, red when below.
+      $("volume-box").hidden = !showVolume;
+      if (showVolume) {
+        volumeChart = new Chart($("volume-chart"), {
+          type: "bar",
+          data: { labels, datasets: [{ label: "Volume", data: rows.map((r) => r.v), barPercentage: 0.9, categoryPercentage: 1,
+            backgroundColor: rows.map((r) => translucent(r.c >= r.o ? up : down, 0.55)) }] },
+          options: {
+            maintainAspectRatio: false,
+            animation: false,
+            interaction: { mode: "index", intersect: false },
+            scales: {
+              // Invisible copies of the price chart's dates leave the same room at the edges, so the panes line up.
+              x: { offset: ta, grid: { display: false }, ticks: { ...xTicks(rows, unit), color: "transparent" } },
+              y: { beginAtZero: true, afterFit: fixWidth, title: { display: true, text: "Volume", font: { size: 11 } },
+                ticks: { maxTicksLimit: 3, callback: (v) => compactNumber.format(v) } },
+            },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: { title: (items) => tipTitle(rows[items[0].dataIndex], unit),
+                  label: (c) => ` Volume: ${c.parsed.y.toLocaleString("en-CA")}` },
+              },
+            },
+          },
+        });
+      }
+
       $("rsi-box").hidden = !shown.has("rsi");
       if (shown.has("rsi")) {
         const level = (value, color) => ({ ...line, label: String(value), data: labels.map(() => value), borderColor: color,
@@ -1966,6 +2011,7 @@
 
       const notes = [`Prices in ${d.currency}.`];
       if (relative) notes.push("While comparing, each line shows its change since the first day shown.");
+      if (showVolume && relative) notes.push(`Volume is ${d.symbol}'s.`);
       if (tradeCount) {
         notes.push(relative ? "Triangles mark your buys (▲) and sells (▼) on each line; those on a compared line are outlined in its colour."
           : "Triangles mark your buys (▲) and sells (▼).");
@@ -1973,7 +2019,7 @@
       if (unit === "bar") {
         notes.push(`Each ${ta ? "candle" : "point"} is a ${parseInt(d.interval, 10)}-minute bar. The SMAs, EMAs and RSI count bars; the 200-day and 200-week averages use daily closes.`);
       } else if (unit !== "day") {
-        notes.push(`Each ${ta ? "candle" : "point"} is one ${unit}; the averages are as of its last day.`);
+        notes.push(`Each ${ta ? "candle" : "point"} is one ${unit}; the averages are as of its last day${showVolume ? " and the volume is its total" : ""}.`);
       }
       if (ta) notes.push("Green candles closed higher than they opened, red ones lower.");
       $("r-note").textContent = notes.join(" ");
@@ -1986,10 +2032,18 @@
     const syncMenu = () => {
       menu.querySelectorAll("[data-ind]").forEach((cb) => { cb.checked = state.ind[state.mode].has(cb.dataset.ind); });
       $("r-trades").setAttribute("aria-pressed", String(state.trades[state.mode]));
+      $("r-volume").setAttribute("aria-pressed", String(state.volume[state.mode]));
     };
 
     $("r-trades").addEventListener("click", () => {
       state.trades[state.mode] = !state.trades[state.mode];
+      syncMenu();
+      save();
+      draw();
+    });
+
+    $("r-volume").addEventListener("click", () => {
+      state.volume[state.mode] = !state.volume[state.mode];
       syncMenu();
       save();
       draw();

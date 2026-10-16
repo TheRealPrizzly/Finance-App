@@ -569,9 +569,9 @@ def test_research(client, market):
 
     market.candles["AAPL"] = (
         "USD",
-        [(date(2024, 2, 5), 180.0, 190.0, 179.0, 187.5), (date(2024, 11, 15), 220.0, 226.0, 219.0, 225.0)],
+        [(date(2024, 2, 5), 180.0, 190.0, 179.0, 187.5, 52_000_000), (date(2024, 11, 15), 220.0, 226.0, 219.0, 225.0, 47_000_000)],
         [(date(2024, 6, 1), 2.0)],  # a 2:1 split between the buy and the sell
-        [(datetime(2024, 11, 15, 9, 30), 220.0, 221.0, 219.5, 220.5)],
+        [(datetime(2024, 11, 15, 9, 30), 220.0, 221.0, 219.5, 220.5, 1_200_000)],
     )
     token = login(client)
     upload(client, token)
@@ -594,13 +594,13 @@ def test_research(client, market):
 
     data = client.get("/api/research/AAPL?start=2024-01-01").get_json()
     assert data["name"] == "AAPL Inc." and data["currency"] == "USD" and data["interval"] == "1d"
-    assert data["daily"][0] == ["2024-02-05", 180.0, 190.0, 179.0, 187.5]
+    assert data["daily"][0] == ["2024-02-05", 180.0, 190.0, 179.0, 187.5, 52_000_000]
     # Prices before the split are halved (and quantities doubled) to match the adjusted chart.
     assert [(t["kind"], t["quantity"], t["price"]) for t in data["trades"]] == [("BUY", 30, 93.75), ("SELL", 5, 225.0)]
     assert data["trades"][0]["account"] == "RRSP · 51234568"
 
     intraday = client.get("/api/research/AAPL?span=1D").get_json()
-    assert intraday["interval"] == "5m" and intraday["bars"] == [["2024-11-15T09:30", 220.0, 221.0, 219.5, 220.5]]
+    assert intraday["interval"] == "5m" and intraday["bars"] == [["2024-11-15T09:30", 220.0, 221.0, 219.5, 220.5, 1_200_000]]
 
     # Any symbol Yahoo quotes works, traded or not; others don't.
     assert client.get("/api/research/MSFT?start=max").get_json()["trades"] == []

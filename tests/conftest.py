@@ -19,7 +19,7 @@ class FakeMarket:
         self._history = history or {}  # symbol -> (currency, {date: close})
         self._fx = fx or {}  # currency -> (rate_now, {date: rate})
         self._sectors = sectors or {}
-        self.candles = candles or {}  # symbol -> (currency, [(date, o, h, l, c)], splits, [(datetime, o, h, l, c)])
+        self.candles = candles or {}  # symbol -> (currency, [(date, o, h, l, c, volume)], splits, [(datetime, o, h, l, c, volume)])
 
     def resolve(self, symbol, currency):
         return symbol if symbol in self._quotes or symbol in self._history else None
