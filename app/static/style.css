@@ -253,6 +253,8 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
 .chart-volume { height: 130px; margin-top: 4px; }
 .chart-notes { margin-top: 10px; }
 .chart-notes .hint { margin: 4px 0 0; padding: 0; list-style: none; }
+.chart-notes .hint li { position: relative; padding-left: 12px; }  /* a wrapped note lines up after its dash */
+.chart-notes .hint li::before { content: "-"; position: absolute; left: 0; }
 .chart-notes .hint li + li { margin-top: 2px; }
 .notes-toggle { display: inline-flex; align-items: center; gap: 6px; margin-left: -10px; }
 .notes-toggle .caret { display: inline-block; transition: transform .15s; }
