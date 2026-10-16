@@ -1785,7 +1785,7 @@
 
     // ---- drawing
     let chart = null, volumeChart = null, rsiChart = null, macdChart = null;
-    const AXIS_WIDTH = 76;  // every pane's y axis is this wide, so their bars line up
+    const AXIS_WIDTH = 76;  // every pane's y axis, on the right, is this wide, so their bars line up
     const fixWidth = (scale) => { scale.width = AXIS_WIDTH; };
     function clearCharts() {
       chart?.destroy();
@@ -2108,7 +2108,7 @@
           interaction: { mode: "index", intersect: false },
           scales: {
             x: { ...xView, offset: candle, grid: { display: false }, ticks: xTicks(rows, unit, win.lo, win.hi) },
-            y: { position: "left", grace: "3%", afterDataLimits: roomForBadges, afterFit: fixWidth,
+            y: { position: "right", grace: "3%", afterDataLimits: roomForBadges, afterFit: fixWidth,
               ticks: { callback(v) { return v < this.lowest ? null : fmt(v); } } },
           },
           plugins: {
@@ -2149,7 +2149,7 @@
             scales: {
               // Invisible copies of the price chart's dates leave the same room at the edges, so the panes line up.
               x: { ...xView, offset: candle, grid: { display: false }, ticks: { ...xTicks(rows, unit, win.lo, win.hi), color: "transparent" } },
-              y: { beginAtZero: true, afterFit: fixWidth, title: { display: true, text: "Volume", font: { size: 11 } },
+              y: { position: "right", beginAtZero: true, afterFit: fixWidth, title: { display: true, text: "Volume", font: { size: 11 } },
                 ticks: { maxTicksLimit: 3, callback: (v) => compactNumber.format(v) } },
             },
             plugins: {
@@ -2181,7 +2181,7 @@
             scales: {
               // Invisible copies of the price chart's dates leave the same room at the edges, so the panes line up.
               x: { ...xView, offset: candle, grid: { display: false }, ticks: { ...xTicks(rows, unit, win.lo, win.hi), color: "transparent" } },
-              y: { min: 0, max: 100, afterFit: fixWidth, title: { display: true, text: "RSI (14)", font: { size: 11 } },
+              y: { position: "right", min: 0, max: 100, afterFit: fixWidth, title: { display: true, text: "RSI (14)", font: { size: 11 } },
                 afterBuildTicks: (s) => { s.ticks = [30, 50, 70].map((value) => ({ value })); } },
             },
             plugins: {
@@ -2216,7 +2216,7 @@
             interaction: { mode: "index", intersect: false },
             scales: {
               x: { ...xView, offset: candle, grid: { display: false }, ticks: { ...xTicks(rows, unit, win.lo, win.hi), color: "transparent" } },
-              y: { afterFit: fixWidth, title: { display: true, text: "MACD (12, 26, 9)", font: { size: 11 } },
+              y: { position: "right", afterFit: fixWidth, title: { display: true, text: "MACD (12, 26, 9)", font: { size: 11 } },
                 grid: { color: (c) => (c.tick.value === 0 ? cssVar("--muted") : Chart.defaults.borderColor) },
                 ticks: { maxTicksLimit: 5, callback: (v) => num(v) } },
             },
