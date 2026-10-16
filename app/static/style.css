@@ -267,10 +267,10 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
 #zoom-out, #zoom-in { min-width: 30px; font-size: 1rem; line-height: 1; }
 .chart-rsi { height: 280px; margin-top: 4px; }
 .chart-macd { height: 200px; margin-top: 4px; }
-.compare-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+.compare-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+.compare-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .compare-form[hidden] { display: none; }
 .compare-form .hint { margin: 0; }
-#compare-chips:not(:empty) { margin-bottom: 12px; }
 .pick .x { font-size: 1.05rem; line-height: 1; margin-left: 2px; }
 .chart-toggle { border-radius: 8px; }
 .chart-toggle .marks { font-size: .7rem; letter-spacing: -1px; opacity: .45; }
