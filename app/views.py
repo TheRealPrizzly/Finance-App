@@ -3,7 +3,7 @@
 Every query is scoped to ``g.user`` so users only ever see their own data.
 """
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from urllib.parse import urlsplit
 
 from flask import (
@@ -18,7 +18,7 @@ from .db import get_db
 from .macro import (
     FEAR_GREED_COMPARE, FEAR_GREED_INDICATORS, FEAR_GREED_PAGE, FEAR_GREED_URL, Unavailable, get_macro,
 )
-from .market import get_market
+from .market import INTRADAY_SPANS, MarketData, get_market
 
 bp = Blueprint("views", __name__)
 PAGE_SIZE = 100
@@ -321,6 +321,115 @@ def api_position(symbol):
         }
         for r in rows if account_ids is None or r["account_id"] in account_ids
     ]
+    return jsonify(data)
+
+
+# -- research ------------------------------------------------------------------------------
+
+# Daily bars sent before the first day shown, so every indicator is defined from that day:
+# 200 weeks for the 200-week average, which covers the 200-day one too.
+RESEARCH_LOOKBACK = timedelta(days=200 * 7 + 30)
+SYMBOL_RE = re.compile(r"^[A-Z0-9.\-^=]{1,20}$")
+
+
+def traded_symbols():
+    return [r["symbol"] for r in get_db().execute(
+        "SELECT DISTINCT symbol FROM transactions WHERE user_id = ? AND kind IN (?, ?) AND symbol <> '' ORDER BY symbol",
+        (g.user["id"], pf.BUY, pf.SELL))]
+
+
+@bp.get("/research")
+@login_required
+def research():
+    symbol = request.args.get("symbol", "").strip().upper()
+    if not symbol:  # the most recently traded symbol, or the benchmark for a new user
+        row = get_db().execute(
+            "SELECT symbol FROM transactions WHERE user_id = ? AND kind IN (?, ?) AND symbol <> '' "
+            "ORDER BY date DESC, id DESC LIMIT 1", (g.user["id"], pf.BUY, pf.SELL)).fetchone()
+        symbol = row["symbol"] if row else current_app.config["BENCHMARK_SYMBOL"]
+    return render_template("research.html", symbol=symbol, traded=traded_symbols())
+
+
+def research_yahoo_symbol(symbol):
+    """The Yahoo symbol for what was typed. A symbol the user trades maps the way the dashboard
+    maps it (VFV in a CAD account is VFV.TO); anything else counts if Yahoo has a quote for it."""
+    market = get_market()
+    for r in get_db().execute(
+        "SELECT DISTINCT currency FROM transactions WHERE user_id = ? AND symbol = ?", (g.user["id"], symbol)
+    ):
+        if ysym := market.resolve(symbol, r["currency"]):
+            return ysym
+    return symbol if market.quotes([symbol]).get(symbol) else None
+
+
+def research_trades(ysym, currency, splits):
+    """The user's buys and sells of a Yahoo symbol, priced like the split-adjusted chart.
+    Trades in another currency (the same company on another exchange) are left out."""
+    market = get_market()
+    matches = {}  # (broker symbol, currency) -> trades this Yahoo symbol?
+    out = []
+    for r in get_db().execute(
+        """SELECT t.date, t.kind, t.symbol, t.quantity, t.price, t.currency, a.number, a.name, a.type
+           FROM transactions t JOIN accounts a ON a.id = t.account_id
+           WHERE t.user_id = ? AND t.kind IN (?, ?) AND t.price > 0 AND t.currency = ? ORDER BY t.date, t.id""",
+        (g.user["id"], pf.BUY, pf.SELL, currency),
+    ):
+        key = (r["symbol"], r["currency"])
+        if key not in matches:  # candidates() rules most symbols out without asking Yahoo
+            matches[key] = ysym in MarketData.candidates(*key) and market.resolve(*key) == ysym
+        if not matches[key]:
+            continue
+        d = date.fromisoformat(r["date"])
+        ratio = 1.0
+        for split_date, split_ratio in splits:
+            if d < split_date:
+                ratio *= split_ratio
+        out.append({"date": r["date"], "kind": r["kind"], "quantity": abs(r["quantity"]) * ratio,
+                    "price": r["price"] / ratio, "account": f"{r['name'] or r['type'] or 'Account'} · {r['number']}"})
+    return out
+
+
+def _price(v):
+    return float(f"{v:.7g}")  # 7 significant digits keeps long histories small
+
+
+@bp.get("/api/research/<symbol>")
+@login_required
+def api_research(symbol):
+    """Bars for the Research chart. ?span=1D or 1W gives intraday bars (plus daily bars for the
+    200-day and 200-week averages); otherwise daily bars from RESEARCH_LOOKBACK before ?start
+    (an ISO date, or "max" for the whole history)."""
+    symbol = symbol.strip().upper()
+    if not SYMBOL_RE.match(symbol):
+        return jsonify(error="That doesn't look like a ticker symbol."), 400
+    span = request.args.get("span", "")
+    start = request.args.get("start", "max")
+    if span and span not in INTRADAY_SPANS:
+        return jsonify(error="Unknown time span."), 400
+    try:
+        first = date.today() - timedelta(days=10) if span else None if start == "max" else date.fromisoformat(start)
+    except ValueError:
+        return jsonify(error="Invalid start date."), 400
+
+    market = get_market()
+    ysym = research_yahoo_symbol(symbol)
+    if not ysym:
+        return jsonify(error=f"Yahoo Finance has no data for {symbol}."), 404
+    currency, daily, splits = market.daily_candles(ysym, first and first - RESEARCH_LOOKBACK)
+    quote = market.quotes([ysym]).get(ysym)
+    data = {
+        "symbol": ysym,
+        "name": (quote or {}).get("name") or ysym,
+        "currency": currency or (quote or {}).get("currency"),
+        "quote": quote,
+        "interval": "1d",
+        "daily": [[d.isoformat(), *map(_price, ohlc)] for d, *ohlc in daily],
+        "trades": research_trades(ysym, currency, splits) if currency else [],
+    }
+    if span:
+        _, bars = market.intraday_candles(ysym, span)
+        data["interval"] = INTRADAY_SPANS[span][1]
+        data["bars"] = [[t.isoformat(timespec="minutes"), *map(_price, ohlc)] for t, *ohlc in bars]
     return jsonify(data)
 
 

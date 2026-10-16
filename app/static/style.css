@@ -20,6 +20,11 @@
   --chart-3: #8792a5;
   /* Moving averages on the position chart */
   --sma-10: #e0a000; --sma-20: #c2368a; --sma-50: #e8622c; --sma-100: #9b7bf0; --sma-200: #8a4b14;
+  /* Research chart indicators (the SMAs share the position chart's colours) */
+  --ind-sma10: var(--sma-10); --ind-sma20: var(--sma-20); --ind-sma50: var(--sma-50); --ind-sma100: var(--sma-100); --ind-sma200: var(--sma-200);
+  --ind-ma200w: #3c4454; --ind-ema10: #0f9fb0; --ind-ema20: #0b6b78; --ind-rsi: #7b5cd6;
+  /* Symbols compared on the Research chart, in hues the indicators don't use */
+  --cmp-1: #6d28d9; --cmp-2: #65a30d; --cmp-3: #1e3a8a; --cmp-4: #be123c; --cmp-5: #111827;
   /* Fear & Greed bands, extreme fear to extreme greed */
   --fg-0: #c22d2d; --fg-1: #e8833a; --fg-2: #9aa1ad; --fg-3: #4fae6d; --fg-4: #0e7a43;
   --radius: 12px;
@@ -47,6 +52,8 @@
   --chart-2: #ffad5c;
   --chart-3: #8d939e;
   --sma-10: #b88600; --sma-20: #d94f93; --sma-50: #e86a2a; --sma-100: #957cea; --sma-200: #b87a40;
+  --ind-ma200w: #d5d8de; --ind-ema10: #4fd3e3; --ind-ema20: #2aa0ae; --ind-rsi: #b9a3ff;
+  --cmp-1: #a78bfa; --cmp-2: #a3e635; --cmp-3: #93c5fd; --cmp-4: #fb7185; --cmp-5: #f5f5f5;
   --fg-0: #ff7b7b; --fg-1: #ffad5c; --fg-2: #8d939e; --fg-3: #7fd6a0; --fg-4: #4cd28a;
   --shadow: none;
   color-scheme: dark;
@@ -224,6 +231,29 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
 .pick[aria-pressed="true"] { color: var(--text); background: var(--surface-2); border-color: transparent; }
 .pick[aria-pressed="true"] .dot { background: var(--pick, var(--chart-1)); }
 .chart-title { font-size: .95rem; font-weight: 650; margin: 0; }
+
+/* ---- Research ------------------------------------------------------------ */
+.symbol-form { display: flex; gap: 8px; align-items: center; }
+.symbol-form input, .compare-form input { width: 220px; }
+.input-sm { width: auto; padding: 4px 8px; font-size: .85rem; }
+.seg-wrap { flex-wrap: wrap; }
+.date-range { display: flex; align-items: center; gap: 6px; }
+.chart-lg { height: 420px; }
+.chart-rsi { height: 140px; margin-top: 4px; }
+.compare-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+.compare-form[hidden] { display: none; }
+.compare-form .hint { margin: 0; }
+#compare-chips:not(:empty) { margin-bottom: 12px; }
+.pick .x { font-size: 1.05rem; line-height: 1; margin-left: 2px; }
+.dropdown { position: relative; }
+.dropdown summary { list-style: none; margin: 0; }
+.dropdown summary::-webkit-details-marker { display: none; }
+.dropdown-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 5; min-width: 190px; display: grid; gap: 2px; padding: 6px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(16, 24, 40, .14); }
+.dropdown-menu label.check { padding: 6px 8px; border-radius: 6px; font-size: .88rem; white-space: nowrap; }
+.dropdown-menu label.check:hover { background: var(--surface-2); }
+.dropdown-menu label.check:first-child { border-bottom: 1px solid var(--border); border-radius: 6px 6px 0 0; margin-bottom: 2px; }
+.dropdown-menu .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--pick); flex: none; }
 .kind-choice, .subfields { border: 0; padding: 0; margin: 16px 0 0; display: grid; gap: 8px; }
 .kind-choice legend, .subfields legend { font-size: .88rem; font-weight: 600; padding: 0; margin-bottom: 8px; }
 .kind-choice label.check { align-items: baseline; }
@@ -359,4 +389,9 @@ details summary { cursor: pointer; font-weight: 600; font-size: .9rem; margin: 1
   .account-filter select { min-width: 0; width: auto; flex: 1; }
   .head-actions { width: 100%; }
   .head-actions .account-filter { width: 100%; }
+  .symbol-form { width: 100%; }
+  .symbol-form input, .compare-form input { flex: 1; width: auto; }
+  .chart-lg { height: 320px; }
+  .chart-rsi { height: 120px; }
+  .dropdown-menu { right: auto; left: 0; }
 }

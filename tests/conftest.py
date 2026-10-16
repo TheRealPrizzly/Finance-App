@@ -14,11 +14,12 @@ SAMPLE_CSV = pathlib.Path(__file__).resolve().parents[1] / "samples" / "sample_t
 class FakeMarket:
     """Deterministic stand-in for MarketData."""
 
-    def __init__(self, quotes=None, history=None, fx=None, sectors=None):
+    def __init__(self, quotes=None, history=None, fx=None, sectors=None, candles=None):
         self._quotes = quotes or {}  # symbol -> (price, prev_close, currency)
         self._history = history or {}  # symbol -> (currency, {date: close})
         self._fx = fx or {}  # currency -> (rate_now, {date: rate})
         self._sectors = sectors or {}
+        self.candles = candles or {}  # symbol -> (currency, [(date, o, h, l, c)], splits, [(datetime, o, h, l, c)])
 
     def resolve(self, symbol, currency):
         return symbol if symbol in self._quotes or symbol in self._history else None
@@ -37,6 +38,14 @@ class FakeMarket:
 
     def intraday(self, symbol):
         return None, []
+
+    def daily_candles(self, symbol, start=None):
+        currency, rows, splits, _ = self.candles.get(symbol, (None, [], [], []))
+        return currency, [r for r in rows if start is None or r[0] >= start], splits
+
+    def intraday_candles(self, symbol, span):
+        currency, _, _, bars = self.candles.get(symbol, (None, [], [], []))
+        return currency, bars
 
     def fx_rate(self, currency):
         return self._fx.get(currency, (None, {}))[0]

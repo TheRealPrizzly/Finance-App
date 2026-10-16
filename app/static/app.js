@@ -1507,6 +1507,595 @@
     setInterval(() => { if (!document.hidden) loadWorth(); }, REFRESH_MS);
   }
 
-  const pages = { dashboard, performance, position, "txn-form": txnForm, markets, assets: myAssets, "asset-form": assetForms };
+  // ---- Research tab ------------------------------------------------------------------
+  // Indicator maths over a series of closes; each returns one value (or null) per close.
+  function smaLine(values, n) {
+    const out = new Array(values.length).fill(null);
+    let sum = 0;
+    values.forEach((v, i) => {
+      sum += v;
+      if (i >= n) sum -= values[i - n];
+      if (i >= n - 1) out[i] = sum / n;
+    });
+    return out;
+  }
+  function emaLine(values, n) {  // seeded with the simple average of the first n closes
+    const out = new Array(values.length).fill(null);
+    const k = 2 / (n + 1);
+    let ema = 0;
+    values.forEach((v, i) => {
+      if (i < n) ema += v / n;
+      else ema = v * k + ema * (1 - k);
+      if (i >= n - 1) out[i] = ema;
+    });
+    return out;
+  }
+  function rsiLine(values, n = 14) {  // Wilder's smoothing
+    const out = new Array(values.length).fill(null);
+    let gain = 0, loss = 0;
+    for (let i = 1; i < values.length; i++) {
+      const change = values[i] - values[i - 1];
+      const g = Math.max(change, 0), l = Math.max(-change, 0);
+      if (i <= n) { gain += g / n; loss += l / n; } else { gain = (gain * (n - 1) + g) / n; loss = (loss * (n - 1) + l) / n; }
+      if (i >= n) out[i] = loss === 0 ? 100 : 100 - 100 / (1 + gain / loss);
+    }
+    return out;
+  }
+  const weekOf = (iso) => {  // the Monday starting an ISO date's week
+    const d = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+    return d.toISOString().slice(0, 10);
+  };
+  // Average of the last n weekly closes, where the current week's close is the latest price.
+  function weeklyMaLine(dates, values, n) {
+    const out = new Array(values.length).fill(null);
+    const weeks = dates.map(weekOf);
+    const done = [];  // closes of finished weeks
+    let sum = 0;  // of the last n - 1 of them
+    values.forEach((v, i) => {
+      if (i > 0 && weeks[i] !== weeks[i - 1]) {
+        done.push(values[i - 1]);
+        sum += values[i - 1];
+        if (done.length > n - 1) sum -= done[done.length - n];
+      }
+      if (done.length >= n - 1) out[i] = (sum + v) / n;
+    });
+    return out;
+  }
+
+  const RESEARCH_INDICATORS = {
+    sma10: { label: "10 SMA", line: (c) => smaLine(c, 10) },
+    sma20: { label: "20 SMA", line: (c) => smaLine(c, 20) },
+    sma50: { label: "50 SMA", line: (c) => smaLine(c, 50) },
+    sma100: { label: "100 SMA", line: (c) => smaLine(c, 100), dashed: true },
+    sma200: { label: "200-day SMA", line: (c) => smaLine(c, 200), dashed: true, daily: true },
+    ma200w: { label: "200-week MA", line: (c, dates) => weeklyMaLine(dates, c, 200), dashed: true, daily: true },
+    ema10: { label: "10 EMA", line: (c) => emaLine(c, 10) },
+    ema20: { label: "20 EMA", line: (c) => emaLine(c, 20) },
+    rsi: { label: "RSI (14)", line: (c) => rsiLine(c), pane: true },
+  };
+  const RESEARCH_RANGES = { "1M": [0, 1], "6M": [0, 6], "1Y": [1, 0], "3Y": [3, 0], "5Y": [5, 0], "10Y": [10, 0] };  // [years, months]
+  const INTRADAY_RANGES = ["1D", "1W"];
+  const COMPARE_COLORS = ["--cmp-1", "--cmp-2", "--cmp-3", "--cmp-4", "--cmp-5"];  // CSS tokens, one per compared symbol
+  const MAX_COMPARES = COMPARE_COLORS.length;
+
+  function research() {
+    chartDefaults();
+    const isoDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const dayText = (iso, opts = { dateStyle: "medium" }) => new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString("en-CA", opts);
+    const menu = $("ta-menu");
+
+    const saved = {};
+    try { Object.assign(saved, JSON.parse(localStorage.getItem("research") || "{}")); } catch { /* storage blocked */ }
+    const state = {
+      symbol: root.dataset.symbol,
+      mode: saved.mode === "ta" ? "ta" : "default",
+      range: saved.range in RESEARCH_RANGES || ["1D", "1W", "YTD", "Max"].includes(saved.range) ? saved.range : "1Y",
+      from: "", to: "",  // a picked date range (range "custom")
+      ind: {  // indicators shown in each mode
+        default: new Set(saved.ind?.default || []),
+        ta: new Set(saved.ind?.ta || ["sma10", "sma20", "sma50", "sma100", "sma200"]),
+      },
+      main: null,
+      compares: [],  // {symbol, color, data}
+    };
+    const save = () => {
+      try {
+        localStorage.setItem("research", JSON.stringify({
+          mode: state.mode, range: state.range === "custom" ? "1Y" : state.range,
+          ind: { default: [...state.ind.default], ta: [...state.ind.ta] },
+        }));
+      } catch { /* storage blocked */ }
+    };
+
+    // ---- data
+    // The first day shown, or "" for the whole history.
+    function visibleStart() {
+      if (state.range === "custom") return state.from;
+      if (state.range === "Max") return "";
+      const d = new Date();
+      if (state.range === "YTD") d.setMonth(0, 1);
+      else if (INTRADAY_RANGES.includes(state.range)) d.setDate(d.getDate() - 10);
+      else {
+        const [years, months] = RESEARCH_RANGES[state.range];
+        d.setFullYear(d.getFullYear() - years, d.getMonth() - months);
+      }
+      return isoDate(d);
+    }
+
+    // Responses are kept for a while; a daily history going back far enough serves later ranges too.
+    const cache = new Map();  // query -> {at, promise}
+    const earliest = {};  // symbol -> earliest daily start fetched ("" = all of it)
+    function load(symbol) {
+      let q;
+      if (INTRADAY_RANGES.includes(state.range)) q = `span=${state.range}`;
+      else {
+        const start = visibleStart();
+        q = `start=${(earliest[symbol] != null && earliest[symbol] <= start ? earliest[symbol] : start) || "max"}`;
+      }
+      const key = `${symbol}?${q}`;
+      const hit = cache.get(key);
+      if (hit && Date.now() - hit.at < (q.startsWith("span") ? 2 : 30) * 60_000) return hit.promise;
+      const url = `${root.dataset.api.replace("SYMBOL", encodeURIComponent(symbol))}?${q}`;
+      const promise = getJSON(url);
+      cache.set(key, { at: Date.now(), promise });
+      promise.then(() => {
+        if (q.startsWith("span")) return;
+        const start = q === "start=max" ? "" : q.slice(6);
+        if (earliest[symbol] == null || start < earliest[symbol]) earliest[symbol] = start;
+      }, () => cache.delete(key));
+      return promise;
+    }
+
+    let seq = 0;
+    async function refresh() {
+      const mine = ++seq;
+      status("Loading…");
+      const [main, ...others] = await Promise.allSettled([load(state.symbol), ...state.compares.map((c) => load(c.symbol))]);
+      if (mine !== seq) return;  // a newer request took over
+      if (main.status === "rejected") {
+        state.main = null;
+        clearCharts();
+        $("r-title").textContent = state.symbol;
+        $("r-price").textContent = "";
+        status(`Couldn't load ${state.symbol}: ${main.reason.message}`);
+        return;
+      }
+      state.main = main.value;
+      state.compares.forEach((c, i) => { c.data = others[i].status === "fulfilled" ? others[i].value : null; });
+      draw();
+    }
+
+    // The bars shown, each indicator's value at each, and what one bar is: "bar" (intraday), "day", "week" or "month".
+    function series(d) {
+      const daily = d.daily.map(([t, o, h, l, c]) => ({ t, o, h, l, c, from: t }));
+      const dCloses = daily.map((r) => r.c), dDates = daily.map((r) => r.t);
+      const dailyInd = Object.fromEntries(Object.entries(RESEARCH_INDICATORS).map(([k, def]) => [k, def.line(dCloses, dDates)]));
+
+      if (INTRADAY_RANGES.includes(state.range)) {
+        const bars = (d.bars || []).map(([t, o, h, l, c]) => ({ t, o, h, l, c }));
+        const days = [...new Set(bars.map((b) => b.t.slice(0, 10)))].slice(state.range === "1D" ? -1 : -5);
+        const first = bars.findIndex((b) => b.t >= days[0]);
+        const bCloses = bars.map((b) => b.c), bDates = bars.map((b) => b.t);
+        const ind = {};
+        for (const [k, def] of Object.entries(RESEARCH_INDICATORS)) {
+          if (def.daily) {  // the 200-day and 200-week averages stay daily: each bar gets its day's value
+            const byDay = new Map(dDates.map((t, i) => [t, dailyInd[k][i]]));
+            ind[k] = bars.map((b) => byDay.get(b.t.slice(0, 10)) ?? null).slice(first);
+          } else {
+            ind[k] = def.line(bCloses, bDates).slice(first);
+          }
+        }
+        return { rows: first < 0 ? [] : bars.slice(first), ind, unit: "bar", startClose: bars[first - 1]?.c ?? bars[first]?.o };
+      }
+
+      const from = visibleStart();
+      const to = state.range === "custom" && state.to ? state.to : "9999";
+      let lo = daily.findIndex((r) => r.t >= from);
+      if (lo < 0) lo = daily.length;
+      let hi = daily.length;
+      while (hi > lo && daily[hi - 1].t > to) hi--;
+      // Long ranges group days into weeks or months, so candles stay wide enough to read.
+      const n = hi - lo;
+      const unit = state.mode === "ta" ? (n > 1600 ? "month" : n > 400 ? "week" : "day") : n > 3000 ? "week" : "day";
+      const groups = [];
+      for (let i = lo; i < hi; i++) {
+        const key = unit === "day" ? i : unit === "week" ? weekOf(daily[i].t) : daily[i].t.slice(0, 7);
+        const last = groups[groups.length - 1];
+        if (last && last.key === key) last.end = i; else groups.push({ key, start: i, end: i });
+      }
+      const rows = groups.map(({ start, end }) => {
+        const part = daily.slice(start, end + 1);
+        return { t: daily[end].t, from: daily[start].t, o: daily[start].o, c: daily[end].c,
+          h: Math.max(...part.map((r) => r.h)), l: Math.min(...part.map((r) => r.l)) };
+      });
+      const ind = Object.fromEntries(Object.entries(dailyInd).map(([k, vals]) => [k, groups.map((g) => vals[g.end])]));
+      return { rows, ind, unit, startClose: daily[lo - 1]?.c ?? daily[lo]?.o };
+    }
+
+    // Buys and sells on the bars they fall in. Trades have no time of day, so on intraday
+    // charts each goes on its day's bar closest to the trade price.
+    function tradeMarks(d, rows, unit) {
+      const buys = rows.map(() => null), sells = rows.map(() => null), info = rows.map(() => []);
+      if (!rows.length) return { buys, sells, info, count: 0 };
+      let count = 0;
+      d.trades.forEach((t) => {
+        let i = -1;
+        if (unit === "bar") {
+          rows.forEach((r, j) => {
+            if (r.t.startsWith(t.date) && (i < 0 || Math.abs(r.c - t.price) < Math.abs(rows[i].c - t.price))) i = j;
+          });
+        } else if (t.date >= rows[0].from) {
+          i = rows.findIndex((r) => r.t >= t.date);
+        }
+        if (i < 0) return;
+        (t.kind === "BUY" ? buys : sells)[i] = t.price;
+        info[i].push(t);
+        count++;
+      });
+      return { buys, sells, info, count };
+    }
+
+    // A compared symbol's closes on the main chart's bars, as the change since the first one.
+    function compareLine(c, rows, unit) {
+      const src = unit === "bar" ? c.data.bars || [] : c.data.daily;
+      const out = [];
+      let j = -1;
+      rows.forEach((r) => {
+        while (j + 1 < src.length && src[j + 1][0] <= r.t) j++;
+        out.push(j >= 0 ? src[j][4] : null);
+      });
+      const base = out.find((v) => v != null);
+      return out.map((v) => (v == null ? null : v / base - 1));
+    }
+
+    // ---- drawing
+    let chart = null, rsiChart = null;
+    const AXIS_WIDTH = 76;  // both panes' y axes are this wide, so their bars line up
+    const fixWidth = (scale) => { scale.width = AXIS_WIDTH; };
+    function clearCharts() {
+      chart?.destroy();
+      rsiChart?.destroy();
+      chart = rsiChart = null;
+      $("rsi-box").hidden = true;
+    }
+    function status(text) {
+      $("r-status").hidden = !text;
+      $("r-status").textContent = text || "";
+    }
+
+    function priceFormat(currency) {
+      let f;
+      try { f = new Intl.NumberFormat("en-CA", { style: "currency", currency, currencyDisplay: "narrowSymbol" }); } catch { f = null; }
+      return (v) => (v == null ? "—" : f ? f.format(v) : v.toFixed(2));
+    }
+
+    function xTicks(rows, unit) {
+      if (unit === "bar" && state.range === "1W") {  // one tick per day, on its first bar
+        return { maxRotation: 0, autoSkip: false,
+          callback: (v) => (v === 0 || rows[v].t.slice(0, 10) !== rows[v - 1].t.slice(0, 10)
+            ? dayText(rows[v].t, { weekday: "short", day: "numeric" }) : null) };
+      }
+      const base = { maxRotation: 0, autoSkip: true, maxTicksLimit: 8 };
+      if (unit === "bar") return { ...base, callback: (v) => rows[v].t.slice(11) };
+      const days = rows.length > 1 ? (new Date(rows[rows.length - 1].t) - new Date(rows[0].t)) / 864e5 : 0;
+      const opts = days > 8 * 365 ? { year: "numeric" } : days > 240 ? { month: "short", year: "2-digit" } : { month: "short", day: "numeric" };
+      return { ...base, callback: (v) => dayText(rows[v].t, opts) };
+    }
+
+    function tipTitle(r, unit) {
+      if (unit === "bar") return new Date(r.t).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" });
+      if (unit === "week") return `Week of ${dayText(r.from)}`;
+      if (unit === "month") return dayText(r.t, { month: "long", year: "numeric" });
+      return dayText(r.t);
+    }
+
+    function rangeText() {
+      return { custom: "over these dates", YTD: "this year", Max: "all time", "1D": "today" }[state.range] || `past ${state.range}`;
+    }
+
+    function draw() {
+      const d = state.main;
+      if (!d) return;
+      const { rows, ind, unit, startClose } = series(d);
+      $("r-title").textContent = d.name && d.name !== d.symbol ? `${d.name} (${d.symbol})` : d.symbol;
+      document.title = `${d.symbol} · Research · Portfolio Manager`;
+
+      const q = d.quote;
+      let head = "";
+      if (q && q.price != null) {
+        const change = q.prev_close ? q.price - q.prev_close : null;
+        head = `${esc(money(q.price, q.currency))} <span class="${tone(change)}">${change == null ? ""
+          : `${esc(money(change, q.currency, { signed: true }))} (${pct(change / q.prev_close)}) today`}</span>`;
+      }
+      if (rows.length && startClose && state.range !== "1D") {  // from the last close before the first day shown
+        const change = rows[rows.length - 1].c / startClose - 1;
+        head += ` <span class="nowrap"><span class="muted">·</span> <span class="${tone(change)}">${pct(change)}</span> <span class="muted">${esc(rangeText())}</span></span>`;
+      }
+      $("r-price").innerHTML = head || "No live quote for this symbol.";
+
+      if (state.range !== "custom" && rows.length) {
+        $("r-from").value = rows[0].from || rows[0].t.slice(0, 10);
+        $("r-to").value = rows[rows.length - 1].t.slice(0, 10);
+      }
+      clearCharts();
+      if (!rows.length) {
+        status(unit === "bar" ? "No intraday prices for this symbol." : "No prices for these dates.");
+        return;
+      }
+      status(null);
+
+      const ta = state.mode === "ta";
+      const shown = state.ind[state.mode];
+      const compares = state.compares.filter((c) => c.data);
+      const relative = compares.length > 0;  // comparing: every line is its change since the first bar
+      const baseClose = rows[0].c;
+      const f = relative ? (v) => (v == null ? null : v / baseClose - 1) : (v) => v;
+      const price = priceFormat(d.currency);
+      const fmt = relative ? (v) => pct(v) : price;
+      const labels = rows.map((r) => r.t);
+      const line = { pointRadius: 0, pointHoverRadius: 0, tension: 0.1 };
+      const datasets = [];
+
+      if (ta) {
+        // Candles are drawn by the plugin below; these invisible lines give the tooltip and y axis their values.
+        const ghost = { ...line, borderColor: "transparent", backgroundColor: "transparent", borderWidth: 0 };
+        datasets.push({ ...ghost, label: d.symbol, data: rows.map((r) => f(r.c)), candle: true, noLegend: true },
+          { ...ghost, label: "High", data: rows.map((r) => f(r.h)), helper: true },
+          { ...ghost, label: "Low", data: rows.map((r) => f(r.l)), helper: true });
+      } else {
+        const c1 = cssVar("--chart-1");
+        datasets.push({ ...line, label: d.symbol, data: rows.map((r) => f(r.c)), borderColor: c1, backgroundColor: c1,
+          borderWidth: 2, pointHoverRadius: 3, order: 0 });
+      }
+      for (const [key, def] of Object.entries(RESEARCH_INDICATORS)) {
+        if (def.pane || !shown.has(key)) continue;
+        const color = cssVar(`--ind-${key}`);
+        datasets.push({ ...line, label: def.label, data: ind[key].map(f), borderColor: color, backgroundColor: color,
+          borderWidth: 1.5, borderDash: def.dashed ? [6, 4] : [], order: 1 });
+      }
+      compares.forEach((c) => {
+        const color = cssVar(c.color);
+        datasets.push({ ...line, label: c.data.symbol, data: compareLine(c, rows, unit), borderColor: color,
+          backgroundColor: color, borderWidth: 1.75, pointHoverRadius: 3, order: 0 });
+      });
+      const marks = ta ? null : tradeMarks(d, rows, unit);
+      if (marks?.count) {
+        const gain = cssVar("--gain"), loss = cssVar("--loss");
+        const mark = { showLine: false, pointStyle: "triangle", pointRadius: 7, pointHoverRadius: 8, order: -1, trades: marks.info };
+        datasets.push({ ...mark, label: "Buy", kind: "BUY", data: marks.buys.map(f), backgroundColor: gain, borderColor: gain },
+          { ...mark, label: "Sell", kind: "SELL", data: marks.sells.map(f), rotation: 180, backgroundColor: loss, borderColor: loss });
+      }
+
+      const up = cssVar("--gain"), down = cssVar("--loss");
+      const candles = {
+        id: "candles",
+        beforeDatasetsDraw(c) {
+          if (!ta) return;
+          const { ctx, chartArea: a, scales: { x, y } } = c;
+          const width = Math.max(1, Math.min(16, ((a.right - a.left) / rows.length) * 0.7));
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(a.left, a.top, a.right - a.left, a.bottom - a.top);
+          ctx.clip();
+          rows.forEach((r, i) => {
+            const px = Math.round(x.getPixelForValue(i)) + 0.5;
+            ctx.strokeStyle = ctx.fillStyle = r.c >= r.o ? up : down;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(px, y.getPixelForValue(f(r.h)));
+            ctx.lineTo(px, y.getPixelForValue(f(r.l)));
+            ctx.stroke();
+            const top = y.getPixelForValue(f(Math.max(r.o, r.c))), bottom = y.getPixelForValue(f(Math.min(r.o, r.c)));
+            ctx.fillRect(px - width / 2, top, width, Math.max(1, bottom - top));
+          });
+          ctx.restore();
+        },
+      };
+
+      const tooltip = {
+        filter: (item) => item.parsed.y != null && !item.dataset.helper,
+        callbacks: {
+          title: (items) => tipTitle(rows[items[0].dataIndex], unit),
+          label: (c) => {
+            const ds = c.dataset;
+            if (ds.trades) {
+              return ds.trades[c.dataIndex].filter((t) => t.kind === ds.kind)
+                .map((t) => ` ${ds.label} ${qty(t.quantity)} @ ${price(t.price)} · ${t.account}`);
+            }
+            if (ds.candle && !relative) {
+              const r = rows[c.dataIndex];
+              return ` O ${price(r.o)}  H ${price(r.h)}  L ${price(r.l)}  C ${price(r.c)}`;
+            }
+            return ` ${ds.label}: ${fmt(c.parsed.y)}`;
+          },
+        },
+      };
+
+      chart = new Chart($("r-chart"), {
+        type: "line",
+        data: { labels, datasets },
+        plugins: [candles],
+        options: {
+          maintainAspectRatio: false,
+          animation: false,
+          interaction: { mode: "index", intersect: false },
+          scales: {
+            x: { offset: ta, grid: { display: false }, ticks: xTicks(rows, unit) },
+            y: { position: "left", grace: "3%", afterFit: fixWidth, ticks: { callback: (v) => fmt(v) } },
+          },
+          plugins: {
+            legend: {
+              position: "top",
+              align: "end",
+              onClick: () => {},
+              labels: { boxWidth: 12, boxHeight: 2, filter: (item, data) => !data.datasets[item.datasetIndex].helper && !data.datasets[item.datasetIndex].noLegend },
+            },
+            tooltip,
+          },
+        },
+      });
+
+      $("rsi-box").hidden = !shown.has("rsi");
+      if (shown.has("rsi")) {
+        const level = (value, color) => ({ ...line, label: String(value), data: labels.map(() => value), borderColor: color,
+          borderWidth: 1, borderDash: [4, 4], helper: true });
+        const rsiColor = cssVar("--ind-rsi");
+        rsiChart = new Chart($("rsi-chart"), {
+          type: "line",
+          data: { labels, datasets: [
+            { ...line, label: "RSI (14)", data: ind.rsi, borderColor: rsiColor, backgroundColor: rsiColor, borderWidth: 1.5 },
+            level(70, down), level(30, up),
+          ] },
+          options: {
+            maintainAspectRatio: false,
+            animation: false,
+            interaction: { mode: "index", intersect: false },
+            scales: {
+              // Invisible copies of the price chart's dates leave the same room at the edges, so the panes line up.
+              x: { offset: ta, grid: { display: false }, ticks: { ...xTicks(rows, unit), color: "transparent" } },
+              y: { min: 0, max: 100, afterFit: fixWidth, title: { display: true, text: "RSI (14)", font: { size: 11 } },
+                afterBuildTicks: (s) => { s.ticks = [30, 50, 70].map((value) => ({ value })); } },
+            },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                filter: (item) => item.parsed.y != null && !item.dataset.helper,
+                callbacks: { title: (items) => tipTitle(rows[items[0].dataIndex], unit), label: (c) => ` RSI (14): ${c.parsed.y.toFixed(1)}` },
+              },
+            },
+          },
+        });
+      }
+
+      const notes = [`Prices in ${d.currency}.`];
+      if (relative) notes.push("While comparing, each line shows its change since the first day shown.");
+      if (marks?.count) notes.push("Triangles mark your buys (▲) and sells (▼).");
+      if (unit === "bar") {
+        notes.push(`Each ${ta ? "candle" : "point"} is a ${parseInt(d.interval, 10)}-minute bar. The SMAs, EMAs and RSI count bars; the 200-day and 200-week averages use daily closes.`);
+      } else if (unit !== "day") {
+        notes.push(`Each ${ta ? "candle" : "point"} is one ${unit}; the averages are as of its last day.`);
+      }
+      if (ta) notes.push("Green candles closed higher than they opened, red ones lower.");
+      $("r-note").textContent = notes.join(" ");
+    }
+
+    // ---- controls
+    const pressed = (groupId, attr, value) => {
+      $(groupId).querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset[attr] === value)));
+    };
+    const syncMenu = () => {
+      menu.querySelectorAll("[data-ind]").forEach((cb) => { cb.checked = state.ind[state.mode].has(cb.dataset.ind); });
+    };
+
+    $("r-mode").addEventListener("click", (e) => {
+      const b = e.target.closest("button");
+      if (!b || b.dataset.mode === state.mode) return;
+      state.mode = b.dataset.mode;
+      pressed("r-mode", "mode", state.mode);
+      syncMenu();
+      save();
+      draw();
+    });
+
+    menu.addEventListener("change", (e) => {
+      const key = e.target.dataset.ind;
+      if (!key) return;
+      if (e.target.checked) state.ind[state.mode].add(key); else state.ind[state.mode].delete(key);
+      save();
+      draw();
+    });
+    document.addEventListener("click", (e) => { if (menu.open && !menu.contains(e.target)) menu.open = false; });
+    menu.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && menu.open) { menu.open = false; menu.querySelector("summary").focus(); }
+    });
+
+    $("r-range").addEventListener("click", (e) => {
+      const b = e.target.closest("button");
+      if (!b) return;
+      state.range = b.dataset.range;
+      state.from = state.to = "";
+      pressed("r-range", "range", state.range);
+      save();
+      refresh();
+    });
+
+    const today = isoDate(new Date());
+    $("r-from").max = $("r-to").max = today;
+    ["r-from", "r-to"].forEach((id) => $(id).addEventListener("change", () => {
+      let from = $("r-from").value, to = $("r-to").value;
+      if (!from) return;
+      if (to && to < from) [from, to] = [to, from];
+      $("r-from").value = from;
+      $("r-to").value = to;
+      Object.assign(state, { range: "custom", from, to });
+      pressed("r-range", "range", null);
+      refresh();
+    }));
+
+    $("symbol-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const symbol = $("symbol-input").value.trim().toUpperCase();
+      if (!symbol || symbol === state.symbol) return;
+      state.symbol = symbol;
+      $("symbol-input").value = symbol;
+      state.compares = state.compares.filter((c) => c.symbol !== symbol);
+      renderChips();
+      const url = new URL(location.href);
+      url.searchParams.set("symbol", symbol);
+      history.replaceState(null, "", url.href);
+      refresh();
+    });
+
+    // + Compare
+    const compareForm = $("compare-form");
+    const showCompare = (open) => {
+      compareForm.hidden = !open;
+      $("compare-add").setAttribute("aria-expanded", String(open));
+      $("compare-msg").textContent = "";
+      if (open) $("compare-input").focus();
+    };
+    $("compare-add").addEventListener("click", () => showCompare(compareForm.hidden));
+    $("compare-cancel").addEventListener("click", () => showCompare(false));
+    compareForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const symbol = $("compare-input").value.trim().toUpperCase();
+      const msg = $("compare-msg");
+      if (!symbol) return;
+      if (symbol === state.symbol || state.compares.some((c) => c.symbol === symbol)) { msg.textContent = `${symbol} is already on the chart.`; return; }
+      if (state.compares.length >= MAX_COMPARES) { msg.textContent = `You can compare up to ${MAX_COMPARES} symbols.`; return; }
+      msg.textContent = "Loading…";
+      try {
+        const data = await load(symbol);
+        const color = COMPARE_COLORS.find((c) => !state.compares.some((x) => x.color === c));
+        state.compares.push({ symbol, color, data });
+        $("compare-input").value = "";
+        showCompare(false);
+        renderChips();
+        draw();
+      } catch (err) {
+        msg.textContent = err.message;
+      }
+    });
+    function renderChips() {
+      $("compare-chips").innerHTML = state.compares.map((c) => `<button type="button" class="pick" aria-pressed="true"
+          data-remove="${esc(c.symbol)}" style="--pick: var(${c.color})" title="Stop comparing ${esc(c.symbol)}">
+          <span class="dot"></span>${esc(c.data?.symbol || c.symbol)}<span class="x" aria-hidden="true">×</span></button>`).join("");
+    }
+    $("compare-chips").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-remove]");
+      if (!b) return;
+      state.compares = state.compares.filter((c) => c.symbol !== b.dataset.remove);
+      renderChips();
+      draw();
+    });
+
+    pressed("r-mode", "mode", state.mode);
+    pressed("r-range", "range", state.range);
+    syncMenu();
+    refresh();
+  }
+
+  const pages = { dashboard, performance, position, "txn-form": txnForm, markets, assets: myAssets, "asset-form": assetForms, research };
   pages[document.body.dataset.page]?.();
 })();

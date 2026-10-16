@@ -46,6 +46,17 @@ MINOR_UNITS = {"GBp": ("GBP", 100.0), "GBX": ("GBP", 100.0), "ZAc": ("ZAR", 100.
 
 CAD_SUFFIXES = (".TO", ".V", ".NE", ".CN")
 
+EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+MAX_START = date(1900, 1, 1)  # asking from here gets every daily bar Yahoo has
+# Intraday chart spans: (Yahoo range, bar size). The range is wider than the span shown so the
+# moving averages have earlier bars to start from.
+INTRADAY_SPANS = {"1D": ("5d", "5m"), "1W": ("1mo", "30m")}
+
+
+def _utc(ts):
+    """Unix seconds as a UTC datetime; unlike fromtimestamp, this works before 1970 on Windows."""
+    return EPOCH + timedelta(seconds=ts)
+
 
 def _major_unit(currency):
     major, divisor = MINOR_UNITS.get(currency, (currency, 1.0))
@@ -175,6 +186,41 @@ class YahooClient:
         points = [(ts, close / divisor) for ts, close in zip(res.get("timestamp") or [], closes) if close is not None]
         return (prev / divisor if prev else None), points
 
+    def candles(self, symbol, interval="1d", start=None, end=None, span=None):
+        """Split-adjusted OHLC bars, either between two dates or over a Yahoo range like "5d".
+        Returns (currency, [(exchange-local datetime, open, high, low, close)], [(split date, ratio)])."""
+        params = {"interval": interval, "events": "split"}
+        if span:
+            params["range"] = span
+        else:
+            params["period1"] = int((datetime.combine(start, dtime.min, tzinfo=timezone.utc) - EPOCH).total_seconds())
+            params["period2"] = int((datetime.combine(end, dtime.min, tzinfo=timezone.utc) - EPOCH).total_seconds())
+        data = self._get_json(f"{self.BASE1}/v8/finance/chart/{urlquote(symbol, safe='')}", params)
+        results = ((data or {}).get("chart") or {}).get("result") or []
+        if not results:
+            return None, [], []
+        res = results[0]
+        meta = res.get("meta") or {}
+        offset = meta.get("gmtoffset") or 0
+        currency, divisor = _major_unit(meta.get("currency"))
+        q = ((res.get("indicators") or {}).get("quote") or [{}])[0]
+        cols = [q.get(k) or [] for k in ("open", "high", "low", "close")]
+        rows = []
+        for i, ts in enumerate(res.get("timestamp") or []):
+            o, h, l, close = (col[i] if i < len(col) else None for col in cols)
+            if close is None:
+                continue
+            o = close if o is None else o
+            h = max(o, close) if h is None else h
+            l = min(o, close) if l is None else l
+            rows.append((_utc(ts + offset).replace(tzinfo=None), o / divisor, h / divisor, l / divisor, close / divisor))
+        splits = [
+            (_utc(sp["date"] + offset).date(), sp["numerator"] / sp["denominator"])
+            for sp in ((res.get("events") or {}).get("splits") or {}).values()
+            if sp.get("date") and sp.get("numerator") and sp.get("denominator")
+        ]
+        return currency, rows, splits
+
     def summary(self, symbol, modules):
         data = self._get_json(
             f"{self.BASE2}/v10/finance/quoteSummary/{urlquote(symbol, safe='')}",
@@ -196,6 +242,7 @@ class MarketData:
         self._quotes = {}  # yahoo symbol -> (fetched_at, quote)
         self._history = {}  # yahoo symbol -> (fetched_at, start, currency, closes, splits)
         self._intraday = {}  # yahoo symbol -> (fetched_at, prev_close, points)
+        self._candles = {}  # yahoo symbol -> (fetched_at, start, currency, rows, splits); (symbol, span) for intraday
         self._lock = threading.Lock()
 
     # -- symbols ---------------------------------------------------------------
@@ -325,6 +372,44 @@ class MarketData:
         with self._lock:
             self._intraday[yahoo_symbol] = (time.time(), prev, points)
         return prev, points
+
+    def daily_candles(self, yahoo_symbol, start=None):
+        """Split-adjusted daily OHLC bars since ``start`` (None: as far back as Yahoo goes).
+        Returns (currency, [(date, open, high, low, close)], splits)."""
+        start = start or MAX_START
+        cached = self._candles.get(yahoo_symbol)
+        if not (cached and cached[1] <= start and time.time() - cached[0] < HISTORY_TTL):
+            try:
+                currency, rows, splits = self.client.candles(
+                    yahoo_symbol, "1d", start=start, end=date.today() + timedelta(days=1))
+            except requests.RequestException as exc:
+                log.warning("Candle request for %s failed: %s", yahoo_symbol, exc)
+                if not cached:
+                    return None, [], []
+            else:
+                by_day = {dt.date(): (dt.date(), *ohlc) for dt, *ohlc in rows}  # Yahoo can repeat today's bar
+                cached = (time.time(), start, currency, sorted(by_day.values()), splits)
+                with self._lock:
+                    self._candles[yahoo_symbol] = cached
+        _, _, currency, rows, splits = cached
+        return currency, [r for r in rows if r[0] >= start], splits
+
+    def intraday_candles(self, yahoo_symbol, span):
+        """Intraday OHLC bars for a span in INTRADAY_SPANS.
+        Returns (currency, [(exchange-local datetime, open, high, low, close)])."""
+        key = (yahoo_symbol, span)
+        cached = self._candles.get(key)
+        if cached and time.time() - cached[0] < INTRADAY_TTL:
+            return cached[2], cached[3]
+        yahoo_range, interval = INTRADAY_SPANS[span]
+        try:
+            currency, rows, _ = self.client.candles(yahoo_symbol, interval, span=yahoo_range)
+        except requests.RequestException as exc:
+            log.warning("Intraday candle request for %s failed: %s", yahoo_symbol, exc)
+            return (cached[2], cached[3]) if cached else (None, [])
+        with self._lock:
+            self._candles[key] = (time.time(), None, currency, rows, [])
+        return currency, rows
 
     # -- FX --------------------------------------------------------------------
 

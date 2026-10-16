@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Research · Portfolio Manager{% endblock %}
+{% block page %}research{% endblock %}
+{# TA dropdown entries: (key, label, description). The SMAs are on by default in TA mode. #}
+{% set indicators = [
+  ("rsi", "RSI pane", "14-period relative strength index, in a pane below the chart"),
+  ("sma10", "10 SMA", "10-day simple moving average"),
+  ("sma20", "20 SMA", "20-day simple moving average"),
+  ("sma50", "50 SMA", "50-day simple moving average"),
+  ("sma100", "100 SMA", "100-day simple moving average"),
+  ("sma200", "200 day", "200-day simple moving average"),
+  ("ma200w", "200 week MA", "Average of the last 200 weekly closes"),
+  ("ema10", "10 EMA", "10-day exponential moving average"),
+  ("ema20", "20 EMA", "20-day exponential moving average"),
+] %}
+{% block content %}
+<div id="app" data-api="{{ url_for('views.api_research', symbol='SYMBOL') }}" data-symbol="{{ symbol }}" data-base="{{ base_currency }}">
+  <div class="page-head">
+    <div>
+      <h1>Research</h1>
+      <p class="muted">Price history and technical analysis for any symbol on Yahoo Finance.</p>
+    </div>
+    <form class="symbol-form" id="symbol-form" role="search">
+      <label class="sr-only" for="symbol-input">Symbol</label>
+      <input id="symbol-input" name="symbol" value="{{ symbol }}" list="traded-symbols" autocomplete="off"
+        spellcheck="false" autocapitalize="characters" placeholder="Symbol, e.g. AAPL or VFV.TO" required>
+      <datalist id="traded-symbols">{% for s in traded %}<option value="{{ s }}">{% endfor %}</datalist>
+      <button class="btn btn-primary btn-sm" type="submit">Look up</button>
+    </form>
+  </div>
+  <div id="notices"></div>
+
+  <section class="card research">
+    <div class="card-head">
+      <div>
+        <h2 id="r-title">{{ symbol }}</h2>
+        <p class="price-line" id="r-price">Loading…</p>
+      </div>
+      <div class="toolbar">
+        <div class="seg" role="group" aria-label="Chart mode" id="r-mode">
+          <button type="button" data-mode="default" aria-pressed="true">Default</button>
+          <button type="button" data-mode="ta" aria-pressed="false">TA</button>
+        </div>
+        <details class="dropdown" id="ta-menu">
+          <summary class="btn btn-secondary btn-sm">TA <span aria-hidden="true">▾</span></summary>
+          <div class="dropdown-menu" role="group" aria-label="Technical analysis indicators">
+            {% for key, label, title in indicators %}
+            <label class="check" title="{{ title }}"><input type="checkbox" data-ind="{{ key }}">
+              <span class="dot" style="--pick: var(--ind-{{ key }})"></span>{{ label }}</label>
+            {% endfor %}
+          </div>
+        </details>
+        <button type="button" class="btn btn-secondary btn-sm" id="compare-add" aria-expanded="false">+ Compare</button>
+      </div>
+    </div>
+    <form class="compare-form" id="compare-form" hidden>
+      <label class="sr-only" for="compare-input">Symbol to compare</label>
+      <input id="compare-input" list="traded-symbols" autocomplete="off" spellcheck="false" autocapitalize="characters"
+        placeholder="Symbol to compare, e.g. SPY" required>
+      <button class="btn btn-primary btn-sm" type="submit">Add</button>
+      <button class="btn btn-ghost btn-sm" type="button" id="compare-cancel">Cancel</button>
+      <span class="hint" id="compare-msg" role="status"></span>
+    </form>
+    <div class="card-head chart-controls">
+      <div class="seg seg-wrap" role="group" aria-label="Time range" id="r-range">
+        {% for r in ('1D', '1W', '1M', '6M', 'YTD', '1Y', '3Y', '5Y', '10Y', 'Max') %}
+        <button type="button" data-range="{{ r }}" aria-pressed="false">{{ r }}</button>
+        {% endfor %}
+      </div>
+      <div class="date-range" role="group" aria-label="Date range">
+        <label for="r-from" class="sr-only">From</label>
+        <input type="date" id="r-from" class="input-sm">
+        <span class="muted" aria-hidden="true">to</span>
+        <label for="r-to" class="sr-only">To</label>
+        <input type="date" id="r-to" class="input-sm">
+      </div>
+    </div>
+    <div class="picks" id="compare-chips" aria-label="Compared symbols"></div>
+    <div class="chart-box chart-lg">
+      <canvas id="r-chart" aria-label="Price chart" role="img"></canvas>
+      <div class="chart-status" id="r-status">Loading…</div>
+    </div>
+    <div class="chart-box chart-rsi" id="rsi-box" hidden>
+      <canvas id="rsi-chart" aria-label="RSI chart" role="img"></canvas>
+    </div>
+    <p class="hint" id="r-note"></p>
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% endblock %}

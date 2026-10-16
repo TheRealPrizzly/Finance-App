@@ -561,3 +561,43 @@ def test_assets_and_mortgages_are_private(app, client):
         assert client.get(path).status_code == 404
     assert client.post("/mortgages/1/delete", data={"csrf_token": "token"}).status_code == 404
     assert client.post("/assets/1/delete", data={"csrf_token": "token"}).status_code == 404
+
+
+def test_research(client, market):
+    from datetime import date, datetime
+
+    market.candles["AAPL"] = (
+        "USD",
+        [(date(2024, 2, 5), 180.0, 190.0, 179.0, 187.5), (date(2024, 11, 15), 220.0, 226.0, 219.0, 225.0)],
+        [(date(2024, 6, 1), 2.0)],  # a 2:1 split between the buy and the sell
+        [(datetime(2024, 11, 15, 9, 30), 220.0, 221.0, 219.5, 220.5)],
+    )
+    token = login(client)
+    upload(client, token)
+    html = client.get("/research").get_data(as_text=True)
+    assert 'data-symbol="SHOP"' in html  # the most recently traded symbol
+    assert 'aria-current="page">Research' in html
+    assert client.get("/research?symbol=msft").status_code == 200
+    assert "/research?symbol=AAPL" in client.get("/position/AAPL").get_data(as_text=True)
+
+    data = client.get("/api/research/AAPL?start=2024-01-01").get_json()
+    assert data["name"] == "AAPL Inc." and data["currency"] == "USD" and data["interval"] == "1d"
+    assert data["daily"][0] == ["2024-02-05", 180.0, 190.0, 179.0, 187.5]
+    # Prices before the split are halved (and quantities doubled) to match the adjusted chart.
+    assert [(t["kind"], t["quantity"], t["price"]) for t in data["trades"]] == [("BUY", 30, 93.75), ("SELL", 5, 225.0)]
+    assert data["trades"][0]["account"] == "RRSP · 51234568"
+
+    intraday = client.get("/api/research/AAPL?span=1D").get_json()
+    assert intraday["interval"] == "5m" and intraday["bars"] == [["2024-11-15T09:30", 220.0, 221.0, 219.5, 220.5]]
+
+    # Any symbol Yahoo quotes works, traded or not; others don't.
+    assert client.get("/api/research/MSFT?start=max").get_json()["trades"] == []
+    assert client.get("/api/research/NOPE").status_code == 404
+    assert client.get("/api/research/BAD%20SYMBOL").status_code == 400
+    assert client.get("/api/research/AAPL?start=yesterday").status_code == 400
+    assert client.get("/api/research/AAPL?span=2D").status_code == 400
+
+
+def test_research_needs_sign_in(client):
+    assert client.get("/research").status_code == 302
+    assert client.get("/api/research/AAPL").status_code == 401
