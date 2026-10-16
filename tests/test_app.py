@@ -178,7 +178,8 @@ def test_theme_setting(app, client):
     resp = client.post("/settings/theme", data={"csrf_token": token, "theme": "dark-grey", "next": "/portfolios?x=1"})
     assert resp.headers["Location"] == "/portfolios?x=1"
     html = client.get("/portfolios").get_data(as_text=True)
-    assert 'data-theme="dark-grey"' in html and '<option value="dark-grey" selected>' in html
+    assert 'data-theme="dark-grey"' in html and 'value="dark-grey" class="theme-option" title="Dark grey" aria-current="true"' in html
+    assert 'title="Theme: Dark grey"' in html and "#26282c" in html  # the picker shows the theme's colours
     assert client.post("/settings/theme", data={"csrf_token": token, "theme": "neon"}).status_code == 400
     for evil in ("https://evil.example", "//evil.example", "/\\evil.example"):
         resp = client.post("/settings/theme", data={"csrf_token": token, "theme": "white", "next": evil})

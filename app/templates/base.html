@@ -26,15 +26,24 @@
         <a href="{{ url_for('views.portfolios') }}" {% if 'portfolio' in ep or 'account' in ep or 'transaction' in ep or ep == 'views.import_export' %}aria-current="page"{% endif %}>Portfolio Manager</a>
       </nav>
       <div class="user">
-        <form method="post" action="{{ url_for('views.set_theme') }}" class="theme-form">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="next" value="{{ request.full_path }}">
-          <label class="sr-only" for="theme-select">Theme</label>
-          <select id="theme-select" name="theme" onchange="this.form.submit()">
-            {% for key, label in themes.items() %}<option value="{{ key }}" {% if g.user.theme == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
-          </select>
-          <noscript><button class="btn btn-ghost btn-sm" type="submit">Apply</button></noscript>
-        </form>
+        {% set theme_key = g.user.theme if g.user.theme in themes else 'white' %}
+        <details class="dropdown theme-picker">
+          <summary class="btn btn-secondary btn-sm" title="Theme: {{ themes[theme_key][0] }}">
+            <span class="sr-only">Theme: {{ themes[theme_key][0] }}</span>
+            <span class="swatches" aria-hidden="true">{% for c in themes[theme_key][1] %}<span style="background: {{ c }}"></span>{% endfor %}</span>
+            <span aria-hidden="true">▾</span>
+          </summary>
+          <form method="post" action="{{ url_for('views.set_theme') }}" class="dropdown-menu theme-menu" aria-label="Theme">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="next" value="{{ request.full_path }}">
+            {% for key, (label, colors) in themes.items() %}
+            <button type="submit" name="theme" value="{{ key }}" class="theme-option" title="{{ label }}"{% if key == theme_key %} aria-current="true"{% endif %}>
+              <span class="swatches" aria-hidden="true">{% for c in colors %}<span style="background: {{ c }}"></span>{% endfor %}</span>
+              <span class="sr-only">{{ label }}</span>
+            </button>
+            {% endfor %}
+          </form>
+        </details>
         {% if g.user.picture %}<img class="avatar" src="{{ g.user.picture }}" alt="" referrerpolicy="no-referrer">{% endif %}
         <span class="user-name">{{ g.user.name or g.user.email }}</span>
         <form method="post" action="{{ url_for('auth.logout') }}">
@@ -71,6 +80,16 @@
   </main>
 </div>
 {% if sections %}<script src="{{ url_for('static', filename='sidenav.js') }}" defer></script>{% endif %}
+<script>
+  // Dropdown menus (<details class="dropdown">) close on a click outside them or on Escape.
+  document.addEventListener("click", (e) => {
+    document.querySelectorAll("details.dropdown[open]").forEach((d) => { if (!d.contains(e.target)) d.open = false; });
+  });
+  document.addEventListener("keydown", (e) => {
+    const open = e.key === "Escape" && document.querySelector("details.dropdown[open]");
+    if (open) { open.open = false; open.querySelector("summary").focus(); }
+  });
+</script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

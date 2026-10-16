@@ -655,7 +655,6 @@
     function renderPriceChart(p) {
       const prices = p.prices;
       if (!prices.length) {
-        $("sma-picks").closest(".card-head").remove();
         document.querySelector("#price-chart").replaceWith(Object.assign(document.createElement("p"), {
           className: "muted", textContent: "No price history available for this symbol.",
         }));
@@ -674,37 +673,12 @@
         (t.kind === "BUY" ? buys : sells)[i] = t.price || prices[i].close;
       });
       const c1 = cssVar("--chart-1");
-      // Simple moving averages over the closes, using the earlier closes the API sends so
-      // the long averages start on the chart's first day when there is enough history.
-      const closes = (p.lookback_closes || []).concat(prices.map((d) => d.close));
-      const offset = closes.length - prices.length;
-      const sma = (n) => {
-        const out = new Array(prices.length).fill(null);
-        let sum = 0;
-        closes.forEach((c, i) => {
-          sum += c;
-          if (i >= n) sum -= closes[i - n];
-          if (i >= offset && i >= n - 1) out[i - offset] = sum / n;
-        });
-        return out;
-      };
-      const picks = [...document.querySelectorAll("#sma-picks .pick")];
-      let shown = new Set();
-      try { shown = new Set(JSON.parse(localStorage.getItem("positionSma") || "[]")); } catch { /* storage blocked */ }
-      const smaSets = picks.map((b) => {
-        const n = Number(b.dataset.sma);
-        const color = cssVar(`--sma-${n}`);
-        b.setAttribute("aria-pressed", String(shown.has(n)));
-        return { label: `SMA ${n}`, data: sma(n), hidden: !shown.has(n), borderColor: color, backgroundColor: color,
-          borderWidth: 1.5, borderDash: n >= 100 ? [6, 4] : [], pointRadius: 0, tension: 0.1, order: 1 };  // dashed: the long averages
-      });
-      const chart = new Chart($("price-chart"), {
+      new Chart($("price-chart"), {
         type: "line",
         data: {
           labels,
           datasets: [
             { label: "Close", data: prices.map((d) => d.close), borderColor: c1, borderWidth: 2, pointRadius: 0, tension: 0.1, order: 0 },
-            ...smaSets,
             { label: "Buy", data: buys, showLine: false, pointStyle: "triangle", pointRadius: 7, backgroundColor: cssVar("--gain"), borderColor: cssVar("--gain"), order: -1 },
             { label: "Sell", data: sells, showLine: false, pointStyle: "triangle", rotation: 180, pointRadius: 7, backgroundColor: cssVar("--loss"), borderColor: cssVar("--loss"), order: -1 },
           ],
@@ -725,17 +699,6 @@
             },
           },
         },
-      });
-      $("sma-picks").addEventListener("click", (e) => {
-        const b = e.target.closest(".pick");
-        if (!b) return;
-        const n = Number(b.dataset.sma);
-        const on = !shown.has(n);
-        if (on) shown.add(n); else shown.delete(n);
-        b.setAttribute("aria-pressed", String(on));
-        chart.data.datasets.find((d) => d.label === `SMA ${n}`).hidden = !on;
-        chart.update();
-        try { localStorage.setItem("positionSma", JSON.stringify([...shown])); } catch { /* storage blocked */ }
       });
     }
   }
@@ -2048,10 +2011,6 @@
       if (e.target.checked) state.ind[state.mode].add(key); else state.ind[state.mode].delete(key);
       save();
       draw();
-    });
-    document.addEventListener("click", (e) => { if (menu.open && !menu.contains(e.target)) menu.open = false; });
-    menu.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && menu.open) { menu.open = false; menu.querySelector("summary").focus(); }
     });
 
     $("r-range").addEventListener("click", (e) => {

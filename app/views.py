@@ -23,7 +23,12 @@ from .market import INTRADAY_SPANS, MarketData, get_market
 bp = Blueprint("views", __name__)
 PAGE_SIZE = 100
 TXN_PREVIEW = 10  # transactions shown on the Portfolio Manager page until "Show all"
-THEMES = {"white": "White - Standard", "dark-grey": "Dark grey"}
+# Colour themes: key -> (name, main colours). The colours mirror the theme's --bg, --text and
+# --accent tokens in style.css, and the theme picker shows them as swatches.
+THEMES = {
+    "white": ("White - Standard", ("#f5f6f8", "#15181e", "#2457d6")),
+    "dark-grey": ("Dark grey", ("#26282c", "#ececee", "#7aa2ff")),
+}
 CASH_KINDS = (pf.DIVIDEND, pf.DEPOSIT, pf.WITHDRAWAL, pf.TRANSFER, pf.FEE, pf.INTEREST, pf.FX, pf.OTHER)
 
 

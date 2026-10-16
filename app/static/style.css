@@ -98,7 +98,14 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
 .nav a[aria-current="page"] { color: var(--accent); background: var(--accent-soft); }
 .user { display: flex; align-items: center; gap: 8px; }
 .user form { margin: 0; }
-.theme-form select { width: auto; padding: 4px 8px; font-size: .85rem; }
+.theme-picker summary { gap: 6px; padding: 4px 8px; }
+.swatches { display: inline-flex; border: 1px solid var(--border); border-radius: 5px; overflow: hidden; }
+.swatches span { width: 14px; height: 14px; }
+.theme-picker .theme-menu { min-width: 0; z-index: 20; }
+.theme-option { display: flex; align-items: center; border: 2px solid transparent; background: none; padding: 6px 8px; border-radius: 8px; cursor: pointer; }
+.theme-option:hover { background: var(--surface-2); }
+.theme-option[aria-current="true"] { border-color: var(--accent); }
+.theme-option .swatches span { width: 20px; height: 20px; }
 .avatar { width: 28px; height: 28px; border-radius: 50%; }
 .user-name { color: var(--muted); font-size: .9rem; }
 
@@ -399,4 +406,5 @@ details summary { cursor: pointer; font-weight: 600; font-size: .9rem; margin: 1
   .chart-lg { height: 320px; }
   .chart-rsi { height: 240px; }
   .dropdown-menu { right: auto; left: 0; }
+  .theme-picker .dropdown-menu { left: auto; right: 0; }
 }
