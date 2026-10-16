@@ -1,19 +1,25 @@
 {% extends "base.html" %}
 {% block title %}Research · Portfolio Manager{% endblock %}
 {% block page %}research{% endblock %}
-{# TA dropdown entries: (key, label, description). The SMAs are on by default in TA mode. #}
-{% set indicators = [
-  ("rsi", "RSI pane", "14-period relative strength index, in a pane below the chart"),
-  ("macd", "MACD pane", "Moving average convergence divergence (12, 26, 9), in a pane below the chart"),
-  ("sma10", "10 SMA", "10-day simple moving average"),
-  ("sma20", "20 SMA", "20-day simple moving average"),
-  ("sma50", "50 SMA", "50-day simple moving average"),
-  ("sma100", "100 SMA", "100-day simple moving average"),
-  ("sma200", "200 day", "200-day simple moving average"),
-  ("ma200w", "200 week MA", "Average of the last 200 weekly closes"),
-  ("ema10", "10 EMA", "10-day exponential moving average"),
-  ("ema20", "20 EMA", "20-day exponential moving average"),
-  ("bb", "Bollinger Bands", "20-day SMA with bands 2 standard deviations above and below"),
+{# TA dropdown sections: (heading, [(key, label, description)]). The SMAs are on by default in TA mode. #}
+{% set indicator_sections = [
+  ("Panes", [
+    ("rsi", "RSI pane", "14-period relative strength index, in a pane below the chart"),
+    ("macd", "MACD pane", "Moving average convergence divergence (12, 26, 9), in a pane below the chart"),
+  ]),
+  ("Bands", [
+    ("bb", "Bollinger Bands", "20-day SMA with bands 2 standard deviations above and below"),
+  ]),
+  ("Moving averages", [
+    ("sma10", "10 SMA", "10-day simple moving average"),
+    ("sma20", "20 SMA", "20-day simple moving average"),
+    ("sma50", "50 SMA", "50-day simple moving average"),
+    ("sma100", "100 SMA", "100-day simple moving average"),
+    ("sma200", "200 day", "200-day simple moving average"),
+    ("ma200w", "200 week MA", "Average of the last 200 weekly closes"),
+    ("ema10", "10 EMA", "10-day exponential moving average"),
+    ("ema20", "20 EMA", "20-day exponential moving average"),
+  ]),
 ] %}
 {% block content %}
 <div id="app" data-api="{{ url_for('views.api_research', symbol='SYMBOL') }}" data-symbol="{{ symbol }}" data-base="{{ base_currency }}">
@@ -46,9 +52,14 @@
         <details class="dropdown" id="ta-menu">
           <summary class="btn btn-secondary btn-sm">TA <span aria-hidden="true">▾</span></summary>
           <div class="dropdown-menu" role="group" aria-label="Technical analysis indicators">
-            {% for key, label, title in indicators %}
-            <label class="check" title="{{ title }}"><input type="checkbox" data-ind="{{ key }}">
-              <span class="dot" style="--pick: var(--ind-{{ key }})"></span>{{ label }}</label>
+            {% for heading, items in indicator_sections %}
+            <div class="menu-section" role="group" aria-labelledby="ta-section-{{ loop.index }}">
+              <div class="menu-heading" id="ta-section-{{ loop.index }}">{{ heading }}</div>
+              {% for key, label, title in items %}
+              <label class="check" title="{{ title }}"><input type="checkbox" data-ind="{{ key }}">
+                <span class="dot" style="--pick: var(--ind-{{ key }})"></span>{{ label }}</label>
+              {% endfor %}
+            </div>
             {% endfor %}
           </div>
         </details>

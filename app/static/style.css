@@ -291,7 +291,9 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
   background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(16, 24, 40, .14); }
 .dropdown-menu label.check { padding: 6px 8px; border-radius: 6px; font-size: .88rem; white-space: nowrap; }
 .dropdown-menu label.check:hover { background: var(--surface-2); }
-.dropdown-menu label.check:first-child { border-bottom: 1px solid var(--border); border-radius: 6px 6px 0 0; margin-bottom: 2px; }
+.menu-section { display: grid; gap: 2px; }
+.menu-section + .menu-section { border-top: 1px solid var(--border); margin-top: 4px; padding-top: 4px; }
+.menu-heading { padding: 4px 8px 2px; font-size: .72rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
 .dropdown-menu .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--pick); flex: none; }
 .kind-choice, .subfields { border: 0; padding: 0; margin: 16px 0 0; display: grid; gap: 8px; }
 .kind-choice legend, .subfields legend { font-size: .88rem; font-weight: 600; padding: 0; margin-bottom: 8px; }
