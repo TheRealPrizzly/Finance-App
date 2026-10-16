@@ -23,6 +23,7 @@ USER_AGENT = (
 )
 QUOTE_TTL = 60  # seconds
 HISTORY_TTL = 60 * 60
+EARNINGS_TTL = 12 * 60 * 60
 INTRADAY_TTL = 2 * 60
 RESOLVE_RETRY = timedelta(days=1)  # retry symbols Yahoo didn't recognise after this long
 SECTOR_TTL = timedelta(days=7)
@@ -124,12 +125,16 @@ class YahooClient:
             self._crumb = r.text.strip()
             return self._crumb
 
-    def _get_json(self, url, params, crumb=False):
+    def _get_json(self, url, params, crumb=False, body=None):
+        """GET a JSON response, or POST ``body`` as JSON when it's given."""
         for attempt in range(2):
             p = dict(params)
             if crumb:
                 p["crumb"] = self._get_crumb(refresh=attempt > 0)
-            r = self.session.get(url, params=p, timeout=self.timeout)
+            if body is None:
+                r = self.session.get(url, params=p, timeout=self.timeout)
+            else:
+                r = self.session.post(url, params=p, json=body, timeout=self.timeout)
             if crumb and attempt == 0 and r.status_code in (401, 403):
                 continue
             if r.status_code == 404:
@@ -188,8 +193,9 @@ class YahooClient:
 
     def candles(self, symbol, interval="1d", start=None, end=None, span=None):
         """Split-adjusted OHLC bars and volumes, either between two dates or over a Yahoo range like "5d".
-        Returns (currency, [(exchange-local datetime, open, high, low, close, volume)], [(split date, ratio)])."""
-        params = {"interval": interval, "events": "split"}
+        Returns (currency, [(exchange-local datetime, open, high, low, close, volume)], [(split date, ratio)],
+        [(ex-dividend date, split-adjusted amount per share)])."""
+        params = {"interval": interval, "events": "div,split"}
         if span:
             params["range"] = span
         else:
@@ -198,7 +204,7 @@ class YahooClient:
         data = self._get_json(f"{self.BASE1}/v8/finance/chart/{urlquote(symbol, safe='')}", params)
         results = ((data or {}).get("chart") or {}).get("result") or []
         if not results:
-            return None, [], []
+            return None, [], [], []
         res = results[0]
         meta = res.get("meta") or {}
         offset = meta.get("gmtoffset") or 0
@@ -220,7 +226,49 @@ class YahooClient:
             for sp in ((res.get("events") or {}).get("splits") or {}).values()
             if sp.get("date") and sp.get("numerator") and sp.get("denominator")
         ]
-        return currency, rows, splits
+        dividends = sorted(
+            (_utc(dv["date"] + offset).date(), dv["amount"] / divisor)
+            for dv in ((res.get("events") or {}).get("dividends") or {}).values()
+            if dv.get("date") and dv.get("amount")
+        )
+        return currency, rows, splits, dividends
+
+    def earnings_history(self, symbol):
+        """Past earnings reports: [(report date, EPS estimate or None, reported EPS)]. Yahoo's
+        history here goes back decades but can lag by a few quarters; see recent_earnings."""
+        data = self._get_json(f"{self.BASE1}/v1/finance/visualization", {"lang": "en-US", "region": "US"}, crumb=True, body={
+            "size": 250,
+            "query": {"operator": "and", "operands": [
+                {"operator": "eq", "operands": ["ticker", symbol]},
+                {"operator": "eq", "operands": ["eventtype", "2"]},  # earnings reports
+            ]},
+            "sortField": "startdatetime",
+            "sortType": "DESC",
+            "entityIdType": "earnings",
+            "includeFields": ["startdatetime", "epsestimate", "epsactual"],
+        })
+        results = ((data or {}).get("finance") or {}).get("result") or []
+        docs = (results[0] or {}).get("documents") or [] if results else []
+        if not docs:
+            return []
+        cols = [c.get("id") for c in docs[0].get("columns") or []]
+        out = []
+        for row in docs[0].get("rows") or []:
+            r = dict(zip(cols, row))
+            if r.get("startdatetime") and r.get("epsactual") is not None:
+                out.append((date.fromisoformat(r["startdatetime"][:10]), r.get("epsestimate"), r["epsactual"]))
+        return out
+
+    def recent_earnings(self, symbol):
+        """The last four earnings reports, in the same form as earnings_history."""
+        chart = ((self.summary(symbol, ["earnings"]).get("earnings") or {}).get("earningsChart") or {})
+        out = []
+        for q in chart.get("quarterly") or []:
+            reported = (q.get("reportedDate") or {}).get("raw")
+            actual = (q.get("actual") or {}).get("raw")
+            if reported and actual is not None:
+                out.append((_utc(reported).date(), (q.get("estimate") or {}).get("raw"), actual))
+        return out
 
     def summary(self, symbol, modules):
         data = self._get_json(
@@ -243,7 +291,8 @@ class MarketData:
         self._quotes = {}  # yahoo symbol -> (fetched_at, quote)
         self._history = {}  # yahoo symbol -> (fetched_at, start, currency, closes, splits)
         self._intraday = {}  # yahoo symbol -> (fetched_at, prev_close, points)
-        self._candles = {}  # yahoo symbol -> (fetched_at, start, currency, rows, splits); (symbol, span) for intraday
+        self._candles = {}  # yahoo symbol -> (fetched_at, start, currency, rows, splits, dividends); (symbol, span) for intraday
+        self._earnings = {}  # yahoo symbol -> (fetched_at, reports)
         self._lock = threading.Lock()
 
     # -- symbols ---------------------------------------------------------------
@@ -376,24 +425,24 @@ class MarketData:
 
     def daily_candles(self, yahoo_symbol, start=None):
         """Split-adjusted daily OHLC bars and volumes since ``start`` (None: as far back as Yahoo goes).
-        Returns (currency, [(date, open, high, low, close, volume)], splits)."""
+        Returns (currency, [(date, open, high, low, close, volume)], splits, [(ex-date, adjusted dividend)])."""
         start = start or MAX_START
         cached = self._candles.get(yahoo_symbol)
         if not (cached and cached[1] <= start and time.time() - cached[0] < HISTORY_TTL):
             try:
-                currency, rows, splits = self.client.candles(
+                currency, rows, splits, dividends = self.client.candles(
                     yahoo_symbol, "1d", start=start, end=date.today() + timedelta(days=1))
             except requests.RequestException as exc:
                 log.warning("Candle request for %s failed: %s", yahoo_symbol, exc)
                 if not cached:
-                    return None, [], []
+                    return None, [], [], []
             else:
                 by_day = {dt.date(): (dt.date(), *ohlcv) for dt, *ohlcv in rows}  # Yahoo can repeat today's bar
-                cached = (time.time(), start, currency, sorted(by_day.values()), splits)
+                cached = (time.time(), start, currency, sorted(by_day.values()), splits, dividends)
                 with self._lock:
                     self._candles[yahoo_symbol] = cached
-        _, _, currency, rows, splits = cached
-        return currency, [r for r in rows if r[0] >= start], splits
+        _, _, currency, rows, splits, dividends = cached
+        return currency, [r for r in rows if r[0] >= start], splits, [dv for dv in dividends if dv[0] >= start]
 
     def intraday_candles(self, yahoo_symbol, span):
         """Intraday OHLC bars and volumes for a span in INTRADAY_SPANS.
@@ -404,13 +453,36 @@ class MarketData:
             return cached[2], cached[3]
         yahoo_range, interval = INTRADAY_SPANS[span]
         try:
-            currency, rows, _ = self.client.candles(yahoo_symbol, interval, span=yahoo_range)
+            currency, rows, *_ = self.client.candles(yahoo_symbol, interval, span=yahoo_range)
         except requests.RequestException as exc:
             log.warning("Intraday candle request for %s failed: %s", yahoo_symbol, exc)
             return (cached[2], cached[3]) if cached else (None, [])
         with self._lock:
-            self._candles[key] = (time.time(), None, currency, rows, [])
+            self._candles[key] = (time.time(), None, currency, rows, [], [])
         return currency, rows
+
+    def earnings(self, yahoo_symbol):
+        """Past earnings reports, oldest first: [(report date, EPS estimate or None, reported EPS)].
+        Yahoo's long history can miss the latest quarters, so the last four come from the
+        quote summary and win over history entries within a few days of them."""
+        cached = self._earnings.get(yahoo_symbol)
+        if cached and time.time() - cached[0] < EARNINGS_TTL:
+            return cached[1]
+        reports, failed = [], False
+        for fetch in (self.client.recent_earnings, self.client.earnings_history):
+            try:
+                found = fetch(yahoo_symbol)
+            except (requests.RequestException, ValueError) as exc:
+                log.warning("Earnings request for %s failed: %s", yahoo_symbol, exc)
+                failed = True
+                continue
+            reports += [r for r in found if all(abs((r[0] - kept[0]).days) > 5 for kept in reports)]
+        if failed and not reports and cached:
+            return cached[1]
+        reports.sort()
+        with self._lock:
+            self._earnings[yahoo_symbol] = (time.time(), reports)
+        return reports
 
     # -- FX --------------------------------------------------------------------
 

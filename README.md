@@ -11,7 +11,7 @@ A multi-user web app for tracking investments across brokerage accounts in Canad
 - A breakdown for each position
 - CSV import and export
 - A Markets tab: S&P 500 and Nasdaq futures, pre-market moves by sector, CNN's Fear & Greed Index and the US Treasury yield curve
-- A Research tab: a price chart for any symbol on Yahoo Finance, from 1 day to its whole history or between two dates. PA (price action) mode draws a line with your buys and sells; TA (technical analysis) mode draws candlesticks with moving averages. Optional RSI pane, 10/20 EMAs, 200-week average, and other symbols to compare against
+- A Research tab: a price chart for any symbol on Yahoo Finance, from 1 day to its whole history or between two dates. PA (price action) mode draws a line with your buys and sells; TA (technical analysis) mode draws candlesticks with moving averages. Badges mark dividends, earnings (beat or missed) and splits. Optional RSI and volume panes, 10/20 EMAs, 200-week average, and other symbols to compare against
 - A My Assets tab: net worth from your portfolios, accounts and other assets, minus your mortgages, and a payoff projection for your mortgages, one at a time, side by side or combined
 
 Requirements are tracked in [Project Requirements.md](Project%20Requirements.md).

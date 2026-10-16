@@ -42,11 +42,29 @@ def test_candles_parse_ohlc_minor_units_and_splits():
         "timestamp": [-100 * DAY, NOW, NOW + DAY],
         "indicators": {"quote": [{"open": [100, None, 300], "high": [110, None, 310], "low": [90, None, 290],
                                   "close": [105, None, 305], "volume": [1500, None, None]}]},
-        "events": {"splits": {"x": {"date": NOW, "numerator": 2, "denominator": 1}}},
+        "events": {"splits": {"x": {"date": NOW, "numerator": 2, "denominator": 1}},
+                   "dividends": {"y": {"date": NOW + DAY, "amount": 4.5}}},
     }]}}
-    currency, rows, splits = client.candles("VOD.L", start=date(1900, 1, 1), end=date(2030, 1, 1))
+    currency, rows, splits, dividends = client.candles("VOD.L", start=date(1900, 1, 1), end=date(2030, 1, 1))
     assert currency == "GBP"
     assert rows[0] == (datetime(1969, 9, 23, 1, 0), 1.0, 1.1, 0.9, 1.05, 1500)  # before 1970, in pounds, local time
     assert rows[1][5] == 0  # a missing volume counts as none
     assert len(rows) == 2  # the bar without a close is skipped
     assert splits == [((datetime(1970, 1, 1) + timedelta(seconds=NOW + 3600)).date(), 2.0)]
+    assert dividends == [((datetime(1970, 1, 1) + timedelta(seconds=NOW + DAY + 3600)).date(), 0.045)]  # in pounds
+
+
+def test_earnings_merge_recent_quarters_over_history():
+    from datetime import date
+
+    from app.market import MarketData
+
+    class Client:
+        def recent_earnings(self, symbol):
+            return [(date(2025, 10, 30), 1.77, 1.85)]
+
+        def earnings_history(self, symbol):  # Yahoo's history dates a report a day apart sometimes
+            return [(date(2025, 10, 31), 1.7, 1.8), (date(2025, 5, 1), 1.63, 1.65)]
+
+    market = MarketData(store=None, client=Client())
+    assert market.earnings("AAPL") == [(date(2025, 5, 1), 1.63, 1.65), (date(2025, 10, 30), 1.77, 1.85)]

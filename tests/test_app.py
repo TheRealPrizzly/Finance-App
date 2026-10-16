@@ -572,7 +572,9 @@ def test_research(client, market):
         [(date(2024, 2, 5), 180.0, 190.0, 179.0, 187.5, 52_000_000), (date(2024, 11, 15), 220.0, 226.0, 219.0, 225.0, 47_000_000)],
         [(date(2024, 6, 1), 2.0)],  # a 2:1 split between the buy and the sell
         [(datetime(2024, 11, 15, 9, 30), 220.0, 221.0, 219.5, 220.5, 1_200_000)],
+        [(date(2024, 5, 10), 0.25), (date(2024, 8, 12), 0.25)],
     )
+    market._earnings["AAPL"] = [(date(2024, 5, 2), 1.5, 1.53), (date(2024, 8, 1), None, 1.4)]
     token = login(client)
     upload(client, token)
     # With no symbol picked, the biggest position in the Dashboard's account or portfolio.
@@ -598,6 +600,12 @@ def test_research(client, market):
     # Prices before the split are halved (and quantities doubled) to match the adjusted chart.
     assert [(t["kind"], t["quantity"], t["price"]) for t in data["trades"]] == [("BUY", 30, 93.75), ("SELL", 5, 225.0)]
     assert data["trades"][0]["account"] == "RRSP · 51234568"
+    # Dividends before the split were twice the adjusted amount when paid.
+    assert data["events"]["dividends"] == [{"date": "2024-05-10", "amount": 0.25, "paid": 0.5},
+                                           {"date": "2024-08-12", "amount": 0.25, "paid": 0.25}]
+    assert data["events"]["splits"] == [{"date": "2024-06-01", "ratio": "2:1"}]
+    assert data["events"]["earnings"][0] == {"date": "2024-05-02", "estimate": 1.5, "actual": 1.53}
+    assert data["events"]["earnings"][1]["estimate"] is None
 
     intraday = client.get("/api/research/AAPL?span=1D").get_json()
     assert intraday["interval"] == "5m" and intraday["bars"] == [["2024-11-15T09:30", 220.0, 221.0, 219.5, 220.5, 1_200_000]]

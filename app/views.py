@@ -4,6 +4,7 @@ Every query is scoped to ``g.user`` so users only ever see their own data.
 """
 import re
 from datetime import date, datetime, timedelta
+from fractions import Fraction
 from urllib.parse import urlsplit
 
 from flask import (
@@ -420,10 +421,33 @@ def _price(v):
     return float(f"{v:.7g}")  # 7 significant digits keeps long histories small
 
 
+def research_events(ysym, splits, dividends):
+    """Dividends, earnings reports and splits for the Research chart. Yahoo's dividends are
+    adjusted for later splits like its prices; "paid" is the amount per share at the time."""
+    def paid(d, amount):
+        for split_date, ratio in splits:
+            if d < split_date:
+                amount *= ratio
+        return amount
+
+    def ratio_text(ratio):
+        f = Fraction(ratio).limit_denominator(1000)
+        return f"{f.numerator}:{f.denominator}"
+
+    return {
+        "dividends": [{"date": d.isoformat(), "amount": _price(amount), "paid": _price(paid(d, amount))}
+                      for d, amount in dividends],
+        "earnings": [{"date": d.isoformat(), "estimate": estimate, "actual": actual}
+                     for d, estimate, actual in get_market().earnings(ysym)],
+        "splits": [{"date": d.isoformat(), "ratio": ratio_text(ratio)} for d, ratio in sorted(splits)],
+    }
+
+
 @bp.get("/api/research/<symbol>")
 @login_required
 def api_research(symbol):
-    """Bars for the Research chart, as [time, open, high, low, close, volume]. ?span=1D or 1W gives intraday bars (plus daily bars for the
+    """Bars for the Research chart, as [time, open, high, low, close, volume], with the symbol's
+    dividends, earnings and splits. ?span=1D or 1W gives intraday bars (plus daily bars for the
     200-day and 200-week averages); otherwise daily bars from RESEARCH_LOOKBACK before ?start
     (an ISO date, or "max" for the whole history)."""
     symbol = symbol.strip().upper()
@@ -442,7 +466,7 @@ def api_research(symbol):
     ysym = research_yahoo_symbol(symbol)
     if not ysym:
         return jsonify(error=f"Yahoo Finance has no data for {symbol}."), 404
-    currency, daily, splits = market.daily_candles(ysym, first and first - RESEARCH_LOOKBACK)
+    currency, daily, splits, dividends = market.daily_candles(ysym, first and first - RESEARCH_LOOKBACK)
     quote = market.quotes([ysym]).get(ysym)
     data = {
         "symbol": ysym,
@@ -452,6 +476,7 @@ def api_research(symbol):
         "interval": "1d",
         "daily": [[d.isoformat(), *map(_price, ohlc), volume] for d, *ohlc, volume in daily],
         "trades": research_trades(ysym, currency, splits) if currency else [],
+        "events": research_events(ysym, splits, dividends),
     }
     if span:
         _, bars = market.intraday_candles(ysym, span)

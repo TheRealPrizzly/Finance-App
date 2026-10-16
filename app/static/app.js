@@ -1567,6 +1567,10 @@
         default: saved.volume?.default ?? false,
         ta: saved.volume?.ta ?? false,
       },
+      events: {  // dividend, earnings and split badges, in each mode
+        default: saved.events?.default ?? true,
+        ta: saved.events?.ta ?? true,
+      },
       main: null,
       compares: [],  // {symbol, color, data}
       zoom: null,  // {from, to}: the first and last bars zoomed to, or null for the whole range
@@ -1576,7 +1580,7 @@
         localStorage.setItem("research", JSON.stringify({
           mode: state.mode, range: state.range === "custom" ? "1Y" : state.range,
           ind: { default: [...state.ind.default], ta: [...state.ind.ta] },
-          trades: state.trades, volume: state.volume,
+          trades: state.trades, volume: state.volume, events: state.events,
         }));
       } catch { /* storage blocked */ }
     };
@@ -1710,6 +1714,30 @@
       return { buys, sells, info, count };
     }
 
+    // Dividends (D), earnings reports (E) and splits (S) on the bars they fall in: the bar covering
+    // the day, or on intraday charts its first bar; the next bar for a day without trading.
+    // Returns each bar's events, its badges (the last event of each kind) and the kinds there are,
+    // which get a row of badges each: E at the bottom, then D, then S.
+    function eventMarks(events, rows, unit) {
+      const marks = rows.map(() => []);
+      let count = 0;
+      if (events && rows.length) {
+        const day = unit === "bar" ? (r) => r.t.slice(0, 10) : (r) => r.t;
+        const first = (rows[0].from || rows[0].t).slice(0, 10), last = day(rows[rows.length - 1]);
+        const place = (kind, e) => {
+          if (e.date < first || e.date > last) return;
+          marks[rows.findIndex((r) => day(r) >= e.date)].push({ kind, ...e });
+          count++;
+        };
+        events.earnings.forEach((e) => place("E", e));
+        events.dividends.forEach((e) => place("D", e));
+        events.splits.forEach((e) => place("S", e));
+      }
+      const kinds = ["E", "D", "S"].filter((k) => marks.some((list) => list.some((e) => e.kind === k)));
+      const badges = marks.map((list) => kinds.map((k) => list.filter((e) => e.kind === k).pop()).filter(Boolean));
+      return { marks, badges, count, kinds, lanes: kinds.length };
+    }
+
     // A compared symbol's closes on the main chart's bars (its latest close at or before each one).
     function compareCloses(c, rows, unit) {
       const src = unit === "bar" ? c.data.bars || [] : c.data.daily;
@@ -1831,6 +1859,12 @@
       volumeButton.disabled = !hasVolume;
       volumeButton.title = hasVolume ? "Show trading volume below the chart" : `Yahoo Finance has no volume for ${d.symbol}`;
       const showVolume = hasVolume && state.volume[state.mode];
+      const events = d.events || { dividends: [], earnings: [], splits: [] };
+      const eventsButton = $("r-events");
+      eventsButton.disabled = !events.dividends.length && !events.earnings.length && !events.splits.length;
+      eventsButton.title = eventsButton.disabled ? `Yahoo Finance lists no dividends, earnings or splits for ${d.symbol}`
+        : "Show dividends, earnings and splits";
+      const ev = state.events[state.mode] ? eventMarks(events, rows, unit) : eventMarks(null, rows, unit);
       const baseClose = rows[0].c;
       const f = relative ? (v) => (v == null ? null : v / baseClose - 1) : (v) => v;
       const price = priceFormat(d.currency);
@@ -1908,10 +1942,77 @@
         },
       };
 
+      // Event badges stack up from the bottom of the price pane, which gets room for them below the prices.
+      const BADGE = 8;  // the largest badge radius, in pixels
+      const evText = cssVar("--ev-text"), evColor = { D: cssVar("--ev-div"), S: cssVar("--ev-split") };
+      const badgeColor = (e) => evColor[e.kind]
+        || (e.estimate == null ? cssVar("--muted") : e.actual > e.estimate ? up : down);  // E: beat the estimate or not
+      const badgeRoom = ev.lanes ? ev.lanes * (2 * BADGE + 3) + 6 : 0;
+      const roomForBadges = (s) => {
+        s.lowest = s.min;  // no price labels in the room
+        if (!badgeRoom) return;
+        const h = s.chart.chartArea?.height || s.chart.height * 0.85 || 300;
+        s.min -= ((s.max - s.min) || Math.abs(s.max) || 1) * badgeRoom / Math.max(h - badgeRoom, 60);
+      };
+      const eventsPlugin = {
+        id: "events",
+        afterDatasetsDraw(c) {
+          if (!ev.count) return;
+          const { ctx, chartArea: a, scales: { x } } = c;
+          // Each row's badges shrink (and lose their letter) only when they're too close together to fit.
+          const placed = Object.fromEntries(ev.kinds.map((k) => [k, []]));  // kind -> [[x pixel, event]]
+          for (let i = Math.max(0, x.min); i <= Math.min(rows.length - 1, x.max); i++) {
+            ev.badges[i].forEach((e) => placed[e.kind].push([x.getPixelForValue(i), e]));
+          }
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(a.left, a.top, a.right - a.left, a.bottom - a.top);
+          ctx.clip();
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ev.kinds.forEach((kind, lane) => {
+            const list = placed[kind];
+            const gap = Math.min(Infinity, ...list.slice(1).map(([px], j) => px - list[j][0]));
+            const r = Math.max(3, Math.min(BADGE, gap / 2 - 0.5));
+            const py = a.bottom - 4 - BADGE - lane * (2 * BADGE + 3);
+            ctx.font = `700 ${Math.round(r * 1.25)}px ${Chart.defaults.font.family}`;
+            list.forEach(([px, e]) => {
+              ctx.fillStyle = badgeColor(e);
+              ctx.beginPath();
+              ctx.arc(px, py, r, 0, Math.PI * 2);
+              ctx.fill();
+              if (r >= 6) {
+                ctx.fillStyle = evText;
+                ctx.fillText(kind, px, py + 0.5);
+              }
+            });
+          });
+          ctx.restore();
+        },
+      };
+      let perShare;
+      try {
+        perShare = new Intl.NumberFormat("en-CA", { style: "currency", currency: d.currency, currencyDisplay: "narrowSymbol",
+          minimumFractionDigits: 2, maximumFractionDigits: 4 }).format;
+      } catch { perShare = (v) => v.toFixed(4); }
+      const eps = new Intl.NumberFormat("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 3 }).format;
+      const eventLine = (e) => {
+        const when = unit === "day" ? "" : ` (${dayText(e.date, { month: "short", day: "numeric" })})`;
+        if (e.kind === "S") return ` Split ${e.ratio}${when}`;
+        if (e.kind === "D") {
+          const adjusted = Math.abs(e.paid - e.amount) > 1e-9 ? `; ${perShare(e.amount)} adjusted for later splits` : "";
+          return ` Dividend: ${perShare(e.paid)} per share, ex-date${when}${adjusted}`;
+        }
+        if (e.estimate == null) return ` Earnings: EPS ${eps(e.actual)}, no estimate${when}`;
+        const verdict = e.actual > e.estimate ? "beat" : e.actual < e.estimate ? "missed" : "matched";
+        return ` Earnings: EPS ${eps(e.actual)}, ${verdict} the ${eps(e.estimate)} estimate${when}`;
+      };
+
       const tooltip = {
         filter: (item) => item.parsed.y != null && !item.dataset.helper,
         callbacks: {
           title: (items) => tipTitle(rows[items[0].dataIndex], unit),
+          afterBody: (items) => (items.length ? ev.marks[items[0].dataIndex].map(eventLine) : []),
           label: (c) => {
             const ds = c.dataset;
             if (ds.trades) {
@@ -1930,14 +2031,15 @@
       chart = new Chart($("r-chart"), {
         type: "line",
         data: { labels, datasets },
-        plugins: [candles],
+        plugins: [candles, eventsPlugin],
         options: {
           maintainAspectRatio: false,
           animation: false,
           interaction: { mode: "index", intersect: false },
           scales: {
             x: { ...xView, offset: ta, grid: { display: false }, ticks: xTicks(rows, unit, win.lo, win.hi) },
-            y: { position: "left", grace: "3%", afterFit: fixWidth, ticks: { callback: (v) => fmt(v) } },
+            y: { position: "left", grace: "3%", afterDataLimits: roomForBadges, afterFit: fixWidth,
+              ticks: { callback(v) { return v < this.lowest ? null : fmt(v); } } },
           },
           plugins: {
             legend: {
@@ -2026,6 +2128,10 @@
       const notes = [`Prices in ${d.currency}.`];
       if (relative) notes.push("While comparing, each line shows its change since the first day shown.");
       if (showVolume && relative) notes.push(`Volume is ${d.symbol}'s.`);
+      if (ev.count) {
+        notes.push(`Badges along the bottom mark ${relative ? `${d.symbol}'s ` : ""}earnings (E: green beat the estimate, red didn't),`
+          + " dividends on their ex-dates (D) and splits (S); hover one for details.");
+      }
       if (tradeCount) {
         notes.push(relative ? "Triangles mark your buys (▲) and sells (▼) on each line; those on a compared line are outlined in its colour."
           : "Triangles mark your buys (▲) and sells (▼).");
@@ -2156,6 +2262,7 @@
       menu.querySelectorAll("[data-ind]").forEach((cb) => { cb.checked = state.ind[state.mode].has(cb.dataset.ind); });
       $("r-trades").setAttribute("aria-pressed", String(state.trades[state.mode]));
       $("r-volume").setAttribute("aria-pressed", String(state.volume[state.mode]));
+      $("r-events").setAttribute("aria-pressed", String(state.events[state.mode]));
     };
 
     $("r-trades").addEventListener("click", () => {
@@ -2167,6 +2274,13 @@
 
     $("r-volume").addEventListener("click", () => {
       state.volume[state.mode] = !state.volume[state.mode];
+      syncMenu();
+      save();
+      draw();
+    });
+
+    $("r-events").addEventListener("click", () => {
+      state.events[state.mode] = !state.events[state.mode];
       syncMenu();
       save();
       draw();
