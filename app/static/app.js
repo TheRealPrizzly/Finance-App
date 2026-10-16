@@ -2074,8 +2074,8 @@
         return ` Earnings: EPS ${eps(e.actual)}, ${verdict} the ${eps(e.estimate)} estimate${when}`;
       };
 
-      // Crosshair: a dashed line through every pane at the bar under the pointer, with its date on the
-      // price pane's date axis, and one across the pane under the pointer, with its value on the right.
+      // Crosshair: a dashed line through every pane at the bar under the pointer, and one across the
+      // pane under the pointer, with its value on the right.
       const paneFormat = { "r-chart": fmt, "volume-chart": (v) => compactNumber.format(v), "rsi-chart": (v) => v.toFixed(1) };
       const crossLine = cssVar("--muted"), labelFill = cssVar("--text"), labelText = cssVar("--surface");
       const crossLabel = (ctx, text, cx, cy, minLeft, maxRight) => {
@@ -2127,7 +2127,6 @@
             const format = paneFormat[c.canvas.id] || ((v) => v.toFixed(2));
             crossLabel(ctx, format(y.getValueForPixel(hover.y)), a.right + 2 + 36, hover.y, a.right + 2, c.width);
           }
-          if (c === chart) crossLabel(ctx, tipTitle(rows[hover.i], unit), px, a.bottom + 13, 0, a.right);
           ctx.restore();
         },
       };
