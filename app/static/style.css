@@ -261,7 +261,7 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
 .notes-toggle { display: inline-flex; align-items: center; gap: 6px; margin-left: -10px; }
 .notes-toggle .caret { display: inline-block; transition: transform .15s; }
 .notes-toggle[aria-expanded="false"] .caret { transform: rotate(-90deg); }
-.research canvas { touch-action: pan-y; }  /* sideways drags and pinches go to the chart's zoom */
+.research canvas { touch-action: pan-y; cursor: crosshair; }  /* sideways drags and pinches go to the chart's zoom */
 .research.zoomed canvas { cursor: grab; }
 .research.dragging canvas { cursor: grabbing; }
 #zoom-out, #zoom-in { min-width: 30px; font-size: 1rem; line-height: 1; }

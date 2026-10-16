@@ -2074,6 +2074,64 @@
         return ` Earnings: EPS ${eps(e.actual)}, ${verdict} the ${eps(e.estimate)} estimate${when}`;
       };
 
+      // Crosshair: a dashed line through every pane at the bar under the pointer, with its date on the
+      // price pane's date axis, and one across the pane under the pointer, with its value on the right.
+      const paneFormat = { "r-chart": fmt, "volume-chart": (v) => compactNumber.format(v), "rsi-chart": (v) => v.toFixed(1) };
+      const crossLine = cssVar("--muted"), labelFill = cssVar("--text"), labelText = cssVar("--surface");
+      const crossLabel = (ctx, text, cx, cy, minLeft, maxRight) => {
+        const w = ctx.measureText(text).width + 12, h = 18;
+        const left = Math.max(minLeft, Math.min(maxRight - w, cx - w / 2));
+        ctx.fillStyle = labelFill;
+        ctx.beginPath();
+        ctx.roundRect(left, cy - h / 2, w, h, 4);
+        ctx.fill();
+        ctx.fillStyle = labelText;
+        ctx.fillText(text, left + w / 2, cy + 0.5);
+      };
+      const crosshair = {
+        id: "crosshair",
+        // Chart.js's own pointer position, so the crosshair lands on the bar the tooltip shows.
+        afterEvent(c, { event: e }) {
+          if (e.type === "mouseout") {
+            if (hover?.canvas === c.canvas) hover = null;
+          } else if (e.type === "mousemove" && win) {
+            const i = Math.max(0, Math.min(lastBar(), Math.round(c.scales.x.getValueForPixel(e.x))));
+            hover = { canvas: c.canvas, i, y: e.y };
+          } else {
+            return;
+          }
+          drawCrosshair();
+        },
+        afterDraw(c) {
+          if (!hover || hover.i > rows.length - 1) return;
+          const { ctx, chartArea: a, scales: { x, y } } = c;
+          const px = x.getPixelForValue(hover.i);
+          if (px < a.left - 0.5 || px > a.right + 0.5) return;
+          const here = hover.canvas === c.canvas && hover.y >= a.top && hover.y <= a.bottom;
+          ctx.save();
+          ctx.strokeStyle = crossLine;
+          ctx.lineWidth = 1;
+          ctx.setLineDash([4, 3]);
+          ctx.beginPath();
+          ctx.moveTo(Math.round(px) + 0.5, a.top);
+          ctx.lineTo(Math.round(px) + 0.5, a.bottom);
+          if (here) {
+            ctx.moveTo(a.left, Math.round(hover.y) + 0.5);
+            ctx.lineTo(a.right, Math.round(hover.y) + 0.5);
+          }
+          ctx.stroke();
+          ctx.font = `600 11px ${Chart.defaults.font.family}`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          if (here) {
+            const format = paneFormat[c.canvas.id] || ((v) => v.toFixed(2));
+            crossLabel(ctx, format(y.getValueForPixel(hover.y)), a.right + 2 + 36, hover.y, a.right + 2, c.width);
+          }
+          if (c === chart) crossLabel(ctx, tipTitle(rows[hover.i], unit), px, a.bottom + 13, 0, a.right);
+          ctx.restore();
+        },
+      };
+
       const tooltip = {
         filter: (item) => item.parsed.y != null && !item.dataset.helper,
         callbacks: {
@@ -2101,7 +2159,7 @@
       chart = new Chart($("r-chart"), {
         type: "line",
         data: { labels, datasets },
-        plugins: [candles, eventsPlugin],
+        plugins: [candles, eventsPlugin, crosshair],
         options: {
           maintainAspectRatio: false,
           animation: false,
@@ -2140,6 +2198,7 @@
       if (showVolume) {
         volumeChart = new Chart($("volume-chart"), {
           type: "bar",
+          plugins: [crosshair],
           data: { labels, datasets: [{ label: "Volume", data: rows.map((r) => r.v), barPercentage: 0.9, categoryPercentage: 1,
             backgroundColor: rows.map((r) => translucent(r.c >= r.o ? up : down, 0.55)) }] },
           options: {
@@ -2170,6 +2229,7 @@
         const rsiColor = cssVar("--ind-rsi");
         rsiChart = new Chart($("rsi-chart"), {
           type: "line",
+          plugins: [crosshair],
           data: { labels, datasets: [
             { ...line, label: "RSI (14)", data: ind.rsi, borderColor: rsiColor, backgroundColor: rsiColor, borderWidth: 1.5 },
             level(70, down), level(30, up),
@@ -2202,8 +2262,10 @@
         const macdColor = cssVar("--ind-macd"), signalColor = cssVar("--ind-macd-signal");
         const hist = part(2);
         const num = new Intl.NumberFormat("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format;
+        paneFormat["macd-chart"] = num;
         macdChart = new Chart($("macd-chart"), {
           type: "bar",
+          plugins: [crosshair],
           data: { labels, datasets: [
             { type: "line", ...line, label: "MACD", data: part(0), borderColor: macdColor, backgroundColor: macdColor, borderWidth: 1.5, order: 0 },
             { type: "line", ...line, label: "Signal", data: part(1), borderColor: signalColor, backgroundColor: signalColor, borderWidth: 1.5, order: 0 },
@@ -2265,6 +2327,13 @@
     // panning, so small wheel and trackpad steps add up, and rounded when drawn.
     const MIN_BARS = 10;
     let win = null, frame = 0;
+    let hover = null, hoverFrame = 0;  // the crosshair: {canvas, i: the bar, y: the pointer's height on that canvas}
+    const drawCrosshair = () => {
+      hoverFrame ||= requestAnimationFrame(() => {
+        hoverFrame = 0;
+        [chart, volumeChart, rsiChart, macdChart].forEach((c) => c?.draw());
+      });
+    };
     const lastBar = () => win.rows.length - 1;
     const minSpan = () => Math.min(MIN_BARS - 1, lastBar());
     function syncZoom() {
