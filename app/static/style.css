@@ -239,7 +239,7 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
 .seg-wrap { flex-wrap: wrap; }
 .date-range { display: flex; align-items: center; gap: 6px; }
 .chart-lg { height: 420px; }
-.chart-rsi { height: 140px; margin-top: 4px; }
+.chart-rsi { height: 280px; margin-top: 4px; }
 .compare-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
 .compare-form[hidden] { display: none; }
 .compare-form .hint { margin: 0; }
@@ -396,6 +396,6 @@ details summary { cursor: pointer; font-weight: 600; font-size: .9rem; margin: 1
   .symbol-form { width: 100%; }
   .symbol-form input, .compare-form input { flex: 1; width: auto; }
   .chart-lg { height: 320px; }
-  .chart-rsi { height: 120px; }
+  .chart-rsi { height: 240px; }
   .dropdown-menu { right: auto; left: 0; }
 }
