@@ -2370,7 +2370,7 @@
 
     // ---- controls
     const pressed = (groupId, attr, value) => {
-      $(groupId).querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset[attr] === value)));
+      $(groupId).querySelectorAll(`button[data-${attr}]`).forEach((b) => b.setAttribute("aria-pressed", String(b.dataset[attr] === value)));
     };
     const styleMenu = $("style-menu");
     const syncMenu = () => {
@@ -2419,7 +2419,7 @@
     });
 
     $("r-mode").addEventListener("click", (e) => {
-      const b = e.target.closest("button");
+      const b = e.target.closest("[data-mode]");
       if (!b || b.dataset.mode === state.mode) return;
       state.mode = b.dataset.mode;
       showMode();

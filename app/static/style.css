@@ -291,7 +291,9 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
   background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(16, 24, 40, .14); }
 .dropdown-menu label.check { padding: 6px 8px; border-radius: 6px; font-size: .88rem; white-space: nowrap; }
 .dropdown-menu label.check:hover { background: var(--surface-2); }
-.reset-mode:disabled { opacity: .45; cursor: default; }
+.seg .reset-mode { display: inline-flex; align-items: center; margin-left: 2px; padding: 4px 8px; }
+.reset-mode svg { width: 14px; height: 14px; }
+.seg .reset-mode:not(:disabled):hover { color: var(--text); }
 .style-pick { display: inline-flex; align-items: center; gap: 8px; }
 .style-pick svg { width: 16px; height: 12px; flex: none; color: var(--muted); }
 .seg-icon { display: inline-flex; align-items: center; padding: 0 4px 0 7px; color: var(--muted); }
