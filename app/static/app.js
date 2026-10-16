@@ -1950,7 +1950,19 @@
               position: "top",
               align: "end",
               onClick: () => {},
-              labels: { boxWidth: 12, boxHeight: 2, filter: (item, data) => !data.datasets[item.datasetIndex].helper && !data.datasets[item.datasetIndex].noLegend },
+              labels: {
+                // Buy and Sell show as their ▲ / ▼ markers; every other entry as a short line in its style.
+                usePointStyle: true,
+                boxWidth: 12,
+                boxHeight: 8,
+                filter: (item, data) => !data.datasets[item.datasetIndex].helper && !data.datasets[item.datasetIndex].noLegend,
+                generateLabels: (c) => Chart.defaults.plugins.legend.labels.generateLabels(c).map((item) => {
+                  const ds = c.data.datasets[item.datasetIndex];
+                  return ds.trades
+                    ? { ...item, pointStyle: "triangle", rotation: ds.rotation || 0, fillStyle: ds.backgroundColor, strokeStyle: ds.borderColor }
+                    : { ...item, pointStyle: "line", rotation: 0, strokeStyle: ds.borderColor, lineWidth: 2, lineDash: ds.borderDash || [] };
+                }),
+              },
             },
             tooltip,
           },
