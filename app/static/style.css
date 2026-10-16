@@ -245,6 +245,10 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
 .compare-form .hint { margin: 0; }
 #compare-chips:not(:empty) { margin-bottom: 12px; }
 .pick .x { font-size: 1.05rem; line-height: 1; margin-left: 2px; }
+.trades-toggle { border-radius: 8px; }
+.trades-toggle .marks { font-size: .7rem; letter-spacing: -1px; opacity: .45; }
+.trades-toggle[aria-pressed="true"] .marks { opacity: 1; }
+.trades-toggle:disabled { opacity: .45; cursor: not-allowed; }
 .dropdown { position: relative; }
 .dropdown summary { list-style: none; margin: 0; }
 .dropdown summary::-webkit-details-marker { display: none; }

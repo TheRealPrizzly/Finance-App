@@ -1596,6 +1596,10 @@
         default: new Set(saved.ind?.default || []),
         ta: new Set(saved.ind?.ta || ["sma10", "sma20", "sma50", "sma100", "sma200"]),
       },
+      trades: {  // buy and sell markers shown in each mode
+        default: saved.trades?.default ?? true,
+        ta: saved.trades?.ta ?? false,
+      },
       main: null,
       compares: [],  // {symbol, color, data}
     };
@@ -1604,6 +1608,7 @@
         localStorage.setItem("research", JSON.stringify({
           mode: state.mode, range: state.range === "custom" ? "1Y" : state.range,
           ind: { default: [...state.ind.default], ta: [...state.ind.ta] },
+          trades: state.trades,
         }));
       } catch { /* storage blocked */ }
     };
@@ -1713,22 +1718,23 @@
       return { rows, ind, unit, startClose: daily[lo - 1]?.c ?? daily[lo]?.o };
     }
 
-    // Buys and sells on the bars they fall in. Trades have no time of day, so on intraday
-    // charts each goes on its day's bar closest to the trade price.
-    function tradeMarks(d, rows, unit) {
+    // Buys and sells on the bars they fall in, for a line whose close at each bar is closes[i].
+    // Trades have no time of day, so on intraday charts each goes on its day's bar closest to the trade price.
+    function tradeMarks(trades, rows, unit, closes) {
       const buys = rows.map(() => null), sells = rows.map(() => null), info = rows.map(() => []);
       if (!rows.length) return { buys, sells, info, count: 0 };
       let count = 0;
-      d.trades.forEach((t) => {
+      trades.forEach((t) => {
         let i = -1;
         if (unit === "bar") {
           rows.forEach((r, j) => {
-            if (r.t.startsWith(t.date) && (i < 0 || Math.abs(r.c - t.price) < Math.abs(rows[i].c - t.price))) i = j;
+            if (r.t.startsWith(t.date) && closes[j] != null
+              && (i < 0 || Math.abs(closes[j] - t.price) < Math.abs(closes[i] - t.price))) i = j;
           });
         } else if (t.date >= rows[0].from) {
           i = rows.findIndex((r) => r.t >= t.date);
         }
-        if (i < 0) return;
+        if (i < 0 || closes[i] == null) return;
         (t.kind === "BUY" ? buys : sells)[i] = t.price;
         info[i].push(t);
         count++;
@@ -1736,8 +1742,8 @@
       return { buys, sells, info, count };
     }
 
-    // A compared symbol's closes on the main chart's bars, as the change since the first one.
-    function compareLine(c, rows, unit) {
+    // A compared symbol's closes on the main chart's bars (its latest close at or before each one).
+    function compareCloses(c, rows, unit) {
       const src = unit === "bar" ? c.data.bars || [] : c.data.daily;
       const out = [];
       let j = -1;
@@ -1745,8 +1751,7 @@
         while (j + 1 < src.length && src[j + 1][0] <= r.t) j++;
         out.push(j >= 0 ? src[j][4] : null);
       });
-      const base = out.find((v) => v != null);
-      return out.map((v) => (v == null ? null : v / base - 1));
+      return out;
     }
 
     // ---- drawing
@@ -1829,6 +1834,9 @@
       const shown = state.ind[state.mode];
       const compares = state.compares.filter((c) => c.data);
       const relative = compares.length > 0;  // comparing: every line is its change since the first bar
+      const tradesButton = $("r-trades");
+      tradesButton.disabled = !d.trades.length && !compares.some((c) => c.data.trades?.length);
+      tradesButton.title = tradesButton.disabled ? "You haven't bought or sold the symbols on this chart" : "Show your buys and sells";
       const baseClose = rows[0].c;
       const f = relative ? (v) => (v == null ? null : v / baseClose - 1) : (v) => v;
       const price = priceFormat(d.currency);
@@ -1854,18 +1862,31 @@
         datasets.push({ ...line, label: def.label, data: ind[key].map(f), borderColor: color, backgroundColor: color,
           borderWidth: 1.5, borderDash: def.dashed ? [6, 4] : [], order: 1 });
       }
+      // Buy and sell triangles (Default mode) on the main line and on each compared line. Those on
+      // a compared line are outlined in its colour; only the first pair goes in the legend.
+      const gain = cssVar("--gain"), loss = cssVar("--loss");
+      let tradeCount = 0;
+      const addMarks = (trades, closes, toY, { symbol, currency, outline } = {}) => {
+        if (!state.trades[state.mode]) return;
+        const marks = tradeMarks(trades, rows, unit, closes);
+        if (!marks.count) return;
+        const legend = tradeCount === 0;
+        tradeCount += marks.count;
+        const mark = { showLine: false, pointStyle: "triangle", pointRadius: 7, pointHoverRadius: 8, order: -1,
+          trades: marks.info, symbol, fmtPrice: priceFormat(currency), noLegend: !legend, borderWidth: outline ? 2 : 1 };
+        datasets.push({ ...mark, label: "Buy", kind: "BUY", data: marks.buys.map(toY), backgroundColor: gain, borderColor: outline || gain },
+          { ...mark, label: "Sell", kind: "SELL", data: marks.sells.map(toY), rotation: 180, backgroundColor: loss, borderColor: outline || loss });
+      };
+      addMarks(d.trades, rows.map((r) => r.c), f, { symbol: relative ? d.symbol : "", currency: d.currency });
       compares.forEach((c) => {
         const color = cssVar(c.color);
-        datasets.push({ ...line, label: c.data.symbol, data: compareLine(c, rows, unit), borderColor: color,
+        const closes = compareCloses(c, rows, unit);
+        const base = closes.find((v) => v != null);
+        const toY = (v) => (v == null ? null : v / base - 1);
+        datasets.push({ ...line, label: c.data.symbol, data: closes.map(toY), borderColor: color,
           backgroundColor: color, borderWidth: 1.75, pointHoverRadius: 3, order: 0 });
+        addMarks(c.data.trades || [], closes, toY, { symbol: c.data.symbol, currency: c.data.currency, outline: color });
       });
-      const marks = ta ? null : tradeMarks(d, rows, unit);
-      if (marks?.count) {
-        const gain = cssVar("--gain"), loss = cssVar("--loss");
-        const mark = { showLine: false, pointStyle: "triangle", pointRadius: 7, pointHoverRadius: 8, order: -1, trades: marks.info };
-        datasets.push({ ...mark, label: "Buy", kind: "BUY", data: marks.buys.map(f), backgroundColor: gain, borderColor: gain },
-          { ...mark, label: "Sell", kind: "SELL", data: marks.sells.map(f), rotation: 180, backgroundColor: loss, borderColor: loss });
-      }
 
       const up = cssVar("--gain"), down = cssVar("--loss");
       const candles = {
@@ -1901,7 +1922,7 @@
             const ds = c.dataset;
             if (ds.trades) {
               return ds.trades[c.dataIndex].filter((t) => t.kind === ds.kind)
-                .map((t) => ` ${ds.label} ${qty(t.quantity)} @ ${price(t.price)} · ${t.account}`);
+                .map((t) => ` ${ds.symbol ? `${ds.symbol} ` : ""}${ds.label} ${qty(t.quantity)} @ ${ds.fmtPrice(t.price)} · ${t.account}`);
             }
             if (ds.candle && !relative) {
               const r = rows[c.dataIndex];
@@ -1970,7 +1991,10 @@
 
       const notes = [`Prices in ${d.currency}.`];
       if (relative) notes.push("While comparing, each line shows its change since the first day shown.");
-      if (marks?.count) notes.push("Triangles mark your buys (▲) and sells (▼).");
+      if (tradeCount) {
+        notes.push(relative ? "Triangles mark your buys (▲) and sells (▼) on each line; those on a compared line are outlined in its colour."
+          : "Triangles mark your buys (▲) and sells (▼).");
+      }
       if (unit === "bar") {
         notes.push(`Each ${ta ? "candle" : "point"} is a ${parseInt(d.interval, 10)}-minute bar. The SMAs, EMAs and RSI count bars; the 200-day and 200-week averages use daily closes.`);
       } else if (unit !== "day") {
@@ -1986,7 +2010,15 @@
     };
     const syncMenu = () => {
       menu.querySelectorAll("[data-ind]").forEach((cb) => { cb.checked = state.ind[state.mode].has(cb.dataset.ind); });
+      $("r-trades").setAttribute("aria-pressed", String(state.trades[state.mode]));
     };
+
+    $("r-trades").addEventListener("click", () => {
+      state.trades[state.mode] = !state.trades[state.mode];
+      syncMenu();
+      save();
+      draw();
+    });
 
     $("r-mode").addEventListener("click", (e) => {
       const b = e.target.closest("button");
