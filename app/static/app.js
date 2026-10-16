@@ -569,13 +569,27 @@
         $("cash").innerHTML = '<p class="muted">No cash balances.</p>';
         return;
       }
+      // One row per account: CAD and USD columns always, any other currency only when held.
+      const currencies = ["CAD", "USD", ...new Set(cash.map((c) => c.currency).filter((cur) => cur !== "CAD" && cur !== "USD"))];
+      const accounts = new Map();
+      for (const c of cash) {
+        const row = accounts.get(c.account) || { amounts: {}, total: 0 };
+        row.amounts[c.currency] = (row.amounts[c.currency] || 0) + c.amount;
+        row.total += c.amount_base;
+        accounts.set(c.account, row);
+      }
+      const amountCell = (value, currency) => value == null
+        ? '<td class="num muted">—</td>'
+        : `<td class="num nowrap ${value < 0 ? "loss" : ""}">${money(value, currency)}</td>`;
+      const sumOf = (currency) => cash.some((c) => c.currency === currency)
+        ? cash.filter((c) => c.currency === currency).reduce((sum, c) => sum + c.amount, 0) : null;
       const total = cash.reduce((sum, c) => sum + c.amount_base, 0);
       $("cash").innerHTML = `<table class="table compact">
-        <thead><tr><th>Account</th><th class="num">Balance</th><th class="num">In ${BASE}</th></tr></thead>
-        <tbody>${cash.map((c) => `<tr><td>${esc(c.account)}</td>
-          <td class="num nowrap ${c.amount < 0 ? "loss" : ""}">${money(c.amount, c.currency)}</td>
-          <td class="num nowrap">${money(c.amount_base)}</td></tr>`).join("")}</tbody>
-        <tfoot><tr><td>Total</td><td></td><td class="num nowrap">${money(total)}</td></tr></tfoot></table>
+        <thead><tr><th>Account</th>${currencies.map((cur) => `<th class="num">${cur}</th>`).join("")}<th class="num">Total (in ${BASE})</th></tr></thead>
+        <tbody>${[...accounts].map(([account, row]) => `<tr><td>${esc(account)}</td>
+          ${currencies.map((cur) => amountCell(row.amounts[cur], cur)).join("")}
+          <td class="num nowrap ${row.total < 0 ? "loss" : ""}">${money(row.total)}</td></tr>`).join("")}</tbody>
+        <tfoot><tr><td>Total</td>${currencies.map((cur) => amountCell(sumOf(cur), cur)).join("")}<td class="num nowrap">${money(total)}</td></tr></tfoot></table>
         ${holdingsOnly ? '<p class="hint">Record deposits and withdrawals to include cash in your portfolio value.</p>' : ""}`;
     }
 
