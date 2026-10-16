@@ -2144,7 +2144,7 @@
       }
       if (ta) notes.push("Green candles closed higher than they opened, red ones lower.");
       notes.push("Scroll or pinch over the chart to zoom, and drag to move along it.");
-      $("r-note").textContent = notes.join(" ");
+      $("r-note").replaceChildren(...notes.map((text) => Object.assign(document.createElement("li"), { textContent: text })));
     }
 
     // ---- zoom
