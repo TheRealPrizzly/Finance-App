@@ -1503,6 +1503,15 @@
       return [mean + k * sd, mean, mean - k * sd];
     });
   }
+  // MACD: [MACD, signal, histogram] at each close. MACD is the fast EMA minus the slow one, the
+  // signal is an n-bar EMA of MACD, and the histogram is MACD minus the signal.
+  function macdLine(values, fast = 12, slow = 26, n = 9) {
+    const f = emaLine(values, fast), s = emaLine(values, slow);
+    const start = slow - 1;  // the first bar with both EMAs
+    const macd = values.map((_, i) => (i >= start ? f[i] - s[i] : null));
+    const signal = new Array(start).fill(null).concat(emaLine(macd.slice(start), n));
+    return macd.map((m, i) => (m == null ? null : [m, signal[i], signal[i] == null ? null : m - signal[i]]));
+  }
   function rsiLine(values, n = 14) {  // Wilder's smoothing
     const out = new Array(values.length).fill(null);
     let gain = 0, loss = 0;
@@ -1547,6 +1556,7 @@
     ema20: { label: "20 EMA", line: (c) => emaLine(c, 20) },
     bb: { label: "BB (20, 2)", line: (c) => bollingerLine(c), bands: true },
     rsi: { label: "RSI (14)", line: (c) => rsiLine(c), pane: true },
+    macd: { label: "MACD (12, 26, 9)", line: (c) => macdLine(c), pane: true },
   };
   const RESEARCH_RANGES = { "1M": [0, 1], "6M": [0, 6], "1Y": [1, 0], "3Y": [3, 0], "5Y": [5, 0], "10Y": [10, 0] };  // [years, months]
   const INTRADAY_RANGES = ["1D", "1W"];
@@ -1763,15 +1773,16 @@
     }
 
     // ---- drawing
-    let chart = null, volumeChart = null, rsiChart = null;
+    let chart = null, volumeChart = null, rsiChart = null, macdChart = null;
     const AXIS_WIDTH = 76;  // every pane's y axis is this wide, so their bars line up
     const fixWidth = (scale) => { scale.width = AXIS_WIDTH; };
     function clearCharts() {
       chart?.destroy();
       volumeChart?.destroy();
       rsiChart?.destroy();
-      chart = volumeChart = rsiChart = null;
-      $("volume-box").hidden = $("rsi-box").hidden = true;
+      macdChart?.destroy();
+      chart = volumeChart = rsiChart = macdChart = null;
+      $("volume-box").hidden = $("rsi-box").hidden = $("macd-box").hidden = true;
       win = null;
       syncZoom();
     }
@@ -2146,6 +2157,42 @@
         });
       }
 
+      // MACD pane: the MACD and signal lines over the histogram of their difference.
+      $("macd-box").hidden = !shown.has("macd");
+      if (shown.has("macd")) {
+        const part = (j) => ind.macd.map((m) => m?.[j] ?? null);
+        const macdColor = cssVar("--ind-macd"), signalColor = cssVar("--ind-macd-signal");
+        const hist = part(2);
+        const num = new Intl.NumberFormat("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format;
+        macdChart = new Chart($("macd-chart"), {
+          type: "bar",
+          data: { labels, datasets: [
+            { type: "line", ...line, label: "MACD", data: part(0), borderColor: macdColor, backgroundColor: macdColor, borderWidth: 1.5, order: 0 },
+            { type: "line", ...line, label: "Signal", data: part(1), borderColor: signalColor, backgroundColor: signalColor, borderWidth: 1.5, order: 0 },
+            { label: "Histogram", data: hist, barPercentage: 0.9, categoryPercentage: 1, order: 1,
+              backgroundColor: hist.map((v) => translucent(v >= 0 ? up : down, 0.55)) },
+          ] },
+          options: {
+            maintainAspectRatio: false,
+            animation: false,
+            interaction: { mode: "index", intersect: false },
+            scales: {
+              x: { ...xView, offset: ta, grid: { display: false }, ticks: { ...xTicks(rows, unit, win.lo, win.hi), color: "transparent" } },
+              y: { afterFit: fixWidth, title: { display: true, text: "MACD (12, 26, 9)", font: { size: 11 } },
+                grid: { color: (c) => (c.tick.value === 0 ? cssVar("--muted") : Chart.defaults.borderColor) },
+                ticks: { maxTicksLimit: 5, callback: (v) => num(v) } },
+            },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                filter: (item) => item.parsed.y != null,
+                callbacks: { title: (items) => tipTitle(rows[items[0].dataIndex], unit), label: (c) => ` ${c.dataset.label}: ${num(c.parsed.y)}` },
+              },
+            },
+          },
+        });
+      }
+
       const notes = [`Prices in ${d.currency}.`];
       if (relative) notes.push("While comparing, each line shows its change since the first day shown.");
       if (showVolume && relative) notes.push(`Volume is ${d.symbol}'s.`);
@@ -2158,12 +2205,15 @@
           : "Triangles mark your buys (▲) and sells (▼).");
       }
       if (unit === "bar") {
-        notes.push(`Each ${ta ? "candle" : "point"} is a ${parseInt(d.interval, 10)}-minute bar. The SMAs, EMAs, Bollinger Bands and RSI count bars; the 200-day and 200-week averages use daily closes.`);
+        notes.push(`Each ${ta ? "candle" : "point"} is a ${parseInt(d.interval, 10)}-minute bar. The SMAs, EMAs, Bollinger Bands, RSI and MACD count bars; the 200-day and 200-week averages use daily closes.`);
       } else if (unit !== "day") {
         notes.push(`Each ${ta ? "candle" : "point"} is one ${unit}; the averages are as of its last day${showVolume ? " and the volume is its total" : ""}.`);
       }
       if (ta) notes.push("Green candles closed higher than they opened, red ones lower.");
       if (shown.has("bb")) notes.push("Bollinger Bands (20, 2) are the 20-bar SMA (dashed) with bands two standard deviations above and below it.");
+      if (shown.has("macd")) {
+        notes.push("MACD (12, 26, 9) is the 12-bar EMA minus the 26-bar EMA; the signal line is its 9-bar EMA, and the bars are MACD minus the signal.");
+      }
       notes.push("Scroll or pinch over the chart to zoom, and drag to move along it.");
       $("r-note").replaceChildren(...notes.map((text) => Object.assign(document.createElement("li"), { textContent: text })));
     }
@@ -2186,7 +2236,7 @@
       frame = 0;
       if (!win) return;
       const lo = Math.round(win.lo), hi = Math.round(win.hi);
-      [chart, volumeChart, rsiChart].forEach((c) => {
+      [chart, volumeChart, rsiChart, macdChart].forEach((c) => {
         if (!c) return;
         const ticks = xTicks(win.rows, win.unit, lo, hi);
         Object.assign(c.options.scales.x, { min: lo, max: hi, ticks: c === chart ? ticks : { ...ticks, color: "transparent" } });
@@ -2226,7 +2276,7 @@
     $("zoom-out").addEventListener("click", () => zoomStep(1 / 0.6));
     $("zoom-reset").addEventListener("click", () => win && setView(0, lastBar()));
 
-    ["r-chart", "volume-chart", "rsi-chart"].forEach((id) => {
+    ["r-chart", "volume-chart", "rsi-chart", "macd-chart"].forEach((id) => {
       const canvas = $(id);
       // Wheel: up zooms in and down zooms out, around the pointer; sideways (or Shift+wheel) pans.
       // Trackpad pinches arrive as wheel events with ctrlKey set, in smaller steps.

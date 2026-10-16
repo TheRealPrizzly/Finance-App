@@ -4,6 +4,7 @@
 {# TA dropdown entries: (key, label, description). The SMAs are on by default in TA mode. #}
 {% set indicators = [
   ("rsi", "RSI pane", "14-period relative strength index, in a pane below the chart"),
+  ("macd", "MACD pane", "Moving average convergence divergence (12, 26, 9), in a pane below the chart"),
   ("sma10", "10 SMA", "10-day simple moving average"),
   ("sma20", "20 SMA", "20-day simple moving average"),
   ("sma50", "50 SMA", "50-day simple moving average"),
@@ -96,6 +97,9 @@
     </div>
     <div class="chart-box chart-rsi" id="rsi-box" hidden>
       <canvas id="rsi-chart" aria-label="RSI chart" role="img"></canvas>
+    </div>
+    <div class="chart-box chart-macd" id="macd-box" hidden>
+      <canvas id="macd-chart" aria-label="MACD chart" role="img"></canvas>
     </div>
     <div class="chart-notes">
       <button type="button" class="btn btn-ghost btn-sm notes-toggle" id="r-notes" aria-expanded="true" aria-controls="r-note">
