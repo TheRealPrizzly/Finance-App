@@ -291,6 +291,11 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
   background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(16, 24, 40, .14); }
 .dropdown-menu label.check { padding: 6px 8px; border-radius: 6px; font-size: .88rem; white-space: nowrap; }
 .dropdown-menu label.check:hover { background: var(--surface-2); }
+.style-pick { display: inline-flex; align-items: center; gap: 8px; }
+.style-pick svg { width: 16px; height: 12px; flex: none; color: var(--muted); }
+#style-menu input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }  /* the highlighted row shows the pick */
+#style-menu label.check:has(input:checked) { background: var(--accent-soft); color: var(--text); }
+#style-menu label.check:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
 .menu-section { display: grid; gap: 2px; }
 .menu-section + .menu-section { border-top: 1px solid var(--border); margin-top: 4px; padding-top: 4px; }
 .menu-heading { padding: 4px 8px 2px; font-size: .72rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }

@@ -1560,6 +1560,7 @@
   };
   const RESEARCH_RANGES = { "1M": [0, 1], "6M": [0, 6], "1Y": [1, 0], "3Y": [3, 0], "5Y": [5, 0], "10Y": [10, 0] };  // [years, months]
   const INTRADAY_RANGES = ["1D", "1W"];
+  const CHART_STYLES = ["candles", "line", "colored", "baseline"];
   const COMPARE_COLORS = ["--cmp-1", "--cmp-2", "--cmp-3", "--cmp-4", "--cmp-5"];  // CSS tokens, one per compared symbol
   const MAX_COMPARES = COMPARE_COLORS.length;
 
@@ -1588,6 +1589,10 @@
         default: saved.volume?.default ?? false,
         ta: saved.volume?.ta ?? false,
       },
+      style: {  // the chart type in each mode
+        default: CHART_STYLES.includes(saved.style?.default) ? saved.style.default : "line",
+        ta: CHART_STYLES.includes(saved.style?.ta) ? saved.style.ta : "candles",
+      },
       events: {  // dividend, earnings and split badges, in each mode
         default: saved.events?.default ?? true,
         ta: saved.events?.ta ?? true,
@@ -1602,7 +1607,7 @@
         localStorage.setItem("research", JSON.stringify({
           mode: state.mode, range: state.range === "custom" ? "1Y" : state.range,
           ind: { default: [...state.ind.default], ta: [...state.ind.ta] },
-          trades: state.trades, volume: state.volume, events: state.events, notes: state.notes,
+          style: state.style, trades: state.trades, volume: state.volume, events: state.events, notes: state.notes,
         }));
       } catch { /* storage blocked */ }
     };
@@ -1870,7 +1875,9 @@
       const xView = { min: win.lo, max: win.hi };
       syncZoom();
 
-      const ta = state.mode === "ta";
+      const style = state.style[state.mode];
+      const candle = style === "candles";
+      const up = cssVar("--gain"), down = cssVar("--loss");
       const shown = state.ind[state.mode];
       const compares = state.compares.filter((c) => c.data);
       const relative = compares.length > 0;  // comparing: every line is its change since the first bar
@@ -1896,16 +1903,25 @@
       const line = { pointRadius: 0, pointHoverRadius: 0, tension: 0.1 };
       const datasets = [];
 
-      if (ta) {
+      const base = f(startClose ?? rows[0].c);  // the baseline: the close before the first day shown
+      if (candle) {
         // Candles are drawn by the plugin below; these invisible lines give the tooltip and y axis their values.
         const ghost = { ...line, borderColor: "transparent", backgroundColor: "transparent", borderWidth: 0 };
         datasets.push({ ...ghost, label: d.symbol, data: rows.map((r) => f(r.c)), candle: true, noLegend: true },
           { ...ghost, label: "High", data: rows.map((r) => f(r.h)), helper: true },
           { ...ghost, label: "Low", data: rows.map((r) => f(r.l)), helper: true });
       } else {
-        const c1 = cssVar("--chart-1");
-        datasets.push({ ...line, label: d.symbol, data: rows.map((r) => f(r.c)), borderColor: c1, backgroundColor: c1,
-          borderWidth: 2, pointHoverRadius: 3, order: 0 });
+        const color = style === "line" ? cssVar("--chart-1") : up;  // the legend's colour for the coloured styles
+        const ds = { ...line, label: d.symbol, data: rows.map((r) => f(r.c)), borderColor: color, backgroundColor: color,
+          borderWidth: 2, pointHoverRadius: 3, order: 0 };
+        if (style === "colored") {  // each step green when the close rose from the bar before, red when it fell
+          ds.segment = { borderColor: (s) => (s.p1.parsed.y >= s.p0.parsed.y ? up : down) };
+        } else if (style === "baseline") {  // green above the baseline, red below, shaded to it
+          ds.segment = { borderColor: (s) => ((s.p0.parsed.y + s.p1.parsed.y) / 2 >= base ? up : down) };
+          ds.fill = { target: { value: base }, above: translucent(up, 0.15), below: translucent(down, 0.15) };
+          ds.baseline = true;
+        }
+        datasets.push(ds);
       }
       for (const [key, def] of Object.entries(RESEARCH_INDICATORS)) {
         if (def.pane || !shown.has(key)) continue;
@@ -1948,11 +1964,23 @@
         addMarks(c.data.trades || [], closes, toY, { symbol: c.data.symbol, currency: c.data.currency, outline: color });
       });
 
-      const up = cssVar("--gain"), down = cssVar("--loss");
       const candles = {
         id: "candles",
         beforeDatasetsDraw(c) {
-          if (!ta) return;
+          if (style === "baseline") {  // the dashed baseline, when it's in view
+            const { ctx, chartArea: a, scales: { y } } = c;
+            const py = y.getPixelForValue(base);
+            if (py < a.top || py > a.bottom) return;
+            ctx.save();
+            ctx.strokeStyle = cssVar("--muted");
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.moveTo(a.left, py);
+            ctx.lineTo(a.right, py);
+            ctx.stroke();
+            ctx.restore();
+          }
+          if (!candle) return;
           const { ctx, chartArea: a, scales: { x, y } } = c;
           const width = Math.max(1, Math.min(16, ((a.right - a.left) / (x.max - x.min + 1)) * 0.7));
           ctx.save();
@@ -2055,6 +2083,10 @@
               const r = rows[c.dataIndex];
               return ` O ${price(r.o)}  H ${price(r.h)}  L ${price(r.l)}  C ${price(r.c)}`;
             }
+            if (ds.baseline) {
+              const change = relative ? (1 + c.parsed.y) / (1 + base) - 1 : c.parsed.y / base - 1;
+              return ` ${ds.label}: ${fmt(c.parsed.y)} (${pct(change)} from the baseline)`;
+            }
             return ` ${ds.tipLabel || ds.label}: ${fmt(c.parsed.y)}`;
           },
         },
@@ -2069,7 +2101,7 @@
           animation: false,
           interaction: { mode: "index", intersect: false },
           scales: {
-            x: { ...xView, offset: ta, grid: { display: false }, ticks: xTicks(rows, unit, win.lo, win.hi) },
+            x: { ...xView, offset: candle, grid: { display: false }, ticks: xTicks(rows, unit, win.lo, win.hi) },
             y: { position: "left", grace: "3%", afterDataLimits: roomForBadges, afterFit: fixWidth,
               ticks: { callback(v) { return v < this.lowest ? null : fmt(v); } } },
           },
@@ -2110,7 +2142,7 @@
             interaction: { mode: "index", intersect: false },
             scales: {
               // Invisible copies of the price chart's dates leave the same room at the edges, so the panes line up.
-              x: { ...xView, offset: ta, grid: { display: false }, ticks: { ...xTicks(rows, unit, win.lo, win.hi), color: "transparent" } },
+              x: { ...xView, offset: candle, grid: { display: false }, ticks: { ...xTicks(rows, unit, win.lo, win.hi), color: "transparent" } },
               y: { beginAtZero: true, afterFit: fixWidth, title: { display: true, text: "Volume", font: { size: 11 } },
                 ticks: { maxTicksLimit: 3, callback: (v) => compactNumber.format(v) } },
             },
@@ -2142,7 +2174,7 @@
             interaction: { mode: "index", intersect: false },
             scales: {
               // Invisible copies of the price chart's dates leave the same room at the edges, so the panes line up.
-              x: { ...xView, offset: ta, grid: { display: false }, ticks: { ...xTicks(rows, unit, win.lo, win.hi), color: "transparent" } },
+              x: { ...xView, offset: candle, grid: { display: false }, ticks: { ...xTicks(rows, unit, win.lo, win.hi), color: "transparent" } },
               y: { min: 0, max: 100, afterFit: fixWidth, title: { display: true, text: "RSI (14)", font: { size: 11 } },
                 afterBuildTicks: (s) => { s.ticks = [30, 50, 70].map((value) => ({ value })); } },
             },
@@ -2177,7 +2209,7 @@
             animation: false,
             interaction: { mode: "index", intersect: false },
             scales: {
-              x: { ...xView, offset: ta, grid: { display: false }, ticks: { ...xTicks(rows, unit, win.lo, win.hi), color: "transparent" } },
+              x: { ...xView, offset: candle, grid: { display: false }, ticks: { ...xTicks(rows, unit, win.lo, win.hi), color: "transparent" } },
               y: { afterFit: fixWidth, title: { display: true, text: "MACD (12, 26, 9)", font: { size: 11 } },
                 grid: { color: (c) => (c.tick.value === 0 ? cssVar("--muted") : Chart.defaults.borderColor) },
                 ticks: { maxTicksLimit: 5, callback: (v) => num(v) } },
@@ -2205,11 +2237,15 @@
           : "Triangles mark your buys (▲) and sells (▼).");
       }
       if (unit === "bar") {
-        notes.push(`Each ${ta ? "candle" : "point"} is a ${parseInt(d.interval, 10)}-minute bar. The SMAs, EMAs, Bollinger Bands, RSI and MACD count bars; the 200-day and 200-week averages use daily closes.`);
+        notes.push(`Each ${candle ? "candle" : "point"} is a ${parseInt(d.interval, 10)}-minute bar. The SMAs, EMAs, Bollinger Bands, RSI and MACD count bars; the 200-day and 200-week averages use daily closes.`);
       } else if (unit !== "day") {
-        notes.push(`Each ${ta ? "candle" : "point"} is one ${unit}; the averages are as of its last day${showVolume ? " and the volume is its total" : ""}.`);
+        notes.push(`Each ${candle ? "candle" : "point"} is one ${unit}; the averages are as of its last day${showVolume ? " and the volume is its total" : ""}.`);
       }
-      if (ta) notes.push("Green candles closed higher than they opened, red ones lower.");
+      if (candle) notes.push("Green candles closed higher than they opened, red ones lower.");
+      if (style === "colored") notes.push(`The ${d.symbol} line is green where it rose from the bar before and red where it fell.`);
+      if (style === "baseline") {
+        notes.push(`The ${d.symbol} line is green above the dashed baseline, its close before the first day shown, and red below it.`);
+      }
       if (shown.has("bb")) notes.push("Bollinger Bands (20, 2) are the 20-bar SMA (dashed) with bands two standard deviations above and below it.");
       if (shown.has("macd")) {
         notes.push("MACD (12, 26, 9) is the 12-bar EMA minus the 26-bar EMA; the signal line is its 9-bar EMA, and the bars are MACD minus the signal.");
@@ -2330,8 +2366,12 @@
     const pressed = (groupId, attr, value) => {
       $(groupId).querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset[attr] === value)));
     };
+    const styleMenu = $("style-menu");
     const syncMenu = () => {
       menu.querySelectorAll("[data-ind]").forEach((cb) => { cb.checked = state.ind[state.mode].has(cb.dataset.ind); });
+      const style = state.style[state.mode];
+      styleMenu.querySelectorAll("input[name=r-style]").forEach((r) => { r.checked = r.value === style; });
+      $("style-current").innerHTML = styleMenu.querySelector(`[data-style="${style}"]`).innerHTML;
       $("r-trades").setAttribute("aria-pressed", String(state.trades[state.mode]));
       $("r-volume").setAttribute("aria-pressed", String(state.volume[state.mode]));
       $("r-events").setAttribute("aria-pressed", String(state.events[state.mode]));
@@ -2374,6 +2414,15 @@
       if (!b || b.dataset.mode === state.mode) return;
       state.mode = b.dataset.mode;
       pressed("r-mode", "mode", state.mode);
+      syncMenu();
+      save();
+      draw();
+    });
+
+    styleMenu.addEventListener("change", (e) => {
+      if (e.target.name !== "r-style") return;
+      state.style[state.mode] = e.target.value;
+      styleMenu.open = false;
       syncMenu();
       save();
       draw();
