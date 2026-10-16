@@ -96,7 +96,11 @@
     <div class="chart-box chart-rsi" id="rsi-box" hidden>
       <canvas id="rsi-chart" aria-label="RSI chart" role="img"></canvas>
     </div>
-    <p class="hint" id="r-note"></p>
+    <div class="chart-notes">
+      <button type="button" class="btn btn-ghost btn-sm notes-toggle" id="r-notes" aria-expanded="true" aria-controls="r-note">
+        <span class="caret" aria-hidden="true">▾</span>Notes</button>
+      <p class="hint" id="r-note"></p>
+    </div>
   </section>
 </div>
 {% endblock %}

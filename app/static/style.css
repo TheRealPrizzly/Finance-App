@@ -251,6 +251,11 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
 .date-range { display: flex; align-items: center; gap: 6px; }
 .chart-lg { height: 420px; }
 .chart-volume { height: 130px; margin-top: 4px; }
+.chart-notes { margin-top: 10px; }
+.chart-notes .hint { margin: 4px 0 0; }
+.notes-toggle { display: inline-flex; align-items: center; gap: 6px; margin-left: -10px; }
+.notes-toggle .caret { display: inline-block; transition: transform .15s; }
+.notes-toggle[aria-expanded="false"] .caret { transform: rotate(-90deg); }
 .research canvas { touch-action: pan-y; }  /* sideways drags and pinches go to the chart's zoom */
 .research.zoomed canvas { cursor: grab; }
 .research.dragging canvas { cursor: grabbing; }

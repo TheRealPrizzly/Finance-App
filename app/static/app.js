@@ -1571,6 +1571,7 @@
         default: saved.events?.default ?? true,
         ta: saved.events?.ta ?? true,
       },
+      notes: saved.notes ?? true,  // the notes under the chart, in both modes
       main: null,
       compares: [],  // {symbol, color, data}
       zoom: null,  // {from, to}: the first and last bars zoomed to, or null for the whole range
@@ -1580,7 +1581,7 @@
         localStorage.setItem("research", JSON.stringify({
           mode: state.mode, range: state.range === "custom" ? "1Y" : state.range,
           ind: { default: [...state.ind.default], ta: [...state.ind.ta] },
-          trades: state.trades, volume: state.volume, events: state.events,
+          trades: state.trades, volume: state.volume, events: state.events, notes: state.notes,
         }));
       } catch { /* storage blocked */ }
     };
@@ -2285,6 +2286,17 @@
       save();
       draw();
     });
+
+    const showNotes = () => {
+      $("r-note").hidden = !state.notes;
+      $("r-notes").setAttribute("aria-expanded", String(state.notes));
+    };
+    $("r-notes").addEventListener("click", () => {
+      state.notes = !state.notes;
+      showNotes();
+      save();
+    });
+    showNotes();
 
     $("r-mode").addEventListener("click", (e) => {
       const b = e.target.closest("button");
