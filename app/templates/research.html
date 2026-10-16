@@ -66,7 +66,7 @@
           </div>
         </details>
         <details class="dropdown" id="ta-menu">
-          <summary class="btn btn-secondary btn-sm">Indicators <span aria-hidden="true">▾</span></summary>
+          <summary class="btn btn-secondary btn-sm"><span class="style-pick"><svg viewBox="0 0 16 12" aria-hidden="true"><path d="M1 8c3 0 3-6 7-6s4 5 7 5" fill="none" stroke="var(--ind-sma20)" stroke-width="1.5"/><path d="M1 11c4 0 5-4 8-4s4 2 6 2" fill="none" stroke="var(--ind-sma50)" stroke-width="1.5"/></svg>Indicators</span> <span aria-hidden="true">▾</span></summary>
           <div class="dropdown-menu" role="group" aria-label="Technical analysis indicators">
             {% for heading, items in indicator_sections %}
             <div class="menu-section" role="group" aria-labelledby="ta-section-{{ loop.index }}">
@@ -99,11 +99,13 @@
     <div class="card-head chart-controls">
       <div class="toolbar">
         <div class="seg" role="group" aria-label="Chart mode" id="r-mode">
+          <span class="seg-icon" title="Chart mode" aria-hidden="true"><svg viewBox="0 0 14 14"><circle cx="6" cy="6" r="4.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="m9.4 9.4 3.6 3.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M3.4 7.2 5 5.6l1.3 1.2 2.2-2.3" fill="none" stroke="var(--chart-1)" stroke-width="1.2"/></svg></span>
           <button type="button" data-mode="default" aria-pressed="true" title="Price action">PA</button>
           <button type="button" data-mode="ta" aria-pressed="false" title="Technical analysis">TA</button>
         </div>
         <button type="button" class="btn btn-ghost btn-sm reset-mode" id="r-reset"><span aria-hidden="true">↺</span> Reset</button>
         <div class="seg seg-wrap" role="group" aria-label="Time range" id="r-range">
+          <span class="seg-icon" title="Time range" aria-hidden="true"><svg viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M7 3.8v3.4l2.3 1.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span>
           {% for r in ('1D', '1W', '1M', '6M', 'YTD', '1Y', '3Y', '5Y', '10Y', 'Max') %}
           <button type="button" data-range="{{ r }}" aria-pressed="false">{{ r }}</button>
           {% endfor %}

@@ -294,6 +294,8 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
 .reset-mode:disabled { opacity: .45; cursor: default; }
 .style-pick { display: inline-flex; align-items: center; gap: 8px; }
 .style-pick svg { width: 16px; height: 12px; flex: none; color: var(--muted); }
+.seg-icon { display: inline-flex; align-items: center; padding: 0 4px 0 7px; color: var(--muted); }
+.seg-icon svg { width: 14px; height: 14px; }
 #style-menu input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }  /* the highlighted row shows the pick */
 #style-menu label.check:has(input:checked) { background: var(--accent-soft); color: var(--text); }
 #style-menu label.check:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
