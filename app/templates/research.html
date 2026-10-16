@@ -12,7 +12,7 @@
   ("baseline", "Baseline delta", "A line shaded green above and red below the price at the start of the range",
     '<svg viewBox="0 0 16 12" aria-hidden="true"><path d="M1 6 4 2l3 4z" fill="var(--gain)" opacity=".35"/><path d="m7 6 4 5 4-5z" fill="var(--loss)" opacity=".35"/><path d="M1 6h14" stroke="currentColor" stroke-dasharray="2 2"/><path d="M1 6 4 2l3 4 4 5 4-5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>'),
 ] %}
-{# Indicators dropdown sections: (heading, [(key, label, description)]). The SMAs are on by default in TA mode. #}
+{# Indicators dropdown sections: (heading, [(key, label, description)]). TA mode starts with RSI, Bollinger Bands and the 10, 20, 50 and 200 SMAs. #}
 {% set indicator_sections = [
   ("Panes", [
     ("rsi", "RSI pane", "14-period relative strength index, in a pane below the chart"),

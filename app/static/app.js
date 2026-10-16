@@ -1560,6 +1560,7 @@
   };
   const RESEARCH_RANGES = { "1M": [0, 1], "6M": [0, 6], "1Y": [1, 0], "3Y": [3, 0], "5Y": [5, 0], "10Y": [10, 0] };  // [years, months]
   const INTRADAY_RANGES = ["1D", "1W"];
+  const DEFAULT_RANGE = "YTD";
   const CHART_STYLES = ["candles", "line", "colored", "baseline"];
   const COMPARE_COLORS = ["--cmp-1", "--cmp-2", "--cmp-3", "--cmp-4", "--cmp-5"];  // CSS tokens, one per compared symbol
   const MAX_COMPARES = COMPARE_COLORS.length;
@@ -1575,19 +1576,19 @@
     const state = {
       symbol: root.dataset.symbol,
       mode: saved.mode === "ta" ? "ta" : "default",
-      range: saved.range in RESEARCH_RANGES || ["1D", "1W", "YTD", "Max"].includes(saved.range) ? saved.range : "1Y",
+      range: saved.range in RESEARCH_RANGES || ["1D", "1W", "YTD", "Max"].includes(saved.range) ? saved.range : DEFAULT_RANGE,
       from: "", to: "",  // a picked date range (range "custom")
       ind: {  // indicators shown in each mode
         default: new Set(saved.ind?.default || []),
-        ta: new Set(saved.ind?.ta || ["sma10", "sma20", "sma50", "sma100", "sma200"]),
+        ta: new Set(saved.ind?.ta || ["rsi", "bb", "sma10", "sma20", "sma50", "sma200"]),
       },
       trades: {  // buy and sell markers shown in each mode
         default: saved.trades?.default ?? true,
         ta: saved.trades?.ta ?? false,
       },
       volume: {  // the volume pane, in each mode
-        default: saved.volume?.default ?? false,
-        ta: saved.volume?.ta ?? false,
+        default: saved.volume?.default ?? true,
+        ta: saved.volume?.ta ?? true,
       },
       style: {  // the chart type in each mode
         default: CHART_STYLES.includes(saved.style?.default) ? saved.style.default : "line",
@@ -1597,7 +1598,7 @@
         default: saved.events?.default ?? true,
         ta: saved.events?.ta ?? true,
       },
-      notes: saved.notes ?? true,  // the notes under the chart, in both modes
+      notes: saved.notes ?? false,  // the notes under the chart, in both modes; hidden at first
       main: null,
       compares: [],  // {symbol, color, data}
       zoom: null,  // {from, to}: the first and last bars zoomed to, or null for the whole range
@@ -1605,7 +1606,7 @@
     const save = () => {
       try {
         localStorage.setItem("research", JSON.stringify({
-          mode: state.mode, range: state.range === "custom" ? "1Y" : state.range,
+          mode: state.mode, range: state.range === "custom" ? DEFAULT_RANGE : state.range,
           ind: { default: [...state.ind.default], ta: [...state.ind.ta] },
           style: state.style, trades: state.trades, volume: state.volume, events: state.events, notes: state.notes,
         }));
