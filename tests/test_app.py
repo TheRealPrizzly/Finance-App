@@ -574,9 +574,20 @@ def test_research(client, market):
     )
     token = login(client)
     upload(client, token)
-    html = client.get("/research").get_data(as_text=True)
-    assert 'data-symbol="SHOP"' in html  # the most recently traded symbol
-    assert 'aria-current="page">Research' in html
+    # With no symbol picked, the biggest position in the Dashboard's account or portfolio.
+    def default_symbol(query=""):
+        return re.search(r'data-symbol="([^"]*)"', client.get(f"/research{query}").get_data(as_text=True)).group(1)
+
+    top = client.get("/api/portfolio").get_json()["holdings"]
+    assert default_symbol() == top[0]["symbol"] == "XEQT"
+    rrsp = client.get("/api/portfolio?account=2").get_json()["holdings"]
+    assert {h["symbol"] for h in rrsp} == {"AAPL", "MSFT"}
+    assert default_symbol("?account=2") == rrsp[0]["symbol"]
+    assert 'href="/research?account=2"' in client.get("/?account=2").get_data(as_text=True)  # the nav link keeps it
+    client.post("/settings/default-view", data={"csrf_token": token, "scope": "account:2"})
+    assert default_symbol() == rrsp[0]["symbol"]  # the saved default view
+    assert default_symbol("?all=1") == "XEQT"
+    assert 'aria-current="page">Research' in client.get("/research").get_data(as_text=True)
     assert client.get("/research?symbol=msft").status_code == 200
     assert "/research?symbol=AAPL" in client.get("/position/AAPL").get_data(as_text=True)
 

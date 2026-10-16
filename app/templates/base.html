@@ -14,14 +14,14 @@
     <div class="topbar-inner">
       <a class="brand" href="{{ url_for('views.dashboard') }}">
         <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="var(--accent)"/><path d="M7 22l6-7 5 4 7-9" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Portfolio Manager
+        <span class="brand-name"><span>Portfolio</span> <span>Manager</span></span>
       </a>
       {% set ep = request.endpoint or '' %}
       <nav class="nav" aria-label="Main">
         <a href="{{ url_for('views.dashboard') }}" {% if ep in ('views.dashboard', 'views.position') %}aria-current="page"{% endif %}>Dashboard</a>
         <a href="{{ url_for('views.performance') }}" {% if ep == 'views.performance' %}aria-current="page"{% endif %}>Performance</a>
         <a href="{{ url_for('views.markets') }}" {% if ep == 'views.markets' %}aria-current="page"{% endif %}>Markets</a>
-        <a href="{{ url_for('views.research') }}" {% if ep == 'views.research' %}aria-current="page"{% endif %}>Research</a>
+        <a href="{{ url_for('views.research', **scope_args) }}" {% if ep == 'views.research' %}aria-current="page"{% endif %}>Research</a>
         <a href="{{ url_for('views.assets') }}" {% if 'asset' in ep or 'mortgage' in ep %}aria-current="page"{% endif %}>My Assets</a>
         <a href="{{ url_for('views.portfolios') }}" {% if 'portfolio' in ep or 'account' in ep or 'transaction' in ep or ep == 'views.import_export' %}aria-current="page"{% endif %}>Portfolio Manager</a>
       </nav>

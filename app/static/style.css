@@ -91,6 +91,7 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
 .topbar-inner { max-width: 1200px; margin: 0 auto; padding: 0 16px; display: flex; align-items: center; gap: 24px; min-height: 56px; flex-wrap: wrap; }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--text); }
 .brand:hover { text-decoration: none; }
+.brand-name { display: grid; line-height: 1.1; }  /* "Manager" under "Portfolio", leaving the tabs more room */
 .nav { display: flex; gap: 4px; overflow-x: auto; flex: 1; }
 .nav a { color: var(--muted); padding: 6px 10px; border-radius: 8px; white-space: nowrap; font-weight: 500; }
 .nav a:hover { color: var(--text); background: var(--surface-2); text-decoration: none; }

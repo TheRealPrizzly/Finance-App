@@ -63,7 +63,9 @@ def qty_filter(value):
 
 @bp.app_context_processor
 def inject_globals():
-    return {"kind_labels": pf.KIND_LABELS, "base_currency": current_app.config["BASE_CURRENCY"], "themes": THEMES}
+    return {"kind_labels": pf.KIND_LABELS, "base_currency": current_app.config["BASE_CURRENCY"], "themes": THEMES,
+            # the account / portfolio picked on this page, for links that keep it
+            "scope_args": {k: request.args[k] for k in ("account", "portfolio", "all") if request.args.get(k)}}
 
 
 # -- data access ------------------------------------------------------------------
@@ -121,10 +123,17 @@ def selected_account_ids():
         return [account_id]
     portfolio_id = selected_portfolio_id()
     if portfolio_id:
-        return [r["account_id"] for r in get_db().execute(
-            "SELECT account_id FROM portfolio_accounts WHERE portfolio_id = ?", (portfolio_id,)
-        )]
+        return scope_account_ids("portfolio", portfolio_id)
     return None
+
+
+def scope_account_ids(kind, scope_id):
+    """The accounts in an account ("account", id) or portfolio ("portfolio", id) scope."""
+    if kind == "account":
+        return [scope_id]
+    return [r["account_id"] for r in get_db().execute(
+        "SELECT account_id FROM portfolio_accounts WHERE portfolio_id = ?", (scope_id,)
+    )]
 
 
 def default_scope():
@@ -341,13 +350,26 @@ def traded_symbols():
 @bp.get("/research")
 @login_required
 def research():
-    symbol = request.args.get("symbol", "").strip().upper()
-    if not symbol:  # the most recently traded symbol, or the benchmark for a new user
-        row = get_db().execute(
-            "SELECT symbol FROM transactions WHERE user_id = ? AND kind IN (?, ?) AND symbol <> '' "
-            "ORDER BY date DESC, id DESC LIMIT 1", (g.user["id"], pf.BUY, pf.SELL)).fetchone()
-        symbol = row["symbol"] if row else current_app.config["BENCHMARK_SYMBOL"]
+    symbol = request.args.get("symbol", "").strip().upper() or research_default_symbol()
     return render_template("research.html", symbol=symbol, traded=traded_symbols())
+
+
+def research_default_symbol():
+    """The biggest position in the account or portfolio picked on the Dashboard (the nav link
+    carries it), else in the saved default view. If nothing is held there, the latest symbol
+    bought or sold there; for a new user, the benchmark."""
+    account_ids = selected_account_ids()
+    if account_ids is None and not request.args.get("all") and (default := default_scope()):
+        account_ids = scope_account_ids(*default)
+    txns = load_txns(account_ids)
+    if txns:
+        holdings = pf.snapshot(txns, account_labels(), get_market(), current_app.config["BASE_CURRENCY"])["holdings"]
+        if holdings:
+            return holdings[0]["symbol"]  # sorted by market value
+        trades = [t for t in txns if t.kind in (pf.BUY, pf.SELL) and t.symbol]
+        if trades:
+            return trades[-1].symbol
+    return current_app.config["BENCHMARK_SYMBOL"]
 
 
 def research_yahoo_symbol(symbol):
