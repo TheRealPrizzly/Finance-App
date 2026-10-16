@@ -1569,6 +1569,7 @@
       },
       main: null,
       compares: [],  // {symbol, color, data}
+      zoom: null,  // {from, to}: the first and last bars zoomed to, or null for the whole range
     };
     const save = () => {
       try {
@@ -1731,6 +1732,8 @@
       rsiChart?.destroy();
       chart = volumeChart = rsiChart = null;
       $("volume-box").hidden = $("rsi-box").hidden = true;
+      win = null;
+      syncZoom();
     }
     const translucent = (color, alpha) => {  // a #rrggbb colour at some opacity
       const m = /^#([0-9a-f]{6})$/i.exec(color);
@@ -1750,15 +1753,16 @@
       return (v) => (v == null ? "—" : f ? f.format(v) : v.toFixed(2));
     }
 
-    function xTicks(rows, unit) {
-      if (unit === "bar" && state.range === "1W") {  // one tick per day, on its first bar
+    // Tick labels for bars lo to hi, the part of the chart in view.
+    function xTicks(rows, unit, lo = 0, hi = rows.length - 1) {
+      if (unit === "bar" && rows[lo].t.slice(0, 10) !== rows[hi].t.slice(0, 10)) {  // one tick per day, on its first bar
         return { maxRotation: 0, autoSkip: false,
-          callback: (v) => (v === 0 || rows[v].t.slice(0, 10) !== rows[v - 1].t.slice(0, 10)
+          callback: (v) => (v === lo || rows[v].t.slice(0, 10) !== rows[v - 1].t.slice(0, 10)
             ? dayText(rows[v].t, { weekday: "short", day: "numeric" }) : null) };
       }
       const base = { maxRotation: 0, autoSkip: true, maxTicksLimit: 8 };
       if (unit === "bar") return { ...base, callback: (v) => rows[v].t.slice(11) };
-      const days = rows.length > 1 ? (new Date(rows[rows.length - 1].t) - new Date(rows[0].t)) / 864e5 : 0;
+      const days = hi > lo ? (new Date(rows[hi].t) - new Date(rows[lo].t)) / 864e5 : 0;
       const opts = days > 8 * 365 ? { year: "numeric" } : days > 240 ? { month: "short", year: "2-digit" } : { month: "short", day: "numeric" };
       return { ...base, callback: (v) => dayText(rows[v].t, opts) };
     }
@@ -1804,6 +1808,16 @@
         return;
       }
       status(null);
+      // The bars in view: all of them, or the ones last zoomed to (by date, so a change of mode keeps them).
+      win = { rows, unit, lo: 0, hi: rows.length - 1 };
+      if (state.zoom) {
+        const lo = rows.findIndex((r) => r.t >= state.zoom.from);
+        let hi = rows.length - 1;
+        while (hi > 0 && rows[hi].t > state.zoom.to) hi--;
+        if (lo >= 0 && hi - lo >= minSpan()) Object.assign(win, { lo, hi }); else state.zoom = null;
+      }
+      const xView = { min: win.lo, max: win.hi };
+      syncZoom();
 
       const ta = state.mode === "ta";
       const shown = state.ind[state.mode];
@@ -1874,7 +1888,7 @@
         beforeDatasetsDraw(c) {
           if (!ta) return;
           const { ctx, chartArea: a, scales: { x, y } } = c;
-          const width = Math.max(1, Math.min(16, ((a.right - a.left) / rows.length) * 0.7));
+          const width = Math.max(1, Math.min(16, ((a.right - a.left) / (x.max - x.min + 1)) * 0.7));
           ctx.save();
           ctx.beginPath();
           ctx.rect(a.left, a.top, a.right - a.left, a.bottom - a.top);
@@ -1922,7 +1936,7 @@
           animation: false,
           interaction: { mode: "index", intersect: false },
           scales: {
-            x: { offset: ta, grid: { display: false }, ticks: xTicks(rows, unit) },
+            x: { ...xView, offset: ta, grid: { display: false }, ticks: xTicks(rows, unit, win.lo, win.hi) },
             y: { position: "left", grace: "3%", afterFit: fixWidth, ticks: { callback: (v) => fmt(v) } },
           },
           plugins: {
@@ -1962,7 +1976,7 @@
             interaction: { mode: "index", intersect: false },
             scales: {
               // Invisible copies of the price chart's dates leave the same room at the edges, so the panes line up.
-              x: { offset: ta, grid: { display: false }, ticks: { ...xTicks(rows, unit), color: "transparent" } },
+              x: { ...xView, offset: ta, grid: { display: false }, ticks: { ...xTicks(rows, unit, win.lo, win.hi), color: "transparent" } },
               y: { beginAtZero: true, afterFit: fixWidth, title: { display: true, text: "Volume", font: { size: 11 } },
                 ticks: { maxTicksLimit: 3, callback: (v) => compactNumber.format(v) } },
             },
@@ -1994,7 +2008,7 @@
             interaction: { mode: "index", intersect: false },
             scales: {
               // Invisible copies of the price chart's dates leave the same room at the edges, so the panes line up.
-              x: { offset: ta, grid: { display: false }, ticks: { ...xTicks(rows, unit), color: "transparent" } },
+              x: { ...xView, offset: ta, grid: { display: false }, ticks: { ...xTicks(rows, unit, win.lo, win.hi), color: "transparent" } },
               y: { min: 0, max: 100, afterFit: fixWidth, title: { display: true, text: "RSI (14)", font: { size: 11 } },
                 afterBuildTicks: (s) => { s.ticks = [30, 50, 70].map((value) => ({ value })); } },
             },
@@ -2022,8 +2036,117 @@
         notes.push(`Each ${ta ? "candle" : "point"} is one ${unit}; the averages are as of its last day${showVolume ? " and the volume is its total" : ""}.`);
       }
       if (ta) notes.push("Green candles closed higher than they opened, red ones lower.");
+      notes.push("Scroll or pinch over the chart to zoom, and drag to move along it.");
       $("r-note").textContent = notes.join(" ");
     }
+
+    // ---- zoom
+    // The panes show bars win.lo to win.hi of win.rows. They're fractional while zooming and
+    // panning, so small wheel and trackpad steps add up, and rounded when drawn.
+    const MIN_BARS = 10;
+    let win = null, frame = 0;
+    const lastBar = () => win.rows.length - 1;
+    const minSpan = () => Math.min(MIN_BARS - 1, lastBar());
+    function syncZoom() {
+      const span = win ? Math.round(win.hi) - Math.round(win.lo) : 0;
+      const zoomed = !!win && span < lastBar();
+      $("zoom-in").disabled = !win || span <= minSpan();
+      $("zoom-out").disabled = $("zoom-reset").disabled = !zoomed;
+      root.querySelector(".research").classList.toggle("zoomed", zoomed);
+    }
+    function applyView() {
+      frame = 0;
+      if (!win) return;
+      const lo = Math.round(win.lo), hi = Math.round(win.hi);
+      [chart, volumeChart, rsiChart].forEach((c) => {
+        if (!c) return;
+        const ticks = xTicks(win.rows, win.unit, lo, hi);
+        Object.assign(c.options.scales.x, { min: lo, max: hi, ticks: c === chart ? ticks : { ...ticks, color: "transparent" } });
+        c.update("none");
+      });
+    }
+    function setView(lo, span) {
+      lo = Math.min(Math.max(lo, 0), lastBar() - span);
+      Object.assign(win, { lo, hi: lo + span });
+      const a = Math.round(win.lo), b = Math.round(win.hi);
+      state.zoom = b - a < lastBar() ? { from: win.rows[a].t, to: win.rows[b].t } : null;
+      syncZoom();
+      frame ||= requestAnimationFrame(applyView);
+    }
+    function zoomBy(factor, at) {  // factor < 1 zooms in, keeping bar `at` where it is
+      if (!win || lastBar() < 1) return;
+      const span = win.hi - win.lo;
+      const next = Math.min(lastBar(), Math.max(minSpan(), span * factor));
+      setView(at - (at - win.lo) * (next / span), next);
+    }
+    function panBy(bars) {
+      if (win) setView(win.lo + bars, win.hi - win.lo);
+    }
+    // The bar (fractional) at a screen x on a pane, and how many bars one pixel spans.
+    function barAt(canvas, clientX) {
+      const x = Chart.getChart(canvas)?.scales.x;
+      if (!x) return null;
+      const p0 = x.getPixelForValue(x.min), p1 = x.getPixelForValue(x.max);
+      const perPx = (x.max - x.min) / (p1 - p0 || 1);
+      return { at: x.min + (clientX - canvas.getBoundingClientRect().left - p0) * perPx, perPx };
+    }
+
+    const zoomStep = (factor) => {  // the buttons zoom around the middle, or keep the latest bar in view
+      if (win) zoomBy(factor, Math.round(win.hi) >= lastBar() ? lastBar() : (win.lo + win.hi) / 2);
+    };
+    $("zoom-in").addEventListener("click", () => zoomStep(0.6));
+    $("zoom-out").addEventListener("click", () => zoomStep(1 / 0.6));
+    $("zoom-reset").addEventListener("click", () => win && setView(0, lastBar()));
+
+    ["r-chart", "volume-chart", "rsi-chart"].forEach((id) => {
+      const canvas = $(id);
+      // Wheel: up zooms in and down zooms out, around the pointer; sideways (or Shift+wheel) pans.
+      // Trackpad pinches arrive as wheel events with ctrlKey set, in smaller steps.
+      canvas.addEventListener("wheel", (e) => {
+        const p = win && barAt(canvas, e.clientX);
+        if (!p) return;
+        const px = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;  // lines or pages to pixels
+        const dx = (e.shiftKey && !e.deltaX ? e.deltaY : e.deltaX) * px, dy = e.shiftKey ? 0 : e.deltaY * px;
+        if (Math.abs(dx) > Math.abs(dy)) {
+          e.preventDefault();
+          panBy(dx * p.perPx);
+        } else if (dy < 0 || Math.round(win.hi) - Math.round(win.lo) < lastBar()) {  // fully zoomed out, the page scrolls
+          e.preventDefault();
+          zoomBy(Math.exp(dy * (e.ctrlKey ? 0.01 : 0.002)), p.at);
+        }
+      }, { passive: false });
+
+      // Drag with one pointer to pan; pinch with two fingers to zoom.
+      const pointers = new Map();  // pointerId -> clientX
+      canvas.addEventListener("pointerdown", (e) => {
+        if (!win || (e.pointerType === "mouse" && e.button !== 0)) return;
+        pointers.set(e.pointerId, e.clientX);
+        canvas.setPointerCapture(e.pointerId);
+      });
+      canvas.addEventListener("pointermove", (e) => {
+        if (!pointers.has(e.pointerId) || !win) return;
+        const before = [...pointers.values()];
+        pointers.set(e.pointerId, e.clientX);
+        const after = [...pointers.values()];
+        if (after.length === 1) {
+          const p = barAt(canvas, e.clientX);
+          if (!p || after[0] === before[0]) return;
+          root.querySelector(".research").classList.add("dragging");
+          panBy((before[0] - after[0]) * p.perPx);
+        } else if (after.length === 2) {
+          const p = barAt(canvas, (after[0] + after[1]) / 2);
+          const gap = (xs) => Math.max(20, Math.abs(xs[0] - xs[1]));
+          if (p) zoomBy(gap(before) / gap(after), p.at);
+        }
+      });
+      const release = (e) => {
+        pointers.delete(e.pointerId);
+        if (!pointers.size) root.querySelector(".research").classList.remove("dragging");
+      };
+      canvas.addEventListener("pointerup", release);
+      canvas.addEventListener("pointercancel", release);
+      canvas.addEventListener("dblclick", () => win && setView(0, lastBar()));
+    });
 
     // ---- controls
     const pressed = (groupId, attr, value) => {
@@ -2072,6 +2195,7 @@
       if (!b) return;
       state.range = b.dataset.range;
       state.from = state.to = "";
+      state.zoom = null;
       pressed("r-range", "range", state.range);
       save();
       refresh();
@@ -2085,7 +2209,7 @@
       if (to && to < from) [from, to] = [to, from];
       $("r-from").value = from;
       $("r-to").value = to;
-      Object.assign(state, { range: "custom", from, to });
+      Object.assign(state, { range: "custom", from, to, zoom: null });
       pressed("r-range", "range", null);
       refresh();
     }));
@@ -2095,6 +2219,7 @@
       const symbol = $("symbol-input").value.trim().toUpperCase();
       if (!symbol || symbol === state.symbol) return;
       state.symbol = symbol;
+      state.zoom = null;
       $("symbol-input").value = symbol;
       state.compares = state.compares.filter((c) => c.symbol !== symbol);
       renderChips();

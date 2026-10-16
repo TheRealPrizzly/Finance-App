@@ -248,6 +248,10 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
 .date-range { display: flex; align-items: center; gap: 6px; }
 .chart-lg { height: 420px; }
 .chart-volume { height: 130px; margin-top: 4px; }
+.research canvas { touch-action: pan-y; }  /* sideways drags and pinches go to the chart's zoom */
+.research.zoomed canvas { cursor: grab; }
+.research.dragging canvas { cursor: grabbing; }
+#zoom-out, #zoom-in { min-width: 30px; font-size: 1rem; line-height: 1; }
 .chart-rsi { height: 280px; margin-top: 4px; }
 .compare-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
 .compare-form[hidden] { display: none; }

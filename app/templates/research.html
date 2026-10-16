@@ -69,12 +69,19 @@
         <button type="button" data-range="{{ r }}" aria-pressed="false">{{ r }}</button>
         {% endfor %}
       </div>
-      <div class="date-range" role="group" aria-label="Date range">
-        <label for="r-from" class="sr-only">From</label>
-        <input type="date" id="r-from" class="input-sm">
-        <span class="muted" aria-hidden="true">to</span>
-        <label for="r-to" class="sr-only">To</label>
-        <input type="date" id="r-to" class="input-sm">
+      <div class="toolbar">
+        <div class="seg" role="group" aria-label="Zoom">
+          <button type="button" id="zoom-out" title="Zoom out" aria-label="Zoom out">−</button>
+          <button type="button" id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
+          <button type="button" id="zoom-reset" title="Show the whole range">Reset</button>
+        </div>
+        <div class="date-range" role="group" aria-label="Date range">
+          <label for="r-from" class="sr-only">From</label>
+          <input type="date" id="r-from" class="input-sm">
+          <span class="muted" aria-hidden="true">to</span>
+          <label for="r-to" class="sr-only">To</label>
+          <input type="date" id="r-to" class="input-sm">
+        </div>
       </div>
     </div>
     <div class="picks" id="compare-chips" aria-label="Compared symbols"></div>
