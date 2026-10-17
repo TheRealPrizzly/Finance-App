@@ -2664,7 +2664,6 @@
       ];
       $("r-stats").innerHTML = tiles.map(([label, value, sub, title]) => `<div class="kpi"><div class="kpi-label">${esc(label)}</div>
         <div class="kpi-value" title="${esc(title || value)}">${esc(value)}</div><div class="kpi-sub">${sub}</div></div>`).join("");
-      $("r-stats-note").textContent = `From Yahoo Finance for ${st.symbol}. A dash means Yahoo lists none: ETFs, funds and crypto have no earnings or analyst targets.`;
     }
     let statsSeq = 0;
     async function loadStats() {
