@@ -2658,7 +2658,7 @@
           : st.beta < 0.95 ? "Moves less than the market" : st.beta > 1.05 ? "Moves more than the market" : "Moves with the market"],
         ["P/E ratio (TTM)", st.pe == null ? "—" : st.pe.toFixed(2), st.pe == null ? "" : "Price over the last 12 months' earnings"],
         ["Earnings date", ...earningsTile(st.earnings).map((t, i) => (i ? esc(t) : t))],
-        ["Forward dividend & yield", dividend, st.dividend == null && st.yield != null ? "Yield over the past 12 months"
+        ["FWD Div & Yield", dividend, st.dividend == null && st.yield != null ? "Yield over the past 12 months"
           : st.dividend == null ? "No dividend" : "A year, at the current rate"],
         ["1Y target estimate", st.target == null ? "—" : money(st.target, cur), upside == null ? ""
           : `<span class="${tone(upside)}">${pct(upside)}</span> from ${esc(money(st.price, cur))}`],
