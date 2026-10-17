@@ -50,6 +50,19 @@
   </div>
   <div id="notices"></div>
 
+  <section class="card overview">
+    <div class="card-head"><h2>Company overview</h2></div>
+    <dl class="overview-facts" id="r-overview" aria-live="polite">
+      {% for label in ("Name", "Sector", "Industry") %}<div><dt>{{ label }}</dt><dd>…</dd></div>{% endfor %}
+    </dl>
+    <div class="overview-more" id="r-overview-more" hidden>
+      <p class="overview-summary" id="r-summary"></p>
+      <p class="overview-links" id="r-links"></p>
+    </div>
+    <button type="button" class="btn btn-ghost btn-sm notes-toggle" id="r-overview-toggle" aria-expanded="false"
+      aria-controls="r-overview-more"><span class="caret" aria-hidden="true">▾</span><span>Show more</span></button>
+  </section>
+
   <section class="card research">
     <div class="card-head">
       <div>
@@ -153,19 +166,6 @@
       {% for _ in range(6) %}<div class="kpi skeleton"></div>{% endfor %}
     </div>
     <p class="hint" id="r-stats-note"></p>
-  </section>
-
-  <section class="card overview">
-    <div class="card-head"><h2>Company overview</h2></div>
-    <dl class="overview-facts" id="r-overview" aria-live="polite">
-      {% for label in ("Name", "Sector", "Industry") %}<div><dt>{{ label }}</dt><dd>…</dd></div>{% endfor %}
-    </dl>
-    <div class="overview-more" id="r-overview-more" hidden>
-      <p class="overview-summary" id="r-summary"></p>
-      <p class="overview-links" id="r-links"></p>
-    </div>
-    <button type="button" class="btn btn-ghost btn-sm notes-toggle" id="r-overview-toggle" aria-expanded="false"
-      aria-controls="r-overview-more"><span class="caret" aria-hidden="true">▾</span><span>Show more</span></button>
   </section>
 </div>
 {% endblock %}
