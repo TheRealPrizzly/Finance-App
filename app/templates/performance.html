@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Performance · Portfolio Manager{% endblock %}
 {% block page %}performance{% endblock %}
-{% set sections = [("performance", "Performance"), ("annual", "Performance by year")] if has_transactions else [] %}
+{% set sections = [("performance", "Performance"), ("annual", "Performance by year"), ("projections", "Projections")] if has_transactions else [] %}
 {% block content %}
 <div class="page-head">
   <div>
@@ -26,6 +26,7 @@
      data-benchmark="{{ benchmark }}" data-base="{{ base_currency }}">
   {% include "_performance_section.html" %}
   {% include "_annual_section.html" %}
+  {% include "_projections_section.html" %}
 </div>
 {% endif %}
 {% endblock %}

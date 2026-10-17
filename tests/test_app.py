@@ -291,6 +291,7 @@ def test_performance_tab(app, client):
     assert 'id="holdings"' not in html  # only the performance section
     assert 'id="annual-chart"' in html and 'id="annual-table"' in html and "Performance by year" in html
     assert 'id="annual-chart"' not in client.get("/?all=1").get_data(as_text=True)  # Performance tab only
+    assert 'id="proj-chart"' in html and html.index("Performance by year") < html.index(">Projections<")
     assert client.get("/api/history").get_json()["years"]  # yearly figures come with the history
     assert 'id="perf-chart"' in client.get("/?all=1").get_data(as_text=True)  # still on the dashboard
 
@@ -418,7 +419,7 @@ def test_section_sidebar(app, client):
     upload(client, token)
     expected = {
         "/": ["kpis", "performance", "allocation", "cash-balances", "holdings-section", "earnings-section"],
-        "/performance": ["performance", "annual"],
+        "/performance": ["performance", "annual", "projections"],
         "/markets": ["premarket", "futures", "sector-moves", "sentiment", "fear-greed-index", "rates", "rate-kpis",
                     "yield-curve"],
         "/portfolios": ["portfolios", "create-portfolio", "import", "accounts", "add-account", "transactions"],

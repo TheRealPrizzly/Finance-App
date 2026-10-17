@@ -755,7 +755,12 @@
   function performance() {
     const benchmark = root.dataset.benchmark;
     chartDefaults();
-    performanceSection(root.dataset, benchmark, { onHistory: (history, err) => renderAnnual(history, err, benchmark) });
+    performanceSection(root.dataset, benchmark, {
+      onHistory: (history, err) => {
+        renderAnnual(history, err, benchmark);
+        projections(history, err, benchmark);
+      },
+    });
   }
 
   // ---- performance by year (Performance tab) -------------------------------------
@@ -812,6 +817,129 @@
         <td class="num nowrap">${money(y.end_value)}</td>
         <td class="num nowrap ${tone(y.gain)}">${money(y.gain, BASE, { signed: true })}</td>
       </tr>`).join("")}</tbody>`;
+  }
+
+  // ---- projections (Performance tab) -----------------------------------------------
+  // Today's value grown at an assumed yearly rate, compounded monthly, plus a fixed contribution
+  // at the end of each month. The inputs are remembered in this browser.
+  const PROJECTION_STORAGE = "projection";
+  function projections(history, err, benchmark) {
+    const status = $("proj-status");
+    if (err) {
+      status.textContent = `Couldn't build history: ${err.message}`;
+      return;
+    }
+    const points = history.points || [];
+    if (!points.length) {
+      status.textContent = "Not enough history yet.";
+      return;
+    }
+    status.hidden = true;
+    const now = points[points.length - 1];
+    const inputs = { rate: $("proj-rate"), contribution: $("proj-contribution"), years: $("proj-years") };
+    try {
+      const saved = JSON.parse(localStorage.getItem(PROJECTION_STORAGE) || "{}");
+      for (const [key, el] of Object.entries(inputs)) if (Number.isFinite(saved[key])) el.value = saved[key];
+    } catch { /* storage blocked or bad JSON */ }
+
+    // What the past suggests, for reference: annualized returns and the last year's deposits.
+    const annualized = (history.periods || []).find((p) => p.label === "Annualized");
+    $("proj-rate-hint").textContent = annualized?.portfolio != null
+      ? `Annualized so far: ${pct(annualized.portfolio, { signed: false })} for your portfolio`
+        + (annualized.benchmark != null ? `, ${pct(annualized.benchmark, { signed: false })} for ${benchmark}.` : ".")
+      : "Your annualized return shows here once there's a year of history.";
+    const yearAgo = new Date(`${now.date}T00:00:00`);
+    yearAgo.setFullYear(yearAgo.getFullYear() - 1);
+    const start = points.find((p) => p.date >= yearAgo.toISOString().slice(0, 10)) || points[0];
+    const months = Math.max((new Date(`${now.date}T00:00:00`) - new Date(`${start.date}T00:00:00`)) / (864e5 * 30.44), 1);
+    $("proj-contribution-hint").textContent =
+      `About ${money((now.contributions - start.contributions) / months, BASE, { compact: true })} a month over the last ${months >= 11.5 ? "year" : `${Math.round(months)} months`}. Negative for withdrawals.`;
+
+    let chart = null;
+    function render() {
+      const num = (el, fallback) => (Number.isFinite(parseFloat(el.value)) ? parseFloat(el.value) : fallback);
+      const ratePct = num(inputs.rate, 0);
+      const rate = ratePct / 100;
+      const contribution = num(inputs.contribution, 0);
+      const years = Math.min(Math.max(Math.round(num(inputs.years, 20)), 1), 50);
+      try {
+        localStorage.setItem(PROJECTION_STORAGE, JSON.stringify({ rate: ratePct, contribution, years }));
+      } catch { /* storage blocked */ }
+
+      const monthly = Math.pow(1 + rate, 1 / 12) - 1;
+      const baseYear = new Date(`${now.date}T00:00:00`).getFullYear();
+      const rows = [{ year: 0, value: now.value, contributions: 0 }];
+      let value = now.value, added = 0;
+      for (let m = 1; m <= years * 12; m++) {
+        value = value * (1 + monthly) + contribution;
+        added += contribution;
+        if (m % 12 === 0) rows.push({ year: m / 12, value, contributions: added });
+      }
+      const end = rows[rows.length - 1];
+      const cents = (v) => Math.round(v * 100) / 100;  // so float noise doesn't show as "+$0.00"
+      const growth = cents(end.value - now.value - end.contributions);
+      $("proj-kpis").innerHTML = [
+        kpi(`Value in ${years} year${years === 1 ? "" : "s"}`, money(end.value, BASE, { compact: true }), `In ${baseYear + years}`),
+        kpi("Today's value", money(now.value, BASE, { compact: true }),
+          new Date(`${now.date}T00:00:00`).toLocaleDateString("en-CA", { dateStyle: "medium" })),
+        kpi("Contributions", money(end.contributions, BASE, { compact: true, signed: true }),
+          `${money(contribution, BASE, { compact: true })} a month`),
+        kpi("Investment growth", money(growth, BASE, { compact: true, signed: true }),
+          `At ${pct(rate, { signed: false })} a year`, tone(growth)),
+      ].join("");
+
+      const c1 = cssVar("--chart-1"), c3 = cssVar("--chart-3");
+      const fmt = (v) => money(v, BASE, { compact: true });
+      const data = {
+        labels: rows.map((r) => (r.year === 0 ? "Now" : String(baseYear + r.year))),
+        datasets: [
+          { label: "Projected value", data: rows.map((r) => r.value), borderColor: c1, backgroundColor: `${c1}22`, fill: true, borderWidth: 2 },
+          { label: "Today's value + contributions", data: rows.map((r) => now.value + r.contributions),
+            borderColor: c3, borderDash: [4, 4], borderWidth: 1.5 },
+        ],
+      };
+      data.datasets.forEach((d) => Object.assign(d, { pointRadius: 0, pointHoverRadius: 3, tension: 0.15 }));
+      if (chart) {
+        chart.data = data;
+        chart.update();
+      } else {
+        chart = new Chart($("proj-chart"), {
+          type: "line",
+          data,
+          options: {
+            maintainAspectRatio: false,
+            animation: false,
+            interaction: { mode: "index", intersect: false },
+            scales: {
+              x: { grid: { display: false }, ticks: { maxTicksLimit: 11, autoSkip: true, maxRotation: 0 } },
+              y: { ticks: { callback: fmt }, grace: "5%" },
+            },
+            plugins: {
+              legend: { position: "bottom", labels: { boxWidth: 12, boxHeight: 2 } },
+              tooltip: { callbacks: { label: (c) => ` ${c.dataset.label}: ${fmt(c.parsed.y)}` } },
+            },
+          },
+        });
+      }
+
+      // Every year up to 10, then every 5, always ending on the last year.
+      const step = years <= 10 ? 1 : 5;
+      const shown = rows.filter((r) => r.year > 0 && (r.year % step === 0 || r.year === years));
+      $("proj-table").innerHTML = `
+        <thead><tr><th>Year</th><th class="num">Projected value</th><th class="num">Contributions</th><th class="num">Investment growth</th></tr></thead>
+        <tbody>${shown.map((r) => {
+          const g = cents(r.value - now.value - r.contributions);
+          return `<tr>
+            <td class="nowrap">${baseYear + r.year} <span class="muted">(${r.year} yr${r.year === 1 ? "" : "s"})</span></td>
+            <td class="num nowrap">${money(r.value)}</td>
+            <td class="num nowrap">${money(r.contributions, BASE, { signed: true })}</td>
+            <td class="num nowrap ${tone(g)}">${money(g, BASE, { signed: true })}</td>
+          </tr>`;
+        }).join("")}</tbody>`;
+    }
+
+    Object.values(inputs).forEach((el) => el.addEventListener("input", render));
+    render();
   }
 
   // ---- Markets tab -----------------------------------------------------------------
