@@ -821,8 +821,9 @@
 
   // ---- projections (Performance tab) -----------------------------------------------
   // Today's value grown at an assumed yearly rate, compounded monthly, plus a fixed contribution
-  // at the end of each month. The inputs are remembered in this browser.
-  const PROJECTION_STORAGE = "projection";
+  // at the end of each month. The growth rate defaults to the portfolio's annualized return so far.
+  // Inputs the user changes are remembered in this browser; clearing one brings back its default.
+  const PROJECTION_STORAGE = "projectionInputs";
   function projections(history, err, benchmark) {
     const status = $("proj-status");
     if (err) {
@@ -837,17 +838,19 @@
     status.hidden = true;
     const now = points[points.length - 1];
     const inputs = { rate: $("proj-rate"), contribution: $("proj-contribution"), years: $("proj-years") };
+    const annualized = (history.periods || []).find((p) => p.label === "Annualized");
+    if (annualized?.portfolio != null) inputs.rate.value = (annualized.portfolio * 100).toFixed(2);
+    let saved = {};
     try {
-      const saved = JSON.parse(localStorage.getItem(PROJECTION_STORAGE) || "{}");
+      saved = JSON.parse(localStorage.getItem(PROJECTION_STORAGE) || "{}") || {};
       for (const [key, el] of Object.entries(inputs)) if (Number.isFinite(saved[key])) el.value = saved[key];
     } catch { /* storage blocked or bad JSON */ }
 
     // What the past suggests, for reference: annualized returns and the last year's deposits.
-    const annualized = (history.periods || []).find((p) => p.label === "Annualized");
     $("proj-rate-hint").textContent = annualized?.portfolio != null
-      ? `Annualized so far: ${pct(annualized.portfolio, { signed: false })} for your portfolio`
-        + (annualized.benchmark != null ? `, ${pct(annualized.benchmark, { signed: false })} for ${benchmark}.` : ".")
-      : "Your annualized return shows here once there's a year of history.";
+      ? `Defaults to your portfolio's annualized return so far, ${pct(annualized.portfolio, { signed: false })}`
+        + (annualized.benchmark != null ? ` (${benchmark}: ${pct(annualized.benchmark, { signed: false })}).` : ".")
+      : "Defaults to 6% until there's a year of history to annualize.";
     const yearAgo = new Date(`${now.date}T00:00:00`);
     yearAgo.setFullYear(yearAgo.getFullYear() - 1);
     const start = points.find((p) => p.date >= yearAgo.toISOString().slice(0, 10)) || points[0];
@@ -858,13 +861,9 @@
     let chart = null;
     function render() {
       const num = (el, fallback) => (Number.isFinite(parseFloat(el.value)) ? parseFloat(el.value) : fallback);
-      const ratePct = num(inputs.rate, 0);
-      const rate = ratePct / 100;
+      const rate = num(inputs.rate, 0) / 100;
       const contribution = num(inputs.contribution, 0);
       const years = Math.min(Math.max(Math.round(num(inputs.years, 20)), 1), 50);
-      try {
-        localStorage.setItem(PROJECTION_STORAGE, JSON.stringify({ rate: ratePct, contribution, years }));
-      } catch { /* storage blocked */ }
 
       const monthly = Math.pow(1 + rate, 1 / 12) - 1;
       const baseYear = new Date(`${now.date}T00:00:00`).getFullYear();
@@ -938,7 +937,15 @@
         }).join("")}</tbody>`;
     }
 
-    Object.values(inputs).forEach((el) => el.addEventListener("input", render));
+    for (const [key, el] of Object.entries(inputs)) {
+      el.addEventListener("input", () => {
+        const value = parseFloat(el.value);
+        if (Number.isFinite(value)) saved[key] = value;
+        else delete saved[key];
+        try { localStorage.setItem(PROJECTION_STORAGE, JSON.stringify(saved)); } catch { /* storage blocked */ }
+        render();
+      });
+    }
     render();
   }
 
