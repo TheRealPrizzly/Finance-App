@@ -2654,12 +2654,11 @@
       const tiles = [  // [label, value, sub-line HTML, title]
         ["Market cap", st.market_cap ? bigMoney(st.market_cap, cur) : "—", "",
           st.market_cap ? money(st.market_cap, cur, { compact: true }) : ""],
-        ["Beta (5Y monthly)", num(st.beta), st.beta == null ? "" : st.beta < 0 ? "Tends to move against the market"
-          : st.beta < 0.95 ? "Moves less than the market" : st.beta > 1.05 ? "Moves more than the market" : "Moves with the market"],
-        ["P/E ratio (TTM)", st.pe == null ? "—" : st.pe.toFixed(2), st.pe == null ? "" : "Price over the last 12 months' earnings"],
+        ["Beta (5Y monthly)", num(st.beta), ""],
+        ["P/E ratio (TTM)", num(st.pe), ""],
         ["Earnings date", ...earningsTile(st.earnings).map((t, i) => (i ? esc(t) : t))],
         ["FWD Div & Yield", dividend, st.dividend == null && st.yield != null ? "Yield over the past 12 months"
-          : st.dividend == null ? "No dividend" : "A year, at the current rate"],
+          : st.dividend == null ? "No dividend" : ""],
         ["1Y target estimate", st.target == null ? "—" : money(st.target, cur), upside == null ? ""
           : `<span class="${tone(upside)}">${pct(upside)}</span> from ${esc(money(st.price, cur))}`],
       ];
