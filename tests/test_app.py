@@ -483,6 +483,24 @@ def test_my_assets_net_worth(client):
     assert [a["id"] for a in client.get("/api/assets").get_json()["assets"]] == [3, 2]  # sorted by name
 
 
+def test_dashboard_shows_my_assets(client):
+    token = login(client)
+    html = client.get("/").get_data(as_text=True)
+    assert 'id="my-assets"' not in html and "app.js" not in html  # nothing to show yet
+
+    client.post("/assets", data={"csrf_token": token, "kind": "manual", "value": "650000", "name": "House"})
+    html = client.get("/").get_data(as_text=True)
+    assert 'id="worth-kpis"' in html and 'data-assets-url="/api/assets"' in html and "app.js" in html
+    assert "chart.umd" not in html and 'id="app"' not in html  # no portfolio yet, so only My Assets
+
+    upload(client, token)
+    html = client.get("/?all=1").get_data(as_text=True)
+    assert html.index('id="my-assets"') < html.index('id="portfolio"') < html.index('id="kpis"')
+    assert '<a href="#my-assets">My Assets</a>' in html  # in the side menu
+    client.post("/assets/1/delete", data={"csrf_token": token})
+    assert 'id="my-assets"' not in client.get("/?all=1").get_data(as_text=True)
+
+
 def test_asset_form_errors(client):
     token = login(client)
     html = client.post("/assets", data={"csrf_token": token, "kind": "manual", "value": "", "name": ""}).get_data(as_text=True)

@@ -1,11 +1,24 @@
 {% extends "base.html" %}
 {% block title %}Dashboard · Portfolio Manager{% endblock %}
 {% block page %}dashboard{% endblock %}
-{% set sections = [("kpis", "Overview"), ("performance", "Performance"), ("allocation", "Allocation"),
+{% set sections = ([("my-assets", "My Assets"), ("portfolio", "Portfolio")] if has_assets else [])
+                 + [("kpis", "Overview"), ("performance", "Performance"), ("allocation", "Allocation"),
                    ("cash-balances", "Cash balances"), ("holdings-section", "Holdings"),
                    ("earnings-section", "Upcoming earnings")] if has_transactions else [] %}
 {% block content %}
-<div class="page-head">
+{% if has_assets %}
+<div class="page-head" id="my-assets">
+  <div>
+    <h1>My Assets</h1>
+  </div>
+  <div class="head-actions"><a class="btn btn-secondary btn-sm" href="{{ url_for('views.assets') }}">View all</a></div>
+</div>
+<section class="kpis" id="worth-kpis" data-assets-url="{{ url_for('views.api_assets') }}" data-base="{{ base_currency }}" aria-live="polite">
+  {% for _ in range(3) %}<div class="kpi skeleton"></div>{% endfor %}
+</section>
+{% endif %}
+
+<div class="page-head{% if has_assets %} section-head{% endif %}" id="portfolio">
   <div>
     <h1>Portfolio</h1>
     <p class="muted" id="as-of">{% if has_transactions %}Loading live prices…{% else %}No activity yet{% endif %}</p>
@@ -102,6 +115,8 @@
 {% block scripts %}
 {% if has_transactions %}
 <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+{% endif %}
+{% if has_transactions or has_assets %}
 <script src="{{ url_for('static', filename='app.js') }}"></script>
 {% endif %}
 {% endblock %}

@@ -201,6 +201,7 @@ def dashboard():
         "dashboard.html",
         **scope_template_args(),
         has_transactions=has_transactions(),
+        has_assets=has_assets(),
         benchmark=current_app.config["BENCHMARK_SYMBOL"],
     )
 
@@ -961,6 +962,14 @@ def user_assets():
     return get_db().execute(
         "SELECT * FROM assets WHERE user_id = ? ORDER BY name COLLATE NOCASE, id", (g.user["id"],)
     ).fetchall()
+
+
+def has_assets():
+    """Whether the user has any assets or mortgages, so the dashboard shows their net worth."""
+    return get_db().execute(
+        """SELECT EXISTS (SELECT 1 FROM assets WHERE user_id = :u)
+                  OR EXISTS (SELECT 1 FROM mortgages WHERE user_id = :u)""", {"u": g.user["id"]}
+    ).fetchone()[0] == 1
 
 
 def get_asset_or_404(asset_id):

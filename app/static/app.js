@@ -4,7 +4,7 @@
   "use strict";
 
   const root = document.getElementById("app");
-  const BASE = root?.dataset.base || "CAD";
+  const BASE = document.querySelector("[data-base]")?.dataset.base || "CAD";
   const REFRESH_MS = 60_000;
   const SECTOR_COLORS = [
     "#2457d6", "#e07a00", "#1a9e77", "#c2408c", "#7b5cd6", "#d9a400",
@@ -1202,6 +1202,33 @@
     });
   }
 
+  // The net worth tiles at the top of My Assets, also shown on the dashboard.
+  function worthKpis(data) {
+    const investments = data.assets.filter((a) => a.kind !== "manual").reduce((s, a) => s + a.value, 0);
+    const count = data.mortgages.length;
+    return [
+      kpi("Net worth", money(data.net_worth), "Assets minus mortgages", data.net_worth < 0 ? "loss" : ""),
+      kpi("Total assets", money(data.total_assets),
+        `${money(investments)} investments · ${money(data.total_assets - investments)} other`),
+      kpi("Mortgages owed", money(data.total_liabilities), count ? `${count} mortgage${count === 1 ? "" : "s"}` : "No mortgages"),
+    ].join("");
+  }
+
+  // My Assets on the dashboard: just the net worth tiles; My Assets has the details and warnings.
+  function dashboardWorth() {
+    const box = $("worth-kpis");
+    if (!box) return;
+    async function load() {
+      try {
+        box.innerHTML = worthKpis(await getJSON(box.dataset.assetsUrl));
+      } catch (err) {
+        box.innerHTML = `<p class="muted">Couldn't load your assets: ${esc(err.message)}</p>`;
+      }
+    }
+    load();
+    setInterval(() => { if (!document.hidden) load(); }, REFRESH_MS);
+  }
+
   function myAssets() {
     const urls = root.dataset;
     const monthName = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-CA", { month: "long", year: "numeric" });
@@ -1227,14 +1254,7 @@
         : `Values in ${BASE}`;
       notices(data.warnings.map((w) => ["warning", w]));
 
-      const investments = data.assets.filter((a) => a.kind !== "manual").reduce((s, a) => s + a.value, 0);
-      const count = data.mortgages.length;
-      $("worth-kpis").innerHTML = [
-        kpi("Net worth", money(data.net_worth), "Assets minus mortgages", data.net_worth < 0 ? "loss" : ""),
-        kpi("Total assets", money(data.total_assets),
-          `${money(investments)} investments · ${money(data.total_assets - investments)} other`),
-        kpi("Mortgages owed", money(data.total_liabilities), count ? `${count} mortgage${count === 1 ? "" : "s"}` : "No mortgages"),
-      ].join("");
+      $("worth-kpis").innerHTML = worthKpis(data);
 
       for (const a of data.assets) {
         const row = document.querySelector(`tr[data-asset="${a.id}"]`);
@@ -2607,6 +2627,6 @@
     refresh();
   }
 
-  const pages = { dashboard, performance, position, "txn-form": txnForm, markets, assets: myAssets, "asset-form": assetForms, research };
+  const pages = { dashboard: () => { dashboardWorth(); if (root) dashboard(); }, performance, position, "txn-form": txnForm, markets, assets: myAssets, "asset-form": assetForms, research };
   pages[document.body.dataset.page]?.();
 })();
