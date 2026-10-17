@@ -2575,6 +2575,7 @@
       url.searchParams.set("symbol", symbol);
       history.replaceState(null, "", url.href);
       refresh();
+      loadStats();
     });
 
     // + Compare
@@ -2620,11 +2621,73 @@
       draw();
     });
 
+    // ---- key statistics, below the chart
+    const bigMoney = (v, currency) => {  // $5.01T
+      try {
+        return new Intl.NumberFormat("en-CA", { style: "currency", currency, currencyDisplay: "narrowSymbol",
+          notation: "compact", maximumFractionDigits: 2 }).format(v) + (currency !== BASE ? ` ${currency}` : "");
+      } catch {
+        return `${v.toExponential(2)} ${currency}`;
+      }
+    };
+    // Earnings dates are shown on New York's calendar, as on the Dashboard.
+    const nyDay = (ts, opts) => new Date(ts * 1000).toLocaleDateString("en-CA", { ...opts, timeZone: "America/New_York" });
+    const daysUntil = (ts) => {
+      const day = (ms) => Date.parse(`${new Date(ms).toLocaleDateString("en-CA", { timeZone: "America/New_York" })}T00:00:00Z`);
+      return Math.round((day(ts * 1000) - day(Date.now())) / 864e5);
+    };
+    function earningsTile(e) {
+      if (!e) return ["—", "No date announced"];
+      const full = { month: "short", day: "numeric", year: "numeric" };
+      const days = daysUntil(e.start);
+      const when = days === 0 ? "Today" : days === 1 ? "Tomorrow" : days > 0 ? `In ${days} days` : days === -1 ? "Yesterday" : `${-days} days ago`;
+      if (e.end) return [`${nyDay(e.start, { month: "short", day: "numeric" })} – ${nyDay(e.end, full)}`, `${when} · estimated window`];
+      return [nyDay(e.start, full), `${nyDay(e.start, { weekday: "long" })}, ${when.toLowerCase()}${e.estimated ? " · estimated" : ""}`];
+    }
+    function renderStats(st) {
+      const cur = st.currency;
+      const num = (v) => (v == null ? "—" : v.toFixed(2));
+      const upside = st.target != null && st.price ? st.target / st.price - 1 : null;
+      const dividend = st.dividend != null
+        ? `${money(st.dividend, cur)}${st.yield != null ? ` (${pct(st.yield, { signed: false })})` : ""}`
+        : st.yield != null ? pct(st.yield, { signed: false }) : "—";
+      const tiles = [  // [label, value, sub-line HTML, title]
+        ["Market cap", st.market_cap ? bigMoney(st.market_cap, cur) : "—", "",
+          st.market_cap ? money(st.market_cap, cur, { compact: true }) : ""],
+        ["Beta (5Y monthly)", num(st.beta), st.beta == null ? "" : st.beta < 0 ? "Tends to move against the market"
+          : st.beta < 0.95 ? "Moves less than the market" : st.beta > 1.05 ? "Moves more than the market" : "Moves with the market"],
+        ["P/E ratio (TTM)", st.pe == null ? "—" : st.pe.toFixed(2), st.pe == null ? "" : "Price over the last 12 months' earnings"],
+        ["Earnings date", ...earningsTile(st.earnings).map((t, i) => (i ? esc(t) : t))],
+        ["Forward dividend & yield", dividend, st.dividend == null && st.yield != null ? "Yield over the past 12 months"
+          : st.dividend == null ? "No dividend" : "A year, at the current rate"],
+        ["1Y target estimate", st.target == null ? "—" : money(st.target, cur), upside == null ? ""
+          : `<span class="${tone(upside)}">${pct(upside)}</span> from ${esc(money(st.price, cur))}`],
+      ];
+      $("r-stats").innerHTML = tiles.map(([label, value, sub, title]) => `<div class="kpi"><div class="kpi-label">${esc(label)}</div>
+        <div class="kpi-value" title="${esc(title || value)}">${esc(value)}</div><div class="kpi-sub">${sub}</div></div>`).join("");
+      $("r-stats-note").textContent = `From Yahoo Finance for ${st.symbol}. A dash means Yahoo lists none: ETFs, funds and crypto have no earnings or analyst targets.`;
+    }
+    let statsSeq = 0;
+    async function loadStats() {
+      const mine = ++statsSeq;
+      $("r-stats").innerHTML = '<div class="kpi skeleton"></div>'.repeat(6);
+      $("r-stats-note").textContent = "";
+      try {
+        const st = await getJSON(root.dataset.statsApi.replace("SYMBOL", encodeURIComponent(state.symbol)));
+        if (mine === statsSeq) renderStats(st);
+      } catch (err) {
+        if (mine !== statsSeq) return;
+        $("r-stats").innerHTML = "";
+        $("r-stats-note").textContent = `Couldn't load the key statistics for ${state.symbol}: ${err.message}`;
+      }
+    }
+
     pressed("r-mode", "mode", state.mode);
     pressed("r-range", "range", state.range);
     syncMenu();
     syncReset();
     refresh();
+    loadStats();
   }
 
   const pages = { dashboard: () => { dashboardWorth(); if (root) dashboard(); }, performance, position, "txn-form": txnForm, markets, assets: myAssets, "asset-form": assetForms, research };

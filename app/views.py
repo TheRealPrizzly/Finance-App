@@ -486,6 +486,23 @@ def api_research(symbol):
     return jsonify(data)
 
 
+@bp.get("/api/research/<symbol>/stats")
+@login_required
+def api_research_stats(symbol):
+    """Key statistics for the Research tab: market cap, beta, P/E, the next earnings date,
+    the forward dividend and yield, and analysts' 1-year target."""
+    symbol = symbol.strip().upper()
+    if not SYMBOL_RE.match(symbol):
+        return jsonify(error="That doesn't look like a ticker symbol."), 400
+    ysym = research_yahoo_symbol(symbol)
+    if not ysym:
+        return jsonify(error=f"Yahoo Finance has no data for {symbol}."), 404
+    stats = get_market().key_stats(ysym)
+    if stats is None:
+        return jsonify(error=f"Couldn't load the key statistics for {ysym}."), 502
+    return jsonify(symbol=ysym, **stats)
+
+
 # -- transactions -------------------------------------------------------------------------
 
 

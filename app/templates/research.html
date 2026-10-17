@@ -33,7 +33,8 @@
   ]),
 ] %}
 {% block content %}
-<div id="app" data-api="{{ url_for('views.api_research', symbol='SYMBOL') }}" data-symbol="{{ symbol }}" data-base="{{ base_currency }}">
+<div id="app" data-api="{{ url_for('views.api_research', symbol='SYMBOL') }}"
+  data-stats-api="{{ url_for('views.api_research_stats', symbol='SYMBOL') }}" data-symbol="{{ symbol }}" data-base="{{ base_currency }}">
   <div class="page-head">
     <div>
       <h1>Research</h1>
@@ -144,6 +145,14 @@
         <span class="caret" aria-hidden="true">▾</span>Notes</button>
       <ul class="hint" id="r-note"></ul>
     </div>
+  </section>
+
+  <section class="card key-stats">
+    <div class="card-head"><h2>Key statistics</h2></div>
+    <div class="kpis" id="r-stats" aria-live="polite">
+      {% for _ in range(6) %}<div class="kpi skeleton"></div>{% endfor %}
+    </div>
+    <p class="hint" id="r-stats-note"></p>
   </section>
 </div>
 {% endblock %}

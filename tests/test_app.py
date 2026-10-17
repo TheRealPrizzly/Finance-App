@@ -636,6 +636,21 @@ def test_research(client, market):
     assert client.get("/api/research/AAPL?span=2D").status_code == 400
 
 
+def test_research_key_stats(client, market):
+    market.stats["AAPL"] = {"currency": "USD", "price": 250.0, "market_cap": 5.0e12, "beta": 1.07, "pe": 39.4,
+                            "earnings": {"start": 1793649600, "end": None, "estimated": False},
+                            "dividend": 1.08, "yield": 0.0031, "target": 329.38}
+    login(client)
+    html = client.get("/research?symbol=AAPL").get_data(as_text=True)
+    assert 'data-stats-api="/api/research/SYMBOL/stats"' in html and "Key statistics" in html
+    data = client.get("/api/research/aapl/stats").get_json()
+    assert data["symbol"] == "AAPL" and data["market_cap"] == 5.0e12 and data["target"] == 329.38
+    assert client.get("/api/research/MSFT/stats").status_code == 502  # Yahoo sent nothing
+    assert client.get("/api/research/NOPE/stats").status_code == 404
+    assert client.get("/api/research/BAD%20SYMBOL/stats").status_code == 400
+
+
 def test_research_needs_sign_in(client):
     assert client.get("/research").status_code == 302
     assert client.get("/api/research/AAPL").status_code == 401
+    assert client.get("/api/research/AAPL/stats").status_code == 401

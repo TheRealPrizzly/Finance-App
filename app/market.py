@@ -24,6 +24,7 @@ USER_AGENT = (
 QUOTE_TTL = 60  # seconds
 HISTORY_TTL = 60 * 60
 EARNINGS_TTL = 12 * 60 * 60
+STATS_TTL = 15 * 60
 INTRADAY_TTL = 2 * 60
 RESOLVE_RETRY = timedelta(days=1)  # retry symbols Yahoo didn't recognise after this long
 SECTOR_TTL = timedelta(days=7)
@@ -97,6 +98,38 @@ def next_earnings(quote, now=None):
     start, end = upcoming[0], upcoming[-1]
     return {"start": start, "end": end if end - start >= 86400 else None,
             "estimated": bool(quote.get("isEarningsDateEstimate"))}
+
+
+def key_stats(summary):
+    """The Research tab's key statistics from a Yahoo quote summary (summaryDetail,
+    defaultKeyStatistics, financialData, calendarEvents and price modules). Missing figures are None.
+
+    Yahoo gives the market cap and dividend in the major currency (pounds for a London stock) but
+    prices and the target in the quote's own units (pence), so only those are converted. Funds
+    have no beta, only a 3-year one, and a yield in place of a dividend rate."""
+    def raw(module, key):
+        value = (summary.get(module) or {}).get(key)
+        return value.get("raw") if isinstance(value, dict) else value
+
+    detail_currency = (summary.get("summaryDetail") or {}).get("currency")
+    currency, divisor = _major_unit(detail_currency or (summary.get("price") or {}).get("currency"))
+    price, target = raw("price", "regularMarketPrice"), raw("financialData", "targetMeanPrice")
+    times = sorted(t["raw"] for t in ((summary.get("calendarEvents") or {}).get("earnings") or {}).get("earningsDate") or []
+                   if isinstance(t, dict) and t.get("raw"))
+    return {
+        "currency": currency,
+        "price": price / divisor if price is not None else None,
+        "market_cap": raw("summaryDetail", "marketCap") or raw("price", "marketCap"),
+        "beta": next((b for b in (raw("summaryDetail", "beta"), raw("defaultKeyStatistics", "beta"),
+                                  raw("defaultKeyStatistics", "beta3Year")) if b is not None), None),
+        "pe": raw("summaryDetail", "trailingPE"),
+        "earnings": {"start": times[0], "end": times[-1] if times[-1] - times[0] >= 86400 else None,
+                     "estimated": bool(((summary.get("calendarEvents") or {}).get("earnings") or {})
+                                       .get("isEarningsDateEstimate"))} if times else None,
+        "dividend": raw("summaryDetail", "dividendRate") or None,
+        "yield": raw("summaryDetail", "dividendYield") or raw("summaryDetail", "yield") or None,
+        "target": target / divisor if target is not None else None,
+    }
 
 
 class YahooClient:
@@ -293,6 +326,7 @@ class MarketData:
         self._intraday = {}  # yahoo symbol -> (fetched_at, prev_close, points)
         self._candles = {}  # yahoo symbol -> (fetched_at, start, currency, rows, splits, dividends); (symbol, span) for intraday
         self._earnings = {}  # yahoo symbol -> (fetched_at, reports)
+        self._stats = {}  # yahoo symbol -> (fetched_at, key stats)
         self._lock = threading.Lock()
 
     # -- symbols ---------------------------------------------------------------
@@ -483,6 +517,22 @@ class MarketData:
         with self._lock:
             self._earnings[yahoo_symbol] = (time.time(), reports)
         return reports
+
+    def key_stats(self, yahoo_symbol):
+        """Market cap, beta, P/E, next earnings, dividend and analysts' target; see key_stats()."""
+        cached = self._stats.get(yahoo_symbol)
+        if cached and time.time() - cached[0] < STATS_TTL:
+            return cached[1]
+        try:
+            summary = self.client.summary(yahoo_symbol, [
+                "summaryDetail", "defaultKeyStatistics", "financialData", "calendarEvents", "price"])
+        except (requests.RequestException, ValueError) as exc:
+            log.warning("Key statistics request for %s failed: %s", yahoo_symbol, exc)
+            return cached[1] if cached else None
+        stats = key_stats(summary) if summary else None
+        with self._lock:
+            self._stats[yahoo_symbol] = (time.time(), stats)
+        return stats
 
     # -- FX --------------------------------------------------------------------
 

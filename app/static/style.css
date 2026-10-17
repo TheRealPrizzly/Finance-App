@@ -264,6 +264,12 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
 .research canvas { touch-action: pan-y; cursor: crosshair; }  /* sideways drags and pinches go to the chart's zoom */
 .research.zoomed canvas { cursor: grab; }
 .research.dragging canvas { cursor: grabbing; }
+.key-stats .kpis { margin-bottom: 0; }
+.key-stats .kpi { box-shadow: none; border-color: transparent; min-height: 84px; }
+.key-stats .kpi:not(.skeleton) { background: var(--surface-2); }
+.key-stats .kpi-value { white-space: normal; }  /* "$1.08 USD (0.31%)" wraps rather than being cut off */
+.key-stats .hint { margin: 12px 0 0; }
+.key-stats .hint:empty { display: none; }
 #zoom-out, #zoom-in { min-width: 30px; font-size: 1rem; line-height: 1; }
 .chart-rsi { height: 280px; margin-top: 4px; }
 .chart-macd { height: 200px; margin-top: 4px; }

@@ -68,3 +68,36 @@ def test_earnings_merge_recent_quarters_over_history():
 
     market = MarketData(store=None, client=Client())
     assert market.earnings("AAPL") == [(date(2025, 5, 1), 1.63, 1.65), (date(2025, 10, 30), 1.77, 1.85)]
+
+
+def test_key_stats_for_a_london_stock():
+    from app.market import key_stats
+
+    # As Yahoo sends them: the market cap and dividend in pounds, the price and target in pence.
+    stats = key_stats({
+        "summaryDetail": {"currency": "GBp", "marketCap": {"raw": 94_900_240_384}, "beta": {"raw": -0.196},
+                          "trailingPE": {"raw": 24.564}, "dividendRate": {"raw": 0.25}, "dividendYield": {"raw": 0.041},
+                          "yield": {}},
+        "defaultKeyStatistics": {"beta": {"raw": -0.196}},
+        "financialData": {"targetMeanPrice": {"raw": 637.87}},
+        "calendarEvents": {"earnings": {"earningsDate": [{"raw": NOW + 2 * DAY}, {"raw": NOW + 6 * DAY}],
+                                        "isEarningsDateEstimate": True}},
+        "price": {"regularMarketPrice": {"raw": 610.0}, "currency": "GBp"},
+    })
+    assert stats == {"currency": "GBP", "price": 6.1, "market_cap": 94_900_240_384, "beta": -0.196, "pe": 24.564,
+                     "earnings": {"start": NOW + 2 * DAY, "end": NOW + 6 * DAY, "estimated": True},
+                     "dividend": 0.25, "yield": 0.041, "target": 6.3787}
+
+
+def test_key_stats_for_an_etf():
+    from app.market import key_stats
+
+    stats = key_stats({
+        "summaryDetail": {"currency": "CAD", "marketCap": {}, "beta": {}, "trailingPE": {"raw": 23.67},
+                          "dividendRate": {}, "dividendYield": {}, "yield": {"raw": 0.0084}},
+        "defaultKeyStatistics": {"beta": None, "beta3Year": {"raw": 0.99}},
+        "financialData": {"targetMeanPrice": None},
+        "price": {"regularMarketPrice": {"raw": 150.0}, "marketCap": {}},
+    })
+    assert stats == {"currency": "CAD", "price": 150.0, "market_cap": None, "beta": 0.99, "pe": 23.67,
+                     "earnings": None, "dividend": None, "yield": 0.0084, "target": None}
