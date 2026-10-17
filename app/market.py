@@ -100,9 +100,16 @@ def next_earnings(quote, now=None):
             "estimated": bool(quote.get("isEarningsDateEstimate"))}
 
 
+def _web_url(url):
+    """A link Yahoo lists, if it's an ordinary web address."""
+    url = (url or "").strip()
+    return url if url.lower().startswith(("https://", "http://")) else None
+
+
 def key_stats(summary):
-    """The Research tab's key statistics from a Yahoo quote summary (summaryDetail,
-    defaultKeyStatistics, financialData, calendarEvents and price modules). Missing figures are None.
+    """The Research tab's key statistics and company overview from a Yahoo quote summary
+    (summaryDetail, defaultKeyStatistics, financialData, calendarEvents, price, assetProfile and
+    fundProfile modules). Missing figures are None.
 
     Yahoo gives the market cap and dividend in the major currency (pounds for a London stock) but
     prices and the target in the quote's own units (pence), so only those are converted. Funds
@@ -114,6 +121,7 @@ def key_stats(summary):
     detail_currency = (summary.get("summaryDetail") or {}).get("currency")
     currency, divisor = _major_unit(detail_currency or (summary.get("price") or {}).get("currency"))
     price, target = raw("price", "regularMarketPrice"), raw("financialData", "targetMeanPrice")
+    profile, fund = summary.get("assetProfile") or {}, summary.get("fundProfile") or {}
     times = sorted(t["raw"] for t in ((summary.get("calendarEvents") or {}).get("earnings") or {}).get("earningsDate") or []
                    if isinstance(t, dict) and t.get("raw"))
     return {
@@ -129,6 +137,16 @@ def key_stats(summary):
         "dividend": raw("summaryDetail", "dividendRate") or None,
         "yield": raw("summaryDetail", "dividendYield") or raw("summaryDetail", "yield") or None,
         "target": target / divisor if target is not None else None,
+        "profile": {
+            "name": (summary.get("price") or {}).get("longName") or (summary.get("price") or {}).get("shortName"),
+            "sector": profile.get("sectorDisp") or profile.get("sector"),
+            "industry": profile.get("industryDisp") or profile.get("industry"),
+            "family": fund.get("family"),  # funds have a family and category instead
+            "category": fund.get("categoryName"),
+            "summary": profile.get("longBusinessSummary"),
+            "website": _web_url(profile.get("website")),
+            "ir_website": _web_url(profile.get("irWebsite")),
+        },
     }
 
 
@@ -519,13 +537,15 @@ class MarketData:
         return reports
 
     def key_stats(self, yahoo_symbol):
-        """Market cap, beta, P/E, next earnings, dividend and analysts' target; see key_stats()."""
+        """Market cap, beta, P/E, next earnings, dividend, analysts' target and a company
+        profile; see key_stats()."""
         cached = self._stats.get(yahoo_symbol)
         if cached and time.time() - cached[0] < STATS_TTL:
             return cached[1]
         try:
             summary = self.client.summary(yahoo_symbol, [
-                "summaryDetail", "defaultKeyStatistics", "financialData", "calendarEvents", "price"])
+                "summaryDetail", "defaultKeyStatistics", "financialData", "calendarEvents", "price",
+                "assetProfile", "fundProfile"])
         except (requests.RequestException, ValueError) as exc:
             log.warning("Key statistics request for %s failed: %s", yahoo_symbol, exc)
             return cached[1] if cached else None

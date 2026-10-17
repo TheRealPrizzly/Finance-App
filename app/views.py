@@ -490,7 +490,7 @@ def api_research(symbol):
 @login_required
 def api_research_stats(symbol):
     """Key statistics for the Research tab: market cap, beta, P/E, the next earnings date,
-    the forward dividend and yield, and analysts' 1-year target."""
+    the forward dividend and yield, and analysts' 1-year target; plus the company overview."""
     symbol = symbol.strip().upper()
     if not SYMBOL_RE.match(symbol):
         return jsonify(error="That doesn't look like a ticker symbol."), 400

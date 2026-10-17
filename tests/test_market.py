@@ -86,7 +86,9 @@ def test_key_stats_for_a_london_stock():
     })
     assert stats == {"currency": "GBP", "price": 6.1, "market_cap": 94_900_240_384, "beta": -0.196, "pe": 24.564,
                      "earnings": {"start": NOW + 2 * DAY, "end": NOW + 6 * DAY, "estimated": True},
-                     "dividend": 0.25, "yield": 0.041, "target": 6.3787}
+                     "dividend": 0.25, "yield": 0.041, "target": 6.3787,
+                     "profile": {"name": None, "sector": None, "industry": None, "family": None, "category": None,
+                                 "summary": None, "website": None, "ir_website": None}}
 
 
 def test_key_stats_for_an_etf():
@@ -100,4 +102,23 @@ def test_key_stats_for_an_etf():
         "price": {"regularMarketPrice": {"raw": 150.0}, "marketCap": {}},
     })
     assert stats == {"currency": "CAD", "price": 150.0, "market_cap": None, "beta": 0.99, "pe": 23.67,
-                     "earnings": None, "dividend": None, "yield": 0.0084, "target": None}
+                     "earnings": None, "dividend": None, "yield": 0.0084, "target": None,
+                     "profile": {"name": None, "sector": None, "industry": None, "family": None, "category": None,
+                                 "summary": None, "website": None, "ir_website": None}}
+
+
+def test_company_overview():
+    from app.market import key_stats
+
+    profile = key_stats({
+        "price": {"longName": "Apple Inc.", "shortName": "APPLE INC"},
+        "assetProfile": {"sector": "Technology", "industry": "Consumer Electronics", "industryDisp": "Consumer Electronics",
+                         "longBusinessSummary": "Apple Inc. designs smartphones.", "website": "https://www.apple.com",
+                         "irWebsite": "javascript:alert(1)"},  # only web addresses are linked
+    })["profile"]
+    assert profile == {"name": "Apple Inc.", "sector": "Technology", "industry": "Consumer Electronics", "family": None,
+                       "category": None, "summary": "Apple Inc. designs smartphones.", "website": "https://www.apple.com",
+                       "ir_website": None}
+    fund = key_stats({"price": {"shortName": "SPDR S&P 500"}, "assetProfile": {"phone": "1"},
+                      "fundProfile": {"family": "State Street", "categoryName": "Large Blend"}})["profile"]
+    assert (fund["name"], fund["sector"], fund["family"], fund["category"]) == ("SPDR S&P 500", None, "State Street", "Large Blend")

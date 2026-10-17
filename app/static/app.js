@@ -2665,18 +2665,44 @@
       $("r-stats").innerHTML = tiles.map(([label, value, sub, title]) => `<div class="kpi"><div class="kpi-label">${esc(label)}</div>
         <div class="kpi-value" title="${esc(title || value)}">${esc(value)}</div><div class="kpi-sub">${sub}</div></div>`).join("");
     }
+    // Company overview: name, sector and industry (a fund's family and category instead), with the
+    // description and links behind "Show more".
+    function renderOverview(p, symbol) {
+      const fund = !p.sector && !p.industry && (p.family || p.category);
+      const facts = [["Name", p.name || symbol], fund ? ["Fund family", p.family] : ["Sector", p.sector],
+        fund ? ["Category", p.category] : ["Industry", p.industry]];
+      $("r-overview").innerHTML = facts.map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${esc(value || "—")}</dd></div>`).join("");
+      $("r-summary").textContent = p.summary || "Yahoo Finance has no description for this symbol.";
+      const link = (url, text) => `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(text)} ↗</a>`;
+      const host = (url) => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return "Website"; } };
+      const links = [p.website && link(p.website, host(p.website)),
+        p.ir_website && link(p.ir_website, "Investor relations")].filter(Boolean);
+      $("r-links").innerHTML = links.length ? links.join('<span class="muted" aria-hidden="true">·</span>')
+        : '<span class="muted">No website listed.</span>';
+    }
+    $("r-overview-toggle").addEventListener("click", (e) => {
+      const b = e.currentTarget, open = b.getAttribute("aria-expanded") !== "true";
+      b.setAttribute("aria-expanded", String(open));
+      b.lastElementChild.textContent = open ? "Show less" : "Show more";
+      $("r-overview-more").hidden = !open;
+    });
+
     let statsSeq = 0;
     async function loadStats() {
       const mine = ++statsSeq;
       $("r-stats").innerHTML = '<div class="kpi skeleton"></div>'.repeat(6);
       $("r-stats-note").textContent = "";
+      $("r-overview").querySelectorAll("dd").forEach((dd) => { dd.textContent = "…"; });
       try {
         const st = await getJSON(root.dataset.statsApi.replace("SYMBOL", encodeURIComponent(state.symbol)));
-        if (mine === statsSeq) renderStats(st);
+        if (mine !== statsSeq) return;
+        renderStats(st);
+        renderOverview(st.profile || {}, st.symbol);
       } catch (err) {
         if (mine !== statsSeq) return;
         $("r-stats").innerHTML = "";
         $("r-stats-note").textContent = `Couldn't load the key statistics for ${state.symbol}: ${err.message}`;
+        renderOverview({}, state.symbol);
       }
     }
 

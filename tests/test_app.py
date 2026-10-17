@@ -643,6 +643,7 @@ def test_research_key_stats(client, market):
     login(client)
     html = client.get("/research?symbol=AAPL").get_data(as_text=True)
     assert 'data-stats-api="/api/research/SYMBOL/stats"' in html and "Key statistics" in html
+    assert "Company overview" in html and 'id="r-overview-more" hidden' in html  # collapsed at first
     data = client.get("/api/research/aapl/stats").get_json()
     assert data["symbol"] == "AAPL" and data["market_cap"] == 5.0e12 and data["target"] == 329.38
     assert client.get("/api/research/MSFT/stats").status_code == 502  # Yahoo sent nothing
