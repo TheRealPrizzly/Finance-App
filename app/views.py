@@ -23,7 +23,7 @@ from .market import INTRADAY_SPANS, MarketData, get_market
 
 bp = Blueprint("views", __name__)
 PAGE_SIZE = 100
-TXN_PREVIEW = 10  # transactions shown on the Portfolio Manager page until "Show all"
+TXN_PREVIEW = 10  # transactions shown on the Accounts page until "Show all"
 # Colour themes: key -> (name, main colours). The colours mirror the theme's --bg, --text and
 # --accent tokens in style.css, and the theme picker shows them as swatches.
 THEMES = {
@@ -489,7 +489,7 @@ def api_research(symbol):
 
 
 def transactions_section_url(**args):
-    """The Transactions section of the Portfolio Manager page."""
+    """The Transactions section of the Accounts page."""
     return url_for("views.portfolios", _anchor="transactions", **args)
 
 
@@ -532,7 +532,7 @@ def transaction_listing():
 @bp.get("/transactions")
 @login_required
 def transactions():
-    """The list now lives on the Portfolio Manager page; keep old links and filters working."""
+    """The list now lives on the Accounts page; keep old links and filters working."""
     return redirect(transactions_section_url(**request.args.to_dict()))
 
 
@@ -672,7 +672,7 @@ def delete_transaction(txn_id):
 
 
 def accounts_section_url():
-    """The Accounts section of the Portfolio Manager page."""
+    """The Accounts section of the Accounts page."""
     return url_for("views.portfolios", _anchor="accounts")
 
 
@@ -700,7 +700,7 @@ def account_overview():
 @bp.route("/accounts", methods=["GET", "POST"])
 @login_required
 def accounts():
-    """Adds an account. The account list lives on the Portfolio Manager page."""
+    """Adds an account. The account list lives on the Accounts page."""
     if request.method != "POST":
         return redirect(accounts_section_url())
     db = get_db()
@@ -849,7 +849,7 @@ def portfolios():
 
 
 def render_portfolio_manager(**extra):
-    """The Portfolio Manager page: portfolios, import / export, accounts and transactions."""
+    """The Accounts page: portfolios, import / export, accounts and transactions."""
     db = get_db()
     accounts = user_accounts()
     rows = db.execute("SELECT * FROM portfolios WHERE user_id = ? ORDER BY name", (g.user["id"],)).fetchall()
@@ -906,7 +906,7 @@ def delete_portfolio(portfolio_id):
 @bp.route("/import", methods=["GET", "POST"])
 @login_required
 def import_export():
-    """Imports a CSV and shows the results on the Portfolio Manager page, where the
+    """Imports a CSV and shows the results on the Accounts page, where the
     Import / Export section now lives."""
     if request.method != "POST":
         return redirect(url_for("views.portfolios", _anchor="import"))

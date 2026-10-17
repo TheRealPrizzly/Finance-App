@@ -278,7 +278,7 @@ def test_performance_tab(app, client):
     html = client.get("/performance").get_data(as_text=True)
     assert "No activity yet" in html  # empty state before any transactions
     nav = html[html.index('<nav class="nav"'):html.index("</nav>")]
-    assert nav.index(">Dashboard<") < nav.index(">Performance<") < nav.index(">Portfolio Manager<")
+    assert nav.index(">Dashboard<") < nav.index(">Performance<") < nav.index(">Accounts<")
 
     upload(client, token)
     html = client.get("/performance").get_data(as_text=True)
@@ -299,7 +299,7 @@ def test_performance_tab(app, client):
     assert "account=2" in client.get("/performance?account=2").get_data(as_text=True)  # history URL scoped
 
 
-def test_accounts_live_on_the_portfolio_manager_page(client):
+def test_accounts_live_on_the_accounts_page(client):
     token = login(client)
     upload(client, token)
     client.post("/portfolios", data={"csrf_token": token, "name": "Retirement", "account_ids": ["1"]})
@@ -310,9 +310,9 @@ def test_accounts_live_on_the_portfolio_manager_page(client):
     assert 'action="/accounts"' in html
 
     nav = html[html.index('<nav class="nav"'):html.index("</nav>")]
-    assert ">Accounts<" not in nav and 'aria-current="page">Portfolio Manager<' in nav
+    assert nav.count(">Accounts<") == 1 and 'aria-current="page">Accounts<' in nav
     edit_page = client.get("/accounts/1/edit").get_data(as_text=True)
-    assert 'aria-current="page">Portfolio Manager<' in edit_page and "/portfolios#accounts" in edit_page
+    assert 'aria-current="page">Accounts<' in edit_page and "/portfolios#accounts" in edit_page
 
     assert client.get("/accounts").headers["Location"] == "/portfolios#accounts"  # old address still works
     resp = client.post("/accounts", data={"csrf_token": token, "number": "999", "type": "FHSA"})
@@ -342,7 +342,7 @@ def test_transactions_live_on_the_portfolio_manager_page(client):
     nav = html[html.index('<nav class="nav"'):html.index("</nav>")]
     assert ">Transactions<" not in nav
     form_page = client.get("/transactions/new").get_data(as_text=True)
-    assert 'aria-current="page">Portfolio Manager<' in form_page and "/portfolios#transactions" in form_page
+    assert 'aria-current="page">Accounts<' in form_page and "/portfolios#transactions" in form_page
     assert "/portfolios?symbol=AAPL#transactions" in client.get("/position/AAPL").get_data(as_text=True)
 
     assert client.get("/transactions?symbol=AAPL").headers["Location"] == "/portfolios?symbol=AAPL#transactions"
@@ -394,13 +394,13 @@ def test_import_export_lives_on_the_portfolio_manager_page(client):
     assert 'href="/portfolios#import">Import a CSV</a>' in html
     assert client.get("/import").headers["Location"] == "/portfolios#import"  # old address still works
 
-    html = upload(client, token).get_data(as_text=True)  # results show on the Portfolio Manager page
+    html = upload(client, token).get_data(as_text=True)  # results show on the Accounts page
     assert "Import results · activity.csv" in html and "<strong>20</strong> imported" in html
     assert html.index('id="import"') < html.index('id="import-result"') < html.index('id="import-form"')
     assert 'action="/import#import"' in html  # the page reloads at the section
     assert 'action="/portfolios" class="card form" id="create-portfolio">\n  <h2>Create a portfolio</h2>' in html  # not /import
     nav = html[html.index('<nav class="nav"'):html.index("</nav>")]
-    assert ">Import / Export<" not in nav and 'aria-current="page">Portfolio Manager<' in nav
+    assert ">Import / Export<" not in nav and 'aria-current="page">Accounts<' in nav
 
     html = client.get("/portfolios").get_data(as_text=True)
     assert html.index("Create a portfolio") < html.index('id="import"') < html.index('id="accounts"') < html.index('id="transactions"')
