@@ -226,3 +226,15 @@ def test_a_filed_ttm_borrows_what_it_lacks_from_yahoos_for_the_same_quarter():
     assert income["columns"][-1] == {"kind": "ttm", "date": "2026-03-28", "source": "sec"}
     assert rows["NetIncome"][-1] == 170.0 and rows["TotalRevenue"][-1] == 1300.0  # the filings' own
     assert rows["EBIT"][-1] == 250  # missing from the filings: Yahoo's TTM, as nothing contradicts it
+
+
+def test_balance_sheet_and_cash_flow_come_from_sec_filings_too():
+    ends = [f"{y}-12-31" for y in range(2013, 2026)]
+    filed = {"currency": "USD", "source": "sec", "quarterly": {}, "trailing": {},
+             "annual": {"TotalAssets": {d: 2000.0 for d in ends}, "OperatingCashFlow": {d: 220.0 for d in ends},
+                        "TotalRevenue": {d: 1000.0 for d in ends}}}
+    fin = co.company_report(FUNDAMENTALS, FACTS, STATS, CLOSES, PAID, 1.40, FX, 0.04, TODAY, filed=filed)["financials"]["annual"]
+    for name in ("income", "balance", "cash"):
+        assert fin[name]["source"] == "sec"
+        assert [c["date"][:4] for c in fin[name]["columns"] if c["source"] == "sec"] == [str(y) for y in range(2016, 2026)]
+    assert all(c["kind"] != "ttm" for c in fin["balance"]["columns"])  # balances have no TTM

@@ -1,4 +1,4 @@
-"""Income statements as filed with the US SEC, from EDGAR's XBRL company facts.
+"""Financial statements as filed with the US SEC, from EDGAR's XBRL company facts.
 
 Yahoo Finance gives four fiscal years and five quarters; EDGAR has every filing since about
 2009 for companies listed in the US, including Canadian and other foreign companies that file
@@ -66,6 +66,83 @@ INCOME_CONCEPTS = {
     "DilutedAverageShares": ("shares", ["us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding",
                                         "ifrs-full:AdjustedWeightedAverageShares"]),
 }
+# The balance sheet: "instant" figures are balances on a day, "instant_shares" a share count on a day.
+# Lines starting with "_" only feed the ones worked out below and aren't kept.
+BALANCE_CONCEPTS = {
+    "CashAndCashEquivalents": ("instant", ["us-gaap:CashAndCashEquivalentsAtCarryingValue", "us-gaap:Cash",
+                                           "ifrs-full:CashAndCashEquivalents"]),
+    "CashCashEquivalentsAndShortTermInvestments": ("instant", ["us-gaap:CashCashEquivalentsAndShortTermInvestments"]),
+    "_ShortTermInvestments": ("instant", ["us-gaap:ShortTermInvestments", "us-gaap:MarketableSecuritiesCurrent",
+                                          "us-gaap:AvailableForSaleSecuritiesDebtSecuritiesCurrent",
+                                          "ifrs-full:CurrentInvestments"]),
+    "Receivables": ("instant", ["us-gaap:AccountsReceivableNetCurrent", "us-gaap:ReceivablesNetCurrent",
+                                "ifrs-full:TradeAndOtherCurrentReceivables"]),
+    "Inventory": ("instant", ["us-gaap:InventoryNet", "ifrs-full:Inventories"]),
+    "CurrentAssets": ("instant", ["us-gaap:AssetsCurrent", "ifrs-full:CurrentAssets"]),
+    "NetPPE": ("instant", ["us-gaap:PropertyPlantAndEquipmentNet",
+                           "us-gaap:PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAssetAfterAccumulatedDepreciationAndAmortization",
+                           "ifrs-full:PropertyPlantAndEquipment"]),
+    "GoodwillAndOtherIntangibleAssets": ("instant", ["us-gaap:IntangibleAssetsNetIncludingGoodwill",
+                                                     "ifrs-full:IntangibleAssetsAndGoodwill"]),
+    "_Goodwill": ("instant", ["us-gaap:Goodwill", "ifrs-full:Goodwill"]),
+    "_Intangibles": ("instant", ["us-gaap:IntangibleAssetsNetExcludingGoodwill", "us-gaap:FiniteLivedIntangibleAssetsNet",
+                                 "ifrs-full:IntangibleAssetsOtherThanGoodwill"]),
+    "TotalNonCurrentAssets": ("instant", ["us-gaap:AssetsNoncurrent", "us-gaap:NoncurrentAssets", "ifrs-full:NoncurrentAssets"]),
+    "TotalAssets": ("instant", ["us-gaap:Assets", "ifrs-full:Assets"]),
+    "PayablesAndAccruedExpenses": ("instant", ["us-gaap:AccountsPayableAndAccruedLiabilitiesCurrent", "us-gaap:AccountsPayableCurrent",
+                                               "ifrs-full:TradeAndOtherCurrentPayables"]),
+    "CurrentDebt": ("instant", ["us-gaap:DebtCurrent", "us-gaap:LongTermDebtCurrent", "us-gaap:ShortTermBorrowings",
+                                "ifrs-full:CurrentBorrowings", "ifrs-full:ShorttermBorrowings"]),
+    "CurrentLiabilities": ("instant", ["us-gaap:LiabilitiesCurrent", "ifrs-full:CurrentLiabilities"]),
+    "LongTermDebt": ("instant", ["us-gaap:LongTermDebtNoncurrent", "us-gaap:LongTermDebtAndCapitalLeaseObligations",
+                                 "ifrs-full:NoncurrentBorrowings", "ifrs-full:LongtermBorrowings"]),
+    "_LongTermDebtTotal": ("instant", ["us-gaap:LongTermDebt",  # current and long-term together (JPMorgan)
+                                       "us-gaap:LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities"]),
+    "_LongTermDebtCurrent": ("instant", ["us-gaap:LongTermDebtCurrent"]),
+    "TotalLiabilitiesNetMinorityInterest": ("instant", ["us-gaap:Liabilities", "ifrs-full:Liabilities"]),
+    "_LiabilitiesAndEquity": ("instant", ["us-gaap:LiabilitiesAndStockholdersEquity", "ifrs-full:EquityAndLiabilities"]),
+    "_TotalEquity": ("instant", ["us-gaap:StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest", "ifrs-full:Equity"]),
+    "RetainedEarnings": ("instant", ["us-gaap:RetainedEarningsAccumulatedDeficit", "ifrs-full:RetainedEarnings"]),
+    "StockholdersEquity": ("instant", ["us-gaap:StockholdersEquity", "ifrs-full:EquityAttributableToOwnersOfParent"]),
+    "MinorityInterest": ("instant", ["us-gaap:MinorityInterest", "ifrs-full:NoncontrollingInterests"]),
+    "OrdinarySharesNumber": ("instant_shares", ["us-gaap:CommonStockSharesOutstanding", "ifrs-full:NumberOfSharesOutstanding"]),
+}
+# The cash flow statement. A sign of -1 turns payments, which filers report as positive amounts, into
+# the outflows Yahoo shows (capital expenditure, dividends, buybacks and debt repaid are negative).
+CASH_FLOW_CONCEPTS = {
+    "DepreciationAndAmortization": INCOME_CONCEPTS["DepreciationAndAmortization"],
+    "StockBasedCompensation": ("flow", ["us-gaap:ShareBasedCompensation", "us-gaap:AllocatedShareBasedCompensationExpense",
+                                        "ifrs-full:AdjustmentsForSharebasedPayments"]),
+    "OperatingCashFlow": ("flow", ["us-gaap:NetCashProvidedByUsedInOperatingActivities",
+                                   "us-gaap:NetCashProvidedByUsedInOperatingActivitiesContinuingOperations",
+                                   "ifrs-full:CashFlowsFromUsedInOperatingActivities"]),
+    "CapitalExpenditure": ("flow", ["us-gaap:PaymentsToAcquirePropertyPlantAndEquipment", "us-gaap:PaymentsToAcquireProductiveAssets",
+                                    "ifrs-full:PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities"], -1),
+    "InvestingCashFlow": ("flow", ["us-gaap:NetCashProvidedByUsedInInvestingActivities",
+                                   "us-gaap:NetCashProvidedByUsedInInvestingActivitiesContinuingOperations",
+                                   "ifrs-full:CashFlowsFromUsedInInvestingActivities"]),
+    "CashDividendsPaid": ("flow", ["us-gaap:PaymentsOfDividends", "us-gaap:PaymentsOfDividendsCommonStock",
+                                   "ifrs-full:DividendsPaidClassifiedAsFinancingActivities", "ifrs-full:DividendsPaid"], -1),
+    "RepurchaseOfCapitalStock": ("flow", ["us-gaap:PaymentsForRepurchaseOfCommonStock", "us-gaap:PaymentsForRepurchaseOfEquity",
+                                          "ifrs-full:PaymentsToAcquireOrRedeemEntitysShares"], -1),
+    "IssuanceOfCapitalStock": ("flow", ["us-gaap:ProceedsFromIssuanceOfCommonStock", "ifrs-full:ProceedsFromIssuingShares"]),
+    "IssuanceOfDebt": ("flow", ["us-gaap:ProceedsFromIssuanceOfLongTermDebt", "us-gaap:ProceedsFromIssuanceOfDebt",
+                                "ifrs-full:ProceedsFromBorrowingsClassifiedAsFinancingActivities", "ifrs-full:ProceedsFromNoncurrentBorrowings"]),
+    "RepaymentOfDebt": ("flow", ["us-gaap:RepaymentsOfLongTermDebt", "us-gaap:RepaymentsOfDebt",
+                                 "ifrs-full:RepaymentsOfBorrowingsClassifiedAsFinancingActivities",
+                                 "ifrs-full:RepaymentsOfNoncurrentBorrowings"], -1),
+    "FinancingCashFlow": ("flow", ["us-gaap:NetCashProvidedByUsedInFinancingActivities",
+                                   "us-gaap:NetCashProvidedByUsedInFinancingActivitiesContinuingOperations",
+                                   "ifrs-full:CashFlowsFromUsedInFinancingActivities"]),
+    "ChangesInCash": ("flow", ["us-gaap:CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalentsPeriodIncreaseDecreaseIncludingExchangeRateEffect",
+                               "us-gaap:CashAndCashEquivalentsPeriodIncreaseDecrease",
+                               "us-gaap:CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalentsPeriodIncreaseDecreaseExcludingExchangeRateEffect",
+                               "ifrs-full:IncreaseDecreaseInCashAndCashEquivalents"]),
+    "EndCashPosition": ("instant", ["us-gaap:CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents",
+                                    "us-gaap:CashAndCashEquivalentsAtCarryingValue", "ifrs-full:CashAndCashEquivalents"]),
+}
+CONCEPTS = {**INCOME_CONCEPTS, **BALANCE_CONCEPTS, **CASH_FLOW_CONCEPTS}
+DERIVED_BALANCES = {"TotalDebt", "NetDebt", "WorkingCapital", "InvestedCapital"}  # worked out from balances: no TTM
 YEAR_DAYS, QUARTER_DAYS = (350, 380), (80, 100)  # 52/53-week years and 12/13/14-week quarters
 
 
@@ -84,17 +161,17 @@ def _currency(facts):
     return max(counts, key=counts.get) if counts else None
 
 
-def _periods(facts, names, unit):
+def _periods(facts, names, unit, instant=False):
     """{(start, end): (value, filed)} for the first concept reported for each period, keeping the
-    latest filing of each (later filings restate earlier periods)."""
+    latest filing of each (later filings restate earlier periods); {end: (value, filed)} for balances."""
     out = {}
     for name in names:
         taxonomy, concept = name.split(":")
         seen = {}
         for row in ((facts.get(taxonomy) or {}).get(concept) or {}).get("units", {}).get(unit) or []:
-            if not row.get("start") or row.get("val") is None:
+            if bool(row.get("start")) == instant or row.get("val") is None:
                 continue
-            key = (row["start"], row["end"])
+            key = row["end"] if instant else (row["start"], row["end"])
             if key not in seen or row.get("filed", "") > seen[key][1]:
                 seen[key] = (row["val"], row.get("filed", ""))
         for key, value in seen.items():
@@ -137,33 +214,51 @@ def _quarters(periods, flow):
 
 
 def parse_company_facts(data, splits=()):
-    """An income statement from EDGAR company facts, in the same shape as market.parse_timeseries:
+    """The income statement, balance sheet and cash flow from EDGAR company facts, in the same shape as
+    market.parse_timeseries:
     {"currency", "annual" | "quarterly" | "trailing": {line item: {ISO period end: value}}}. EBIT
     is pretax income plus interest expense (operating income where interest isn't reported), and
     EBITDA adds depreciation and amortization; the trailing twelve months add up the last four
     quarters when they run past the last fiscal year. Companies with no operating income (banks and
-    insurers) have no EBIT. ``splits`` are [(date, ratio)], as Yahoo gives them."""
+    insurers) have no EBIT. Balances are at each fiscal year's and quarter's end; total debt is current
+    plus long-term debt (leases aren't included), and free cash flow is operating cash flow less capital
+    expenditure. ``splits`` are [(date, ratio)], as Yahoo gives them."""
     facts = (data or {}).get("facts") or {}
     currency = _currency(facts)
     out = {"currency": currency, "annual": {}, "quarterly": {}, "trailing": {}, "source": "sec"}
     if not currency:
         return out
-    for key, (kind, names) in INCOME_CONCEPTS.items():
-        unit = {"flow": currency, "per_share": f"{currency}/shares", "shares": "shares"}[kind]
-        periods = _periods(facts, names, unit)
-        if kind != "flow":
-            power = 1 if kind == "shares" else -1
+    balances = {}  # line item -> {date: value}, placed on the period ends below
+    for key, (kind, names, *sign) in CONCEPTS.items():
+        sign = sign[0] if sign else 1
+        unit = {"flow": currency, "per_share": f"{currency}/shares", "shares": "shares",
+                "instant": currency, "instant_shares": "shares"}[kind]
+        instant = kind.startswith("instant")
+        periods = _periods(facts, names, unit, instant)
+        if kind not in ("flow", "instant"):
+            power = -1 if kind == "per_share" else 1
             periods = {k: (v * _split_factor(splits, filed) ** power, filed) for k, (v, filed) in periods.items()}
-        values = {k: v for k, (v, _) in periods.items()}
-        if kind == "shares" and values:  # now and then a filer tags a count in millions by mistake
+        values = {k: v * sign for k, (v, _) in periods.items()}
+        if kind in ("shares", "instant_shares") and values:  # now and then a filer tags a count in millions by mistake
             middle = sorted(values.values())[len(values) // 2]
             values = {k: v for k, v in values.items() if v > middle / 100}
+        if instant:
+            balances[key] = values
+            continue
         annual = {end: v for (start, end), v in values.items() if YEAR_DAYS[0] <= _days(start, end) <= YEAR_DAYS[1]}
         quarterly = _quarters(values, kind == "flow")
         if annual:
             out["annual"][key] = annual
         if quarterly:
             out["quarterly"][key] = quarterly
+
+    # Balances count at the end of each fiscal year and quarter the statements cover.
+    for freq in ("annual", "quarterly"):
+        ends = {d for series in out[freq].values() for d in series}
+        for key, values in balances.items():
+            found = {d: v for d, v in values.items() if d in ends}
+            if found:
+                out[freq][key] = found
 
     for freq in ("annual", "quarterly"):
         series = out[freq]
@@ -177,7 +272,42 @@ def parse_company_facts(data, splits=()):
                             ("TaxRateForCalcs", {d: tax[d] / v for d, v in pretax.items() if d in tax and v > 0})):
             if values:
                 series[key] = values
-        series.pop("DepreciationAndAmortization", None)
+
+        def fill(key, values):
+            if values and key not in series:
+                series[key] = values
+            elif values:  # a line the filer reports for some periods only: fill the others
+                series[key] = {**values, **series[key]}
+
+        get = lambda key: series.get(key, {})  # noqa: E731
+        cash, sti = get("CashAndCashEquivalents"), get("_ShortTermInvestments")
+        fill("CashCashEquivalentsAndShortTermInvestments", {d: v + sti.get(d, 0) for d, v in cash.items()} if sti else {})
+        goodwill, intangibles = get("_Goodwill"), get("_Intangibles")
+        fill("GoodwillAndOtherIntangibleAssets", {d: goodwill.get(d, 0) + intangibles.get(d, 0) for d in {*goodwill, *intangibles}})
+        assets, current_assets = get("TotalAssets"), get("CurrentAssets")
+        fill("TotalNonCurrentAssets", {d: v - current_assets[d] for d, v in assets.items() if d in current_assets})
+        both, equity = get("_LiabilitiesAndEquity"), get("_TotalEquity") or get("StockholdersEquity")
+        fill("TotalLiabilitiesNetMinorityInterest", {d: v - equity[d] for d, v in both.items() if d in equity})
+        current_debt, long_debt = get("CurrentDebt"), get("LongTermDebt")
+        all_long_debt, long_current = get("_LongTermDebtTotal"), get("_LongTermDebtCurrent")
+        debt = {}
+        for d in {*current_debt, *long_debt, *all_long_debt}:
+            if d in long_debt:  # the long-term part alone, so all current debt comes on top
+                debt[d] = long_debt[d] + current_debt.get(d, 0)
+            elif d in all_long_debt:  # a total that includes its current part: only other short-term debt comes on top
+                debt[d] = all_long_debt[d] + max(current_debt.get(d, 0) - long_current.get(d, 0), 0)
+            else:
+                debt[d] = current_debt[d]
+        fill("TotalDebt", debt)
+        fill("NetDebt", {d: v - cash[d] for d, v in debt.items() if d in cash})
+        current_liabilities = get("CurrentLiabilities")
+        fill("WorkingCapital", {d: v - current_liabilities[d] for d, v in current_assets.items() if d in current_liabilities})
+        holders = get("StockholdersEquity")
+        fill("InvestedCapital", {d: v + debt[d] for d, v in holders.items() if d in debt})
+        ocf, capex = get("OperatingCashFlow"), get("CapitalExpenditure")
+        fill("FreeCashFlow", {d: v + capex[d] for d, v in ocf.items() if d in capex})
+        for key in [k for k in series if k.startswith("_")]:
+            del series[key]
 
     last_year = max((d for s in out["annual"].values() for d in s), default="")
     revenue = out["quarterly"].get("TotalRevenue") or out["quarterly"].get("NetIncome") or {}
@@ -185,9 +315,9 @@ def parse_company_facts(data, splits=()):
     if len(ends) == 4 and ends[-1] > last_year and all(
             QUARTER_DAYS[0] <= _days(a, b) <= QUARTER_DAYS[1] for a, b in zip(ends, ends[1:])):
         for key, values in out["quarterly"].items():
-            if key == "TaxRateForCalcs" or not all(e in values for e in ends):
+            kind = CONCEPTS.get(key, ("flow",))[0]
+            if key == "TaxRateForCalcs" or kind.startswith("instant") or key in DERIVED_BALANCES or not all(e in values for e in ends):
                 continue
-            kind = INCOME_CONCEPTS.get(key, ("flow",))[0]
             total = sum(values[e] for e in ends)
             out["trailing"][key] = {ends[-1]: total / 4 if kind == "shares" else total}
         trailing = out["trailing"]
@@ -244,7 +374,7 @@ class SecData:
         return found
 
     def income_statement(self, yahoo_symbol, name=None, splits=()):
-        """The filed income statement for a Yahoo symbol: {"statement": see parse_company_facts, or None;
+        """The filed statements for a Yahoo symbol: {"statement": see parse_company_facts, or None;
         "status": "ok", "not_filed" (the company doesn't file with the SEC) or "unavailable" (EDGAR
         couldn't be reached; "detail" says why)}. Only the parsed statement is kept: the filings
         themselves run to several megabytes."""

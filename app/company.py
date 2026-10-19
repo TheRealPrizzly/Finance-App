@@ -10,7 +10,7 @@ import bisect
 from datetime import date
 
 EQUITY_RISK_PREMIUM = 0.05  # assumed for the cost of equity in the WACC
-INCOME_PERIODS = {"annual": 10, "quarterly": 40}  # the income statement's history: 10 years either way
+STATEMENT_PERIODS = {"annual": 10, "quarterly": 40}  # the statements' history: 10 years either way
 
 # Statement lines: (Yahoo line item, label, format, style). Formats: "money" (reporting currency),
 # "eps" (per share), "shares", "pct". Styles: "total" for subtotals, "sub" for the items under them.
@@ -251,22 +251,23 @@ def _same_period(a, b):
     return abs((date.fromisoformat(a) - date.fromisoformat(b)).days) <= 10
 
 
-def income_statement(fig, freq, filed=None):
-    """The income statement table for the last INCOME_PERIODS periods, with the TTM after the years.
+def statement(spec, fig, freq, filed=None, ttm=True):
+    """A statement's table (spec: INCOME_STATEMENT, BALANCE_SHEET or CASH_FLOW) for the last
+    STATEMENT_PERIODS periods, with the TTM after the years when ``ttm`` (balances have none).
 
     With ``filed`` (SEC filings) going back further than Yahoo, the history comes from the filings,
     and periods Yahoo has that the SEC doesn't yet are added after it (each column's "source" says
     which). In those, a line is left blank where the two sources disagree on the periods they share:
     Yahoo's EPS for an ADR is per ADR, not per share, and its EBIT is operating income."""
-    keys = [k for k, *_ in INCOME_STATEMENT]
+    keys = [k for k, *_ in spec]
     yahoo_cols = [{**c, "source": "yahoo"} for c in fig.columns(freq, keys)]
     sec = Figures(filed) if filed else None
     sec_cols = [{**c, "source": "sec"} for c in sec.columns(freq, keys)] if sec else []
     use_sec = len(sec_cols) > len(yahoo_cols)
     base = sec_cols if use_sec else yahoo_cols
     newer = [c for c in yahoo_cols if c["date"] > base[-1]["date"] and not _same_period(c["date"], base[-1]["date"])] if use_sec else []
-    cols = (base + newer)[-INCOME_PERIODS[freq]:]
-    if freq == "annual" and cols:
+    cols = (base + newer)[-STATEMENT_PERIODS[freq]:]
+    if ttm and freq == "annual" and cols:
         options = [{**t, "source": src} for t, src in ((sec.ttm_column(keys, sec_cols) if use_sec else None, "sec"),
                                                         (fig.ttm_column(keys, yahoo_cols), "yahoo")) if t]
         latest = max(options, key=lambda t: t["date"], default=None)
@@ -290,21 +291,21 @@ def income_statement(fig, freq, filed=None):
             return found
         return fig.at(col, key) if not use_sec or trusted[key] else None
 
-    return {"columns": cols, "rows": _rows(INCOME_STATEMENT, cols, value),
+    return {"columns": cols, "rows": _rows(spec, cols, value),
             "source": "sec" if use_sec else "yahoo", "currency": (filed if use_sec else fig.data).get("currency")}
 
 
 def financials(fig, mkt, today, filed=None):
     """Each statement, the margins and the valuation multiples as tables for the annual and the
-    quarterly view: {"annual" | "quarterly": {name: {"columns": [...], "rows": [...]}}}. The income
-    statement comes from ``filed`` (SEC filings, see sec.parse_company_facts) when they go back further
-    than Yahoo's figures; its "source" says which ("sec" or "yahoo") and "currency" what it's in."""
+    quarterly view: {"annual" | "quarterly": {name: {"columns": [...], "rows": [...]}}}. The three
+    statements come from ``filed`` (SEC filings, see sec.parse_company_facts) when they go back further
+    than Yahoo's figures; each one's "source" says which ("sec" or "yahoo") and "currency" what it's in.
+    Margins and valuations are worked out from Yahoo's figures."""
     flows = [k for k, *_ in INCOME_STATEMENT + CASH_FLOW]
     out = {}
     for freq in ("annual", "quarterly"):
         income, balance, cash = (fig.columns(freq, [k for k, *_ in spec]) for spec in (INCOME_STATEMENT, BALANCE_SHEET, CASH_FLOW))
         ttm = fig.ttm_column(flows, income) if freq == "annual" else None
-        statement = income_statement(fig, freq, filed)
         with_ttm = lambda cols: cols + [ttm] if ttm else cols  # noqa: E731
         periods = sorted({c["date"] for c in income + cash})
         flow_cols = [{"kind": freq, "date": d} for d in periods]
@@ -314,9 +315,9 @@ def financials(fig, mkt, today, filed=None):
         margin_vals = [margins(fig, c) for c in margin_cols]
         value_vals = [valuation(fig, mkt, c) for c in value_cols]
         out[freq] = {
-            "income": statement,
-            "balance": {"columns": balance, "rows": _rows(BALANCE_SHEET, balance, fig.at)},
-            "cash": {"columns": with_ttm(cash), "rows": _rows(CASH_FLOW, with_ttm(cash), fig.at)},
+            "income": statement(INCOME_STATEMENT, fig, freq, filed),
+            "balance": statement(BALANCE_SHEET, fig, freq, filed, ttm=False),
+            "cash": statement(CASH_FLOW, fig, freq, filed),
             "margins": {"columns": margin_cols,
                         "rows": _rows(MARGINS, margin_cols, lambda c, k: margin_vals[margin_cols.index(c)][k])},
             "valuation": {"columns": value_cols,

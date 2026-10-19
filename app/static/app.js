@@ -2936,6 +2936,7 @@
       const d = co.data, fin = d.financials;
       const tc = d.currency, fc = d.financial_currency || tc;
       $("fin-slider").hidden = true;
+      $("fin-source").innerHTML = "";
       if (!fin) {
         $("fin-table").innerHTML = "";
         setNotes($("fin-note"), [`Yahoo Finance has no financial statements for ${d.symbol}.`, "Funds, indexes and crypto don't file them."]);
@@ -2944,6 +2945,13 @@
       const t = fin[co.freq][co.view];
       const statement = ["income", "balance", "cash"].includes(co.view);
       const cur = t.currency || fc;
+      // Where the figures come from, in plain sight: SEC filings, or Yahoo Finance and why.
+      const periods = t.columns.filter((c) => c.kind === co.freq).length;
+      const span = `${periods} ${co.freq === "annual" ? (periods === 1 ? "year" : "years") : (periods === 1 ? "quarter" : "quarters")}`;
+      $("fin-source").innerHTML = !statement ? "<strong>Source:</strong> Yahoo Finance"
+        : t.source === "sec"
+          ? `<strong>Source:</strong> SEC filings (EDGAR) · ${span}${t.columns.some((c) => c.source === "yahoo") ? " · the newest from Yahoo Finance" : ""}`
+          : `<strong>Source:</strong> Yahoo Finance · ${span}. ${esc(whyYahoo(d))}`;
       if (!t.rows.length) {
         $("fin-table").innerHTML = `<tbody><tr><td class="muted">Yahoo Finance has no ${esc(VIEW_NAMES[co.view].toLowerCase())} figures for ${esc(d.symbol)} by ${co.freq === "annual" ? "year" : "quarter"}.</td></tr></tbody>`;
       } else {
@@ -2972,21 +2980,27 @@
         draw(fit);
         while (fit > 1 && wrap.clientWidth && $("fin-table").scrollWidth > wrap.clientWidth + 1) draw(--fit);
       }
-      const filed = co.view === "income" && t.source === "sec";
-      setNotes($("fin-note"), filed
-        ? [`As filed with the US SEC in the company's reports (10-K, 10-Q, 20-F or 40-F), in ${cur}; restated figures replace the originals.`,
-          "Fourth quarters are the year less the first three, so their per-share figures and share counts are left blank.",
-          "EBIT is pretax income plus interest expense.",
-          "EPS and share counts are adjusted for later splits.",
-          "TTM is the last four quarters.",
-          ...(t.columns.some((c) => c.source === "yahoo")
-            ? ["Periods marked Yahoo are newer than the company's latest SEC filing and come from Yahoo Finance.",
-              "Lines on which the two sources disagree are left blank there."] : [])]
+      const filed = statement && t.source === "sec";
+      const fromYahoo = filed && t.columns.some((c) => c.source === "yahoo")
+        ? ["Periods marked Yahoo are newer than the company's latest SEC filing and come from Yahoo Finance.",
+          "Lines on which the two sources disagree are left blank there."] : [];
+      setNotes($("fin-note"), filed ? [
+        `As filed with the US SEC in the company's reports (10-K, 10-Q, 20-F or 40-F), in ${cur}; restated figures replace the originals.`,
+        ...{
+          income: ["Fourth quarters are the year less the first three, so their per-share figures and share counts are left blank.",
+            "EBIT is pretax income plus interest expense.", "EPS and share counts are adjusted for later splits.", "TTM is the last four quarters."],
+          balance: ["Balances at each period's end.", "Total debt is current plus long-term debt; leases aren't included.",
+            "Shares outstanding are adjusted for later splits."],
+          cash: ["Fourth quarters are the year less the first three; reports give the rest of the year to date.",
+            "Payments (capital expenditure, dividends, buybacks and debt repaid) are negative.",
+            "Free cash flow is operating cash flow less capital expenditure.", "TTM is the last four quarters."],
+        }[co.view],
+        ...fromYahoo]
         : {
           income: [`From Yahoo Finance, in ${cur}, as standardized from the company's filings.`,
-            "Fiscal years are named for the year they end in.", "TTM is the twelve months to the latest quarter.", whyYahoo(d)],
-          balance: [`From Yahoo Finance, in ${fc}: balances at each period's end.`],
-          cash: [`From Yahoo Finance, in ${fc}, as standardized from the company's filings.`, "Free cash flow is operating cash flow less capital expenditure."],
+            "Fiscal years are named for the year they end in.", "TTM is the twelve months to the latest quarter."],
+          balance: [`From Yahoo Finance, in ${cur}: balances at each period's end.`],
+          cash: [`From Yahoo Finance, in ${cur}, as standardized from the company's filings.`, "Free cash flow is operating cash flow less capital expenditure."],
           margins: ["Each figure as a share of total revenue for the same period.", "FCF is free cash flow: operating cash flow less capital expenditure."],
           valuation: [`Market cap and enterprise value in ${tc}.`,
             `Past periods use the share price at the period's end and the twelve months to it${co.freq === "quarterly" ? " (four quarters added up, so the earliest quarters have none)" : ""}.`,
@@ -2996,13 +3010,13 @@
             fc !== tc && `Figures reported in ${fc} are converted to ${tc} at the exchange rate of each period's end.`],
         }[co.view]);
     }
-    // Why the income statement shows Yahoo's few years rather than ten from SEC filings.
+    // Why a statement shows Yahoo's few years rather than ten from SEC filings.
     function whyYahoo(d) {
       const f = d.filings || {};
       if (f.status === "off") return "Ten years come from SEC filings, which are switched off on this server: set SEC_CONTACT in its .env file and reload the app.";
       if (f.status === "not_filed") return `${d.symbol} doesn't file reports with the US SEC, so these are all the years available.`;
       if (f.status === "unavailable") return `The SEC's EDGAR service couldn't be reached for ten years of filings (${f.detail || "no answer"}); reload to try again.`;
-      return f.status === "ok" ? "The company's SEC filings don't go back further than this." : "";
+      return f.status === "ok" ? "The company's SEC filings don't cover more periods than this." : "";
     }
     $("fin-range").addEventListener("input", (e) => {
       const range = e.currentTarget, t = co.data?.financials?.[co.freq]?.[co.view];

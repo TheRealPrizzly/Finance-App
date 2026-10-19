@@ -77,7 +77,7 @@ def test_ebit_ebitda_and_tax_rate(statement):
     assert a["EBIT"] == {"2023-12-31": 20.0, "2024-12-31": 22.0 + 3.0}  # pretax plus interest where it's reported
     assert a["EBITDA"] == {"2024-12-31": 25.0 + 6.0}
     assert a["TaxRateForCalcs"] == {"2024-12-31": pytest.approx(0.2)}
-    assert "DepreciationAndAmortization" not in a
+    assert a["DepreciationAndAmortization"] == {"2024-12-31": 6.0}  # for the cash flow statement
 
 
 def test_a_bank_has_no_ebit():
@@ -171,3 +171,50 @@ def test_an_empty_ticker_list_is_not_kept():
 def test_a_refusal_says_so():
     found = sec_with({TICKERS: FakeResponse(403)}).income_statement("AAPL")
     assert found == {"statement": None, "status": "unavailable", "detail": "HTTP 403: EDGAR refused the request"}
+
+
+def instant(end, val, filed="2025-02-01", form="10-K"):
+    return {"end": end, "val": val, "filed": filed, "form": form}
+
+
+def test_balance_sheet_and_cash_flow():
+    statement = parse_company_facts(facts({
+        "Revenues": {"USD": [fact(*FY[0], 100.0), fact(*FY[1], 120.0), fact(*Q24[0], 28.0, "2024-05-01", "10-Q")]},
+        # Balances at the year ends and the quarter, plus one on a day that's neither (left out).
+        "Assets": {"USD": [instant("2023-12-31", 500.0), instant("2024-12-31", 600.0), instant("2024-03-31", 520.0, "2024-05-01", "10-Q"),
+                           instant("2024-05-15", 1.0)]},
+        "AssetsCurrent": {"USD": [instant("2024-12-31", 200.0)]},
+        "LiabilitiesCurrent": {"USD": [instant("2024-12-31", 150.0)]},
+        "StockholdersEquity": {"USD": [instant("2024-12-31", 300.0)]},
+        "LiabilitiesAndStockholdersEquity": {"USD": [instant("2024-12-31", 600.0)]},  # no Liabilities line: worked out
+        "CashAndCashEquivalentsAtCarryingValue": {"USD": [instant("2024-12-31", 40.0)]},
+        "MarketableSecuritiesCurrent": {"USD": [instant("2024-12-31", 10.0)]},
+        "LongTermDebtNoncurrent": {"USD": [instant("2024-12-31", 80.0)]},
+        "LongTermDebtCurrent": {"USD": [instant("2024-12-31", 20.0)]},
+        "CommonStockSharesOutstanding": {"shares": [instant("2023-12-31", 5.0, "2024-02-01")]},  # before the 2:1 split
+        "NetCashProvidedByUsedInOperatingActivities": {"USD": [fact(*FY[1], 50.0), fact(*Q24[0], 10.0, "2024-05-01", "10-Q"),
+                                                               fact("2024-01-01", "2024-06-30", 22.0, "2024-08-01", "10-Q")]},
+        "PaymentsToAcquirePropertyPlantAndEquipment": {"USD": [fact(*FY[1], 15.0)]},
+        "PaymentsOfDividends": {"USD": [fact(*FY[1], 5.0)]},
+    }), SPLITS)
+    a, q = statement["annual"], statement["quarterly"]
+    assert a["TotalAssets"] == {"2023-12-31": 500.0, "2024-12-31": 600.0}
+    assert q["TotalAssets"] == {"2024-03-31": 520.0}
+    assert a["TotalLiabilitiesNetMinorityInterest"] == {"2024-12-31": 300.0}
+    assert a["WorkingCapital"] == {"2024-12-31": 50.0} and a["TotalNonCurrentAssets"] == {"2024-12-31": 400.0}
+    assert a["CashCashEquivalentsAndShortTermInvestments"] == {"2024-12-31": 50.0}
+    assert a["TotalDebt"] == {"2024-12-31": 100.0} and a["NetDebt"] == {"2024-12-31": 60.0}
+    assert a["InvestedCapital"] == {"2024-12-31": 400.0}
+    assert a["OrdinarySharesNumber"] == {"2023-12-31": 10.0}
+    assert a["CapitalExpenditure"] == {"2024-12-31": -15.0} and a["CashDividendsPaid"] == {"2024-12-31": -5.0}  # outflows
+    assert a["FreeCashFlow"] == {"2024-12-31": 35.0}
+    assert q["OperatingCashFlow"] == {"2024-03-31": 10.0, "2024-06-30": 12.0}  # the half less the first quarter
+
+
+def test_long_term_debt_reported_with_its_current_part():
+    a = parse_company_facts(facts({
+        "Revenues": {"USD": [fact(*FY[1], 100.0)]},
+        "LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities": {"USD": [instant("2024-12-31", 400.0)]},
+        "ShortTermBorrowings": {"USD": [instant("2024-12-31", 60.0)]},
+    }))["annual"]
+    assert a["TotalDebt"] == {"2024-12-31": 460.0}
