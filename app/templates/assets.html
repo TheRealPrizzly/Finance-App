@@ -145,8 +145,10 @@
       <canvas role="img" aria-label="Estimated mortgage balances until they are paid off"></canvas>
       <div class="chart-status" hidden>Pick a mortgage to see its payback.</div>
     </div>
-    <p class="hint"><span data-balance-only>Solid lines are the estimated balance so far, dashed lines what is still to come.</span>
-      Each estimate assumes the mortgage's current rate until it is paid off; see the details below.</p>
+    <ul class="hint notes">
+      <li data-balance-only>Solid lines are the estimated balance so far, dashed lines what is still to come.</li>
+      <li>Each estimate assumes the mortgage's current rate until it is paid off; see the details below.</li>
+    </ul>
     <script type="application/json" id="mortgage-chart-data">{{ mortgage_charts|tojson }}</script>
   </section>
   {% endif %}
@@ -184,12 +186,12 @@
                "In interest · paid off %s sooner" % duration(p.months_saved), "gain") }}
       {% endif %}
     </div>
-    <p class="hint">
-      {% if m.balance is not none and m.balance_date %}Projected from the {{ m.balance|amount }} balance on your {{ m.balance_date|long_date }} statement.
-      {% else %}Projected from the {{ m.principal|amount }} borrowed on {{ m.start_date|long_date }}.{% endif %}
-      Assumes {{ '%g' % m.rate }}% interest, compounded {{ 'semi-annually' if m.compounding == 'semi-annual' else 'monthly' }}, until the mortgage is paid off.
-      Your lender's figures may differ slightly.
-    </p>
+    <ul class="hint notes">
+      <li>{% if m.balance is not none and m.balance_date %}Projected from the {{ m.balance|amount }} balance on your {{ m.balance_date|long_date }} statement.
+      {%- else %}Projected from the {{ m.principal|amount }} borrowed on {{ m.start_date|long_date }}.{% endif %}</li>
+      <li>Assumes {{ '%g' % m.rate }}% interest, compounded {{ 'semi-annually' if m.compounding == 'semi-annual' else 'monthly' }}, until the mortgage is paid off.</li>
+      <li>Your lender's figures may differ slightly.</li>
+    </ul>
     {% endif %}
   </section>
   {% else %}

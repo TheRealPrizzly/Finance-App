@@ -86,6 +86,13 @@ a:hover { text-decoration: underline; }
 code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; border-radius: 4px; }
 .muted { color: var(--muted); }
 .hint { color: var(--muted); font-size: .85rem; }
+/* Notes under a chart or table: one per line, each after "- " (a wrapped note lines up after its dash). */
+.notes { list-style: none; margin: 0 0 .75rem; padding: 0; }
+.notes:empty { display: none; }
+.notes li { position: relative; padding-left: 14px; }
+.notes li::before { content: "- "; position: absolute; left: 0; }
+.notes li + li { margin-top: 2px; }
+.notes li[hidden] { display: none; }
 .gain { color: var(--gain); }
 .loss { color: var(--loss); }
 .nowrap { white-space: nowrap; }
@@ -260,10 +267,7 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
 .chart-lg { height: 420px; }
 .chart-volume { height: 130px; margin-top: 4px; }
 .chart-notes { margin-top: 10px; }
-.chart-notes .hint { margin: 4px 0 0; padding: 0; list-style: none; }
-.chart-notes .hint li { position: relative; padding-left: 12px; }  /* a wrapped note lines up after its dash */
-.chart-notes .hint li::before { content: "-"; position: absolute; left: 0; }
-.chart-notes .hint li + li { margin-top: 2px; }
+.chart-notes .notes { margin: 4px 0 0; }
 .notes-toggle { display: inline-flex; align-items: center; gap: 6px; margin-left: -10px; }
 .notes-toggle .caret { display: inline-block; transition: transform .15s; }
 .notes-toggle[aria-expanded="false"] .caret { transform: rotate(-90deg); }

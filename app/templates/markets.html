@@ -31,10 +31,13 @@
       <span class="tag" id="sector-session"></span>
     </div>
     <div class="sector-bars" id="sectors" role="list" aria-label="Sector moves"><p class="muted">Loading…</p></div>
-    <p class="hint">Each S&amp;P 500 sector is shown by its Select Sector SPDR ETF. Before the open (4:00–9:30 AM ET)
-      the move is the pre-market price against the last close; during the session, today's change; after the
-      close, the after-hours move. Futures trade almost around the clock, so before the open they show where
-      the market is expected to start. Their change is measured from the previous settlement.</p>
+    <ul class="hint notes">
+      <li>Each S&amp;P 500 sector is shown by its Select Sector SPDR ETF.</li>
+      <li>Before the open (4:00–9:30 AM ET) the move is the pre-market price against the last close; during the session,
+        today's change; after the close, the after-hours move.</li>
+      <li>Futures trade almost around the clock, so before the open they show where the market is expected to start.</li>
+      <li>Their change is measured from the previous settlement.</li>
+    </ul>
   </section>
 
   <h2 class="group-title" id="sentiment">Market sentiment</h2>
@@ -48,7 +51,7 @@
       <canvas id="fg-history" aria-label="Fear and Greed Index over the past year" role="img"></canvas>
     </div>
     <div class="table-wrap"><table class="table compact" id="fg-indicators"></table></div>
-    <p class="hint" id="fg-note"></p>
+    <ul class="hint notes" id="fg-note"></ul>
   </section>
 
   <h2 class="group-title" id="rates">Bonds &amp; rates</h2>
@@ -75,7 +78,7 @@
       <canvas id="yield-chart" aria-label="US Treasury yield curve" role="img"></canvas>
       <div class="chart-status" id="yield-status">Loading…</div>
     </div>
-    <p class="hint" id="yield-note"></p>
+    <ul class="hint notes" id="yield-note"></ul>
     <div class="table-wrap"><table class="table compact" id="yield-table"></table></div>
   </section>
 </div>

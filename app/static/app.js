@@ -46,6 +46,17 @@
     return Number.isNaN(n) ? hex : `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
   };
 
+  // Notes under a chart or table: one per line in a <ul class="notes">, each after "- ".
+  // Each note is text, or {html} for one with a link; empty ones are left out.
+  function setNotes(list, notes) {
+    list.replaceChildren(...notes.filter(Boolean).map((note) => {
+      const li = document.createElement("li");
+      if (typeof note === "string") li.textContent = note;
+      else li.innerHTML = note.html;
+      return li;
+    }));
+  }
+
   async function getJSON(url) {
     const res = await fetch(url, { headers: { Accept: "application/json" } });
     if (res.status === 401) {
@@ -166,7 +177,7 @@
           { label: `Same contributions in ${benchmark}`, data: pts.map((p) => p.benchmark_value ?? null), borderColor: c2, borderWidth: 1.5 },
         ];
         yFormat = (v) => money(v, BASE, { compact: true });
-        note = `Dashed line: money you put in. Orange: what the same deposits would be worth if each had bought ${benchmark}.`;
+        note = ["Dashed line: money you put in.", `Orange: what the same deposits would be worth if each had bought ${benchmark}.`];
       } else if (mode === "benchmarks") {
         // Both lines start at the portfolio's value on the first day of the range. The benchmark line
         // invests that amount in the benchmark that day, then buys or sells it with the same deposits and
@@ -186,7 +197,8 @@
           { label: `Same money in ${benchmark}`, data: benchLine, borderColor: c2, borderWidth: 1.5 },
         ];
         yFormat = (v) => money(v, BASE, { compact: true });
-        note = `Both lines start at your portfolio's value on the first day shown. Orange: that amount invested in ${benchmark} that day, with the same deposits and withdrawals since.`;
+        note = ["Both lines start at your portfolio's value on the first day shown.",
+          `Orange: that amount invested in ${benchmark} that day, with the same deposits and withdrawals since.`];
       } else {
         const b = pts[0];
         const rebase = (end, start) => (end == null || start == null ? null : (1 + end) / (1 + start) - 1);
@@ -195,9 +207,9 @@
           { label: benchmark, data: pts.map((p) => rebase(p.benchmark_twr, b.benchmark_twr)), borderColor: c2, borderWidth: 1.5 },
         ];
         yFormat = (v) => pct(v);
-        note = "Time-weighted return removes the effect of deposits and withdrawals, so it compares directly with the index.";
+        note = ["Time-weighted return removes the effect of deposits and withdrawals, so it compares directly with the index."];
       }
-      $("perf-note").textContent = note;
+      setNotes($("perf-note"), note);
       datasets.forEach((d) => Object.assign(d, { pointRadius: 0, pointHoverRadius: 3, tension: 0.15 }));
       const config = {
         type: "line",
@@ -413,9 +425,7 @@
           }).join("")}</tbody></table>`
         : '<p class="muted">No upcoming earnings dates for your holdings.</p>';
       $("earnings-more").innerHTML = moreButton(rows.length, earningsExpanded, "earnings", "upcoming reports");
-      $("earnings-note").textContent = missing.length
-        ? `No date announced yet for ${missing.join(", ")}. ETFs and funds don't report earnings.`
-        : "ETFs and funds don't report earnings.";
+      setNotes($("earnings-note"), [missing.length && `No date announced yet for ${missing.join(", ")}.`, "ETFs and funds don't report earnings."]);
     }
 
     $("earnings-more").addEventListener("click", (e) => {
@@ -457,7 +467,7 @@
       $(`${name}-doughnut`).hidden = heat;
       $(`${name}-heatmap`).hidden = !heat;
       const hint = $(`${name}-hint`);
-      hint.textContent = heat ? hint.dataset.heatmapHint : hint.dataset.doughnutHint;
+      setNotes(hint, JSON.parse(heat ? hint.dataset.heatmapHint : hint.dataset.doughnutHint));
       if (heat) renderHeatmap(name, items);
       else renderAllocation(name, items.map(({ label, value }) => ({ label, value })));
     }
@@ -1104,7 +1114,8 @@
         <tbody>${fg.indicators.map((i) => `<tr>
           <td>${esc(i.name)}<span class="sym-name">${esc(i.detail)}</span></td>
           <td>${fgChip(i.rating)}</td><td class="num">${Math.round(i.score)}</td></tr>`).join("")}</tbody>` : "";
-      $("fg-note").textContent = `From CNN Business${updated ? ` (updated ${updated})` : ""}. 0 is extreme fear and 100 is extreme greed; the index averages the seven indicators above.`;
+      setNotes($("fg-note"), [`From CNN Business${updated ? ` (updated ${updated})` : ""}.`,
+        "0 is extreme fear and 100 is extreme greed; the index averages the seven indicators above."]);
     }
 
     // The browser reads CNN's feed directly: it allows cross-site reads, while hosts like
@@ -1218,13 +1229,13 @@
 
       const latest = data.curves.find((c) => c.key === "latest");
       const source = data.source === "treasury"
-        ? `Daily par yields from the <a href="${esc(data.source_url)}" target="_blank" rel="noopener">U.S. Treasury</a>${latest?.date ? `, as of ${esc(longDate(latest.date))}` : ""}. Published each business day after the close.`
-        : spread
+        ? [{ html: `Daily par yields from the <a href="${esc(data.source_url)}" target="_blank" rel="noopener">U.S. Treasury</a>${latest?.date ? `, as of ${esc(longDate(latest.date))}` : ""}.` },
+          "Published each business day after the close."]
+        : [spread
           ? "The U.S. Treasury site couldn't be reached, so this uses the 10-year and 13-week bill yields Yahoo Finance quotes."
-          : "The U.S. Treasury site couldn't be reached, so this shows the four Treasury yields Yahoo Finance quotes (the 3-month is the 13-week bill).";
-      $("yield-note").innerHTML = spread
-        ? `${source} The spread is the ${mode.split("-")[0]} yield minus the ${mode.split("-")[1]} yield. Below zero (shaded red) the curve is inverted: short-term Treasuries pay more than long-term ones, which has often come before US recessions.`
-        : source;
+          : "The U.S. Treasury site couldn't be reached, so this shows the four Treasury yields Yahoo Finance quotes (the 3-month is the 13-week bill)."];
+      setNotes($("yield-note"), spread ? [...source, `The spread is the ${mode.split("-")[0]} yield minus the ${mode.split("-")[1]} yield.`,
+        "Below zero (shaded red) the curve is inverted: short-term Treasuries pay more than long-term ones, which has often come before US recessions."] : source);
     }
 
     function spreadChart(points, label) {
@@ -2472,7 +2483,7 @@
         notes.push("MACD (12, 26, 9) is the 12-bar EMA minus the 26-bar EMA; the signal line is its 9-bar EMA, and the bars are MACD minus the signal.");
       }
       notes.push("Scroll or pinch over the chart to zoom, and drag to move along it.");
-      $("r-note").replaceChildren(...notes.map((text) => Object.assign(document.createElement("li"), { textContent: text })));
+      setNotes($("r-note"), notes);
     }
 
     // ---- zoom
@@ -2927,7 +2938,7 @@
       $("fin-slider").hidden = true;
       if (!fin) {
         $("fin-table").innerHTML = "";
-        $("fin-note").textContent = `Yahoo Finance has no financial statements for ${d.symbol}. Funds, indexes and crypto don't file them.`;
+        setNotes($("fin-note"), [`Yahoo Finance has no financial statements for ${d.symbol}.`, "Funds, indexes and crypto don't file them."]);
         return;
       }
       const t = fin[co.freq][co.view];
@@ -2961,27 +2972,37 @@
         draw(fit);
         while (fit > 1 && wrap.clientWidth && $("fin-table").scrollWidth > wrap.clientWidth + 1) draw(--fit);
       }
-      const converted = fc !== tc ? ` Figures reported in ${fc} are converted to ${tc} at the exchange rate of each period's end.` : "";
       const filed = co.view === "income" && t.source === "sec";
-      const fromYahoo = filed && t.columns.some((c) => c.source === "yahoo")
-        ? " Periods marked Yahoo are newer than the company's latest SEC filing and come from Yahoo Finance; lines on which the two sources disagree are left blank there." : "";
-      $("fin-note").textContent = filed
-        ? `As filed with the US SEC in the company's reports (10-K, 10-Q, 20-F or 40-F), in ${cur}; restated figures replace the originals. Fourth quarters are the year less the first three, so their per-share figures and share counts are left blank. EBIT is pretax income plus interest expense; EPS and share counts are adjusted for later splits. TTM is the last four quarters.${fromYahoo}`
+      setNotes($("fin-note"), filed
+        ? [`As filed with the US SEC in the company's reports (10-K, 10-Q, 20-F or 40-F), in ${cur}; restated figures replace the originals.`,
+          "Fourth quarters are the year less the first three, so their per-share figures and share counts are left blank.",
+          "EBIT is pretax income plus interest expense.",
+          "EPS and share counts are adjusted for later splits.",
+          "TTM is the last four quarters.",
+          ...(t.columns.some((c) => c.source === "yahoo")
+            ? ["Periods marked Yahoo are newer than the company's latest SEC filing and come from Yahoo Finance.",
+              "Lines on which the two sources disagree are left blank there."] : [])]
         : {
-          income: `From Yahoo Finance, in ${cur}, as standardized from the company's filings. Fiscal years are named for the year they end in; TTM is the twelve months to the latest quarter.${whyYahoo(d)}`,
-          balance: `From Yahoo Finance, in ${fc}: balances at each period's end.`,
-          cash: `From Yahoo Finance, in ${fc}, as standardized from the company's filings. Free cash flow is operating cash flow less capital expenditure.`,
-          margins: "Each figure as a share of total revenue for the same period. FCF is free cash flow: operating cash flow less capital expenditure.",
-          valuation: `Market cap and enterprise value in ${tc}. Past periods use the share price at the period's end and the twelve months to it${co.freq === "quarterly" ? " (four quarters added up, so the earliest quarters have none)" : ""}; Current uses today's price and the TTM. Enterprise value is market cap plus debt and minority interest, less cash and short-term investments. A dash means a figure is missing or negative.${converted}`,
-        }[co.view];
+          income: [`From Yahoo Finance, in ${cur}, as standardized from the company's filings.`,
+            "Fiscal years are named for the year they end in.", "TTM is the twelve months to the latest quarter.", whyYahoo(d)],
+          balance: [`From Yahoo Finance, in ${fc}: balances at each period's end.`],
+          cash: [`From Yahoo Finance, in ${fc}, as standardized from the company's filings.`, "Free cash flow is operating cash flow less capital expenditure."],
+          margins: ["Each figure as a share of total revenue for the same period.", "FCF is free cash flow: operating cash flow less capital expenditure."],
+          valuation: [`Market cap and enterprise value in ${tc}.`,
+            `Past periods use the share price at the period's end and the twelve months to it${co.freq === "quarterly" ? " (four quarters added up, so the earliest quarters have none)" : ""}.`,
+            "Current uses today's price and the TTM.",
+            "Enterprise value is market cap plus debt and minority interest, less cash and short-term investments.",
+            "A dash means a figure is missing or negative.",
+            fc !== tc && `Figures reported in ${fc} are converted to ${tc} at the exchange rate of each period's end.`],
+        }[co.view]);
     }
     // Why the income statement shows Yahoo's few years rather than ten from SEC filings.
     function whyYahoo(d) {
       const f = d.filings || {};
-      if (f.status === "off") return " Ten years come from SEC filings, which are switched off on this server: set SEC_CONTACT in its .env file and reload the app.";
-      if (f.status === "not_filed") return ` ${d.symbol} doesn't file reports with the US SEC, so these are all the years available.`;
-      if (f.status === "unavailable") return ` The SEC's EDGAR service couldn't be reached for ten years of filings (${f.detail || "no answer"}); reload to try again.`;
-      return f.status === "ok" ? " The company's SEC filings don't go back further than this." : "";
+      if (f.status === "off") return "Ten years come from SEC filings, which are switched off on this server: set SEC_CONTACT in its .env file and reload the app.";
+      if (f.status === "not_filed") return `${d.symbol} doesn't file reports with the US SEC, so these are all the years available.`;
+      if (f.status === "unavailable") return `The SEC's EDGAR service couldn't be reached for ten years of filings (${f.detail || "no answer"}); reload to try again.`;
+      return f.status === "ok" ? "The company's SEC filings don't go back further than this." : "";
     }
     $("fin-range").addEventListener("input", (e) => {
       const range = e.currentTarget, t = co.data?.financials?.[co.freq]?.[co.view];
@@ -3018,7 +3039,7 @@
         $("own-types").innerHTML = `<p class="muted">Yahoo Finance has no ownership figures for ${esc(d.symbol)}.</p>`;
         ["own-holders", "own-insiders"].forEach((id) => { $(id).innerHTML = ""; });
         $("own-insider-lede").textContent = "";
-        $("own-note").textContent = "";
+        setNotes($("own-note"), []);
         return;
       }
       // Yahoo's institutional share can top 100% (lent shares count twice), so the bar is capped.
@@ -3055,7 +3076,8 @@
           <td class="bar-cell">${hbar(h.pct, imax)}</td><td class="num">${compact(h.shares)}</td>
           <td class="num nowrap">${compact(h.direct)} / ${compact(h.indirect)}</td><td class="num nowrap">${h.date ? esc(dayText(h.date)) : "—"}</td></tr>`).join("")}</tbody>`
         : `<tbody><tr><td class="muted">Yahoo Finance lists no insider holdings for ${esc(d.symbol)}.</td></tr></tbody>`;
-      $("own-note").textContent = `From Yahoo Finance: institutions and funds as of their latest 13F and fund reports, insiders as of their latest filing. Values are in ${d.currency}; shares of stock are of the shares outstanding.`;
+      setNotes($("own-note"), ["From Yahoo Finance: institutions and funds as of their latest 13F and fund reports, insiders as of their latest filing.",
+        `Values are in ${d.currency}.`, "Share of stock is the share of the shares outstanding."]);
     }
 
     // Capital returns: share count, dividends, and returns on capital against the WACC.
@@ -3149,7 +3171,7 @@
         $("ret-kpis").innerHTML = `<p class="muted co-lede">Yahoo Finance has no figures to work out returns on capital for ${esc(d.symbol)}.</p>`;
         $("ret-body").hidden = true;
         coChart("ret-chart", null);
-        return "";
+        return [];
       }
       $("ret-body").hidden = false;
       const latest = (key) => [...r.points].reverse().find((p) => p[key] != null);
@@ -3178,16 +3200,30 @@
       $("ret-table").innerHTML = `<thead><tr><th scope="col">Return</th>${r.points.map((p) => colHead(p)).join("")}</tr></thead>
         <tbody>${series.map(([key, label]) => `<tr><td>${label}</td>${r.points.map((p) => `<td class="num">${pct(p[key], { signed: false })}</td>`).join("")}</tr>`).join("")}
         ${w ? `<tr><td>ROIC − WACC</td>${r.points.map((p) => `<td class="num ${tone(p.roic == null ? null : p.roic - w.wacc)}">${p.roic == null ? "—" : pct(p.roic - w.wacc)}</td>`).join("")}</tr>` : ""}</tbody>`;
-      return `ROIC is EBIT after tax over invested capital (equity plus debt); ROE is earnings to common shareholders over their equity; ROCE is EBIT over total assets less current liabilities. All use capital at each period's end.${noEbit ? " Yahoo Finance reports no EBIT for banks and insurers, so they have no ROIC or ROCE here, and no WACC: their debt includes customer deposits." : ""}`
-        + (w ? ` The WACC is an estimate weighted by today's market cap and debt (${pct(w.weight_equity, { signed: false })} equity): equity costs the 10-year US Treasury yield (${pct(w.risk_free, { signed: false })}) plus a beta of ${w.beta.toFixed(2)} times a ${pct(w.risk_premium, { signed: false })} equity risk premium; debt costs ${w.debt_cost_reported ? "its interest expense over total debt" : "the Treasury yield, as no interest expense is reported"}, less tax at ${pct(w.tax_rate, { signed: false })}. ROIC − WACC compares every year with today's WACC.` : "");
+      return [
+        "ROIC is EBIT after tax over invested capital (equity plus debt).",
+        "ROE is earnings to common shareholders over their equity.",
+        "ROCE is EBIT over total assets less current liabilities.",
+        "All three use capital at each period's end.",
+        noEbit && "Yahoo Finance reports no EBIT for banks and insurers, so they have no ROIC or ROCE here, and no WACC: their debt includes customer deposits.",
+        ...(w ? [
+          `The WACC is an estimate weighted by today's market cap and debt (${pct(w.weight_equity, { signed: false })} equity).`,
+          `Equity costs the 10-year US Treasury yield (${pct(w.risk_free, { signed: false })}) plus a beta of ${w.beta.toFixed(2)} times a ${pct(w.risk_premium, { signed: false })} equity risk premium.`,
+          `Debt costs ${w.debt_cost_reported ? "its interest expense over total debt" : "the Treasury yield, as no interest expense is reported"}, less tax at ${pct(w.tax_rate, { signed: false })}.`,
+          "ROIC − WACC compares every year with today's WACC.",
+        ] : []),
+      ];
     }
 
     function renderCapital() {
       renderShares();
       renderDividends();
-      const returnsNote = renderReturns();
+      const returnsNotes = renderReturns();
       const fc = co.data.financial_currency || co.data.currency;
-      $("cap-note").textContent = `Share counts are averages over each period, restated for splits. Dividends per share are by calendar year of the ex-dividend date, adjusted for splits; * marks this year so far. The table's dividends paid are the cash paid to shareholders, in ${fc}, from the cash flow statement. ${returnsNote}`;
+      setNotes($("cap-note"), ["Share counts are averages over each period, restated for splits.",
+        "Dividends per share are by calendar year of the ex-dividend date, adjusted for splits; * marks this year so far.",
+        `The dividend table's dividends paid are the cash paid to shareholders, in ${fc}, from the cash flow statement.`,
+        ...returnsNotes]);
     }
 
     // Each tab's notes sit behind a Notes button, closed until opened (and then kept open).

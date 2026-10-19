@@ -65,9 +65,10 @@
         <ul class="legend" id="sector-legend"></ul>
       </div>
       <div class="heatmap" id="sector-heatmap" role="list" aria-label="Sector heat map" hidden></div>
-      <p class="hint" id="sector-hint"
-         data-doughnut-hint="ETFs are broken down by the sectors they hold."
-         data-heatmap-hint="Box size: share of your portfolio. Colour: today's change, deepest at ±3%. ETFs are split across the sectors they hold.">ETFs are broken down by the sectors they hold.</p>
+      <ul class="hint notes" id="sector-hint"
+         data-doughnut-hint="{{ ['ETFs are broken down by the sectors they hold.']|tojson|forceescape }}"
+         data-heatmap-hint="{{ ['Box size: share of your portfolio.', 'Colour: today\'s change, deepest at ±3%.', 'ETFs are split across the sectors they hold.']|tojson|forceescape }}">
+        <li>ETFs are broken down by the sectors they hold.</li></ul>
     </section>
     <section class="card">
       <div class="card-head">
@@ -83,9 +84,10 @@
         <ul class="legend" id="equity-legend"></ul>
       </div>
       <div class="heatmap" id="equity-heatmap" role="list" aria-label="Equity heat map" hidden></div>
-      <p class="hint" id="equity-hint"
-         data-doughnut-hint="Each position's share of total value, including cash."
-         data-heatmap-hint="Box size: share of total value, including cash. Colour: today's change, deepest at ±3%.">Each position's share of total value, including cash.</p>
+      <ul class="hint notes" id="equity-hint"
+         data-doughnut-hint="{{ ['Each position\'s share of total value, including cash.']|tojson|forceescape }}"
+         data-heatmap-hint="{{ ['Box size: share of total value, including cash.', 'Colour: today\'s change, deepest at ±3%.']|tojson|forceescape }}">
+        <li>Each position's share of total value, including cash.</li></ul>
     </section>
   </div>
 
@@ -107,7 +109,7 @@
     <h2>Upcoming earnings</h2>
     <div class="table-wrap" id="earnings"></div>
     <div class="table-more" id="earnings-more"></div>
-    <p class="hint" id="earnings-note"></p>
+    <ul class="hint notes" id="earnings-note"></ul>
   </section>
 </div>
 {% endif %}
