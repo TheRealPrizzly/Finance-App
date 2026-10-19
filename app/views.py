@@ -11,6 +11,7 @@ from flask import (
     Blueprint, Response, abort, current_app, flash, g, jsonify, redirect, render_template, request, url_for,
 )
 
+from . import company as co
 from . import csv_io
 from . import mortgage as mg
 from . import portfolio as pf
@@ -501,6 +502,43 @@ def api_research_stats(symbol):
     if stats is None:
         return jsonify(error=f"Couldn't load the key statistics for {ysym}."), 502
     return jsonify(symbol=ysym, **stats)
+
+
+RISK_FREE_SYMBOL = "^TNX"  # the 10-year US Treasury yield, in percent
+FX_HISTORY_YEARS = 6  # back past the oldest of the four fiscal years Yahoo gives
+
+
+@bp.get("/api/research/<symbol>/company")
+@login_required
+def api_research_company(symbol):
+    """The Research tab's Company section: financial statements, margins and valuation multiples;
+    ownership; and capital returns (share count, dividends, returns on capital against the WACC)."""
+    symbol = symbol.strip().upper()
+    if not SYMBOL_RE.match(symbol):
+        return jsonify(error="That doesn't look like a ticker symbol."), 400
+    ysym = research_yahoo_symbol(symbol)
+    if not ysym:
+        return jsonify(error=f"Yahoo Finance has no data for {symbol}."), 404
+    market = get_market()
+    fundamentals = market.fundamentals(ysym, co.FUNDAMENTAL_KEYS)
+    facts = market.company_facts(ysym)
+    if fundamentals is None and facts is None:
+        return jsonify(error=f"Couldn't load the company figures for {ysym}."), 502
+    stats = dict(market.key_stats(ysym) or {})
+    currency, daily, _, dividends = market.daily_candles(ysym)
+    stats["currency"] = stats.get("currency") or currency
+    reporting = (facts or {}).get("financial_currency") or (fundamentals or {}).get("currency")
+    fx_now, fx_closes = 1.0, {}
+    if reporting and stats["currency"] and reporting != stats["currency"]:
+        pair = f"{reporting}{stats['currency']}=X"
+        fx_now = (market.quotes([pair]).get(pair) or {}).get("price")
+        fx_closes = market.history(pair, date.today() - timedelta(days=FX_HISTORY_YEARS * 366))[1]
+    rate = (market.quotes([RISK_FREE_SYMBOL]).get(RISK_FREE_SYMBOL) or {}).get("price")
+    report = co.company_report(
+        fundamentals, facts, stats, [(d, c) for d, _, _, _, c, _ in daily], dividends,
+        fx_now, list(fx_closes.items()), rate / 100 if rate else None,
+    )
+    return jsonify(symbol=ysym, risk_free_symbol=RISK_FREE_SYMBOL, **report)
 
 
 # -- transactions -------------------------------------------------------------------------

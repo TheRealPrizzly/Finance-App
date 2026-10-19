@@ -652,7 +652,36 @@ def test_research_key_stats(client, market):
     assert client.get("/api/research/BAD%20SYMBOL/stats").status_code == 400
 
 
+def test_research_company(client, market):
+    from datetime import date
+
+    from test_company import CLOSES, FACTS, FUNDAMENTALS, PAID, STATS
+
+    market.fundamentals_by_symbol["AAPL"] = FUNDAMENTALS
+    market.facts["AAPL"] = FACTS
+    market.stats["AAPL"] = STATS
+    market.candles["AAPL"] = ("CAD", [(d, c, c, c, c, 1000) for d, c in CLOSES], [], [], PAID)
+    market._quotes["USDCAD=X"] = (1.40, 1.40, "CAD")
+    market._history["USDCAD=X"] = ("CAD", {date(2024, 12, 31): 1.30, date(2025, 12, 31): 1.35})
+    market._quotes["^TNX"] = (4.0, 4.0, "USD")
+    login(client)
+    html = client.get("/research?symbol=AAPL").get_data(as_text=True)
+    assert 'data-company-api="/api/research/SYMBOL/company"' in html
+    assert 'role="tablist"' in html and "Capital Returns" in html and 'id="co-financials"' in html
+    data = client.get("/api/research/aapl/company").get_json()
+    assert data["symbol"] == "AAPL" and data["risk_free_symbol"] == "^TNX"
+    assert (data["currency"], data["financial_currency"]) == ("CAD", "USD")
+    valuation = {r["key"]: r["values"] for r in data["financials"]["annual"]["valuation"]["rows"]}
+    assert round(valuation["ev"][0]) == 1540 + 520  # converted at the year-end rate
+    assert round(data["returns"]["wacc"]["risk_free"], 4) == 0.04
+    assert data["dividends"]["streak"] == 4 and data["ownership"]["institutions_count"] == 812
+    assert client.get("/api/research/MSFT/company").status_code == 502  # Yahoo sent nothing
+    assert client.get("/api/research/NOPE/company").status_code == 404
+    assert client.get("/api/research/BAD%20SYMBOL/company").status_code == 400
+
+
 def test_research_needs_sign_in(client):
     assert client.get("/research").status_code == 302
     assert client.get("/api/research/AAPL").status_code == 401
     assert client.get("/api/research/AAPL/stats").status_code == 401
+    assert client.get("/api/research/AAPL/company").status_code == 401

@@ -1,3 +1,5 @@
+import pytest
+
 from app.market import next_earnings
 
 DAY = 86400
@@ -122,3 +124,54 @@ def test_company_overview():
     fund = key_stats({"price": {"shortName": "SPDR S&P 500"}, "assetProfile": {"phone": "1"},
                       "fundProfile": {"family": "State Street", "categoryName": "Large Blend"}})["profile"]
     assert (fund["name"], fund["sector"], fund["family"], fund["category"]) == ("SPDR S&P 500", None, "State Street", "Large Blend")
+
+
+def test_parse_timeseries():
+    from app.market import parse_timeseries
+
+    point = lambda d, v, cur="USD": {"asOfDate": d, "currencyCode": cur, "reportedValue": {"raw": v}}  # noqa: E731
+    figures = parse_timeseries({"timeseries": {"result": [
+        {"meta": {"type": ["annualDilutedAverageShares"]}, "annualDilutedAverageShares": [point("2025-09-30", 15e9, "USD")]},
+        {"meta": {"type": ["annualTotalRevenue"]}, "annualTotalRevenue": [point("2024-09-30", 391e9, "TWD"), None,
+                                                                          point("2025-09-30", 416e9, "TWD")]},
+        {"meta": {"type": ["trailingNetIncome"]}, "trailingNetIncome": [point("2026-06-30", 129e9, "TWD")]},
+        {"meta": {"type": ["quarterlyInterestExpense"]}},  # nothing reported
+    ]}})
+    assert figures == {
+        "currency": "TWD",  # the revenue's, not the share count's
+        "annual": {"DilutedAverageShares": {"2025-09-30": 15e9}, "TotalRevenue": {"2024-09-30": 391e9, "2025-09-30": 416e9}},
+        "quarterly": {},
+        "trailing": {"NetIncome": {"2026-06-30": 129e9}},
+    }
+
+
+def test_company_facts():
+    from app.market import company_facts
+
+    facts = company_facts({
+        "majorHoldersBreakdown": {"insidersPercentHeld": {"raw": 0.0165}, "institutionsPercentHeld": {"raw": 0.6635},
+                                  "institutionsFloatPercentHeld": {"raw": 0.6746}, "institutionsCount": {"raw": 7695}},
+        "institutionOwnership": {"ownershipList": [
+            {"organization": "Blackrock Inc.", "pctHeld": {"raw": 0.0797}, "position": {"raw": 1162996939},
+             "value": {"raw": 397570510695}, "pctChange": {"raw": 0.016}, "reportDate": {"raw": NOW}}]},
+        "insiderHolders": {"holders": [
+            {"name": "COOK TIMOTHY D", "relation": "Officer and Director", "positionDirect": {"raw": 3237840},
+             "positionDirectDate": {"raw": NOW}},
+            {"name": "HUANG JEN-HSUN", "relation": "CEO", "positionIndirect": {"raw": 812050000}, "latestTransDate": {"raw": NOW}},
+            {"name": "NOBODY", "relation": "Director"}]},  # no position: left out
+        "summaryDetail": {"trailingAnnualDividendYield": {"raw": 0.0031}, "fiveYearAvgDividendYield": {"raw": 0.47},
+                          "payoutRatio": {"raw": 0.1204}, "exDividendDate": {"raw": NOW}},
+        "defaultKeyStatistics": {"sharesOutstanding": {"raw": 14594180000}},
+        "financialData": {"financialCurrency": "USD"},
+    })
+    day = "2026-09-21"
+    assert facts["financial_currency"] == "USD" and facts["shares_outstanding"] == 14594180000
+    assert (facts["insiders"], facts["institutions"], facts["institutions_count"]) == (0.0165, 0.6635, 7695)
+    assert facts["top_institutions"] == [{"name": "Blackrock Inc.", "pct": 0.0797, "shares": 1162996939,
+                                          "value": 397570510695, "change": 0.016, "date": day}]
+    assert facts["top_funds"] == []
+    assert facts["insider_holders"] == [
+        {"name": "COOK TIMOTHY D", "relation": "Officer and Director", "shares": 3237840, "direct": 3237840, "indirect": None, "date": day},
+        {"name": "HUANG JEN-HSUN", "relation": "CEO", "shares": 812050000, "direct": None, "indirect": 812050000, "date": day},
+    ]
+    assert facts["dividend"] == {"trailing_yield": 0.0031, "five_year_yield": pytest.approx(0.0047), "payout_ratio": 0.1204, "ex_date": day}

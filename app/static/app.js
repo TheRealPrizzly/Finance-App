@@ -41,6 +41,10 @@
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   const $ = (id) => document.getElementById(id);
+  const withAlpha = (hex, a) => {
+    const n = parseInt(hex.replace("#", ""), 16);
+    return Number.isNaN(n) ? hex : `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+  };
 
   async function getJSON(url) {
     const res = await fetch(url, { headers: { Accept: "application/json" } });
@@ -1202,11 +1206,6 @@
     const RANGE_DAYS = { "1Y": 365, "2Y": 730, "5Y": 1826 };
     const yieldView = { mode: "curve", range: "5Y" };
     let ratesData = null, yieldChart = null;
-    const withAlpha = (hex, a) => {
-      const n = parseInt(hex.replace("#", ""), 16);
-      return Number.isNaN(n) ? hex : `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
-    };
-
     function drawYield() {
       const data = ratesData, mode = yieldView.mode, spread = mode !== "curve";
       for (const b of $("yield-mode").querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.mode === mode));
@@ -2711,6 +2710,7 @@
       history.replaceState(null, "", url.href);
       refresh();
       loadStats();
+      loadCompany();
     });
 
     // + Compare
@@ -2841,12 +2841,372 @@
       }
     }
 
+    // ---- Company: financials, ownership and capital returns, below the key statistics
+    const COMPANY_STORAGE = "research.company";
+    const co = { data: null, tab: "financials", view: "income", freq: "annual", list: "institutions",
+      sc: { mode: "count", basis: "diluted", freq: "annual", eps: false } };
+    try {
+      const s = JSON.parse(localStorage.getItem(COMPANY_STORAGE) || "{}");
+      const pick = (v, options, fallback) => (options.includes(v) ? v : fallback);
+      co.tab = pick(s.tab, ["financials", "ownership", "capital"], co.tab);
+      co.view = pick(s.view, ["income", "balance", "cash", "margins", "valuation"], co.view);
+      co.freq = pick(s.freq, ["annual", "quarterly"], co.freq);
+      co.list = pick(s.list, ["institutions", "funds"], co.list);
+      co.sc = { mode: pick(s.sc?.mode, ["count", "change"], "count"), basis: pick(s.sc?.basis, ["basic", "diluted"], "diluted"),
+        freq: pick(s.sc?.freq, ["annual", "quarterly"], "annual"), eps: s.sc?.eps === true };
+    } catch { /* storage blocked */ }
+    const saveCompany = () => {
+      try {
+        localStorage.setItem(COMPANY_STORAGE, JSON.stringify({ tab: co.tab, view: co.view, freq: co.freq, list: co.list, sc: co.sc }));
+      } catch { /* storage blocked */ }
+    };
+
+    const compactFmt = new Intl.NumberFormat("en-CA", { notation: "compact", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const compact = (v) => (v == null ? "—" : (v < 0 ? "−" : "") + compactFmt.format(Math.abs(v)));
+    const axisFmt = new Intl.NumberFormat("en-CA", { notation: "compact", maximumFractionDigits: 3 });  // 1.405B, not 1.41B twice
+    const axisCompact = (v) => (v < 0 ? "−" : "") + axisFmt.format(Math.abs(v));
+    const signedFixed = (v, digits = 2) => (v < 0 ? "−" : "") + Math.abs(v).toFixed(digits);
+    const times = (v) => (v == null ? "—" : `${signedFixed(v, v >= 100 ? 0 : 1)}×`);
+    const share = (v) => (v == null ? "—" : v > 0 && v < 1e-5 ? "<0.001%" : v < 0.001 ? `${(v * 100).toFixed(3)}%` : pct(v, { signed: false }));
+    function cellText(v, fmt) {
+      if (v == null) return "—";
+      if (fmt === "eps") return signedFixed(v);
+      if (fmt === "pct") return pct(v, { signed: false });
+      if (fmt === "x") return times(v);
+      return compact(v);  // money, market caps and share counts
+    }
+    const monthYear = (iso) => dayText(iso, { month: "short", year: "numeric" });
+    const periodName = (c) => (c.kind === "annual" ? `FY${c.date.slice(0, 4)}` : c.kind === "quarterly" ? monthYear(c.date)
+      : c.kind === "ttm" ? "TTM" : "Current");
+    function colHead(c) {
+      const sub = c.kind === "annual" ? dayText(c.date) : c.kind === "quarterly" ? "Quarter"
+        : c.kind === "ttm" ? `to ${monthYear(c.date)}` : "Today";
+      return `<th class="num" scope="col">${esc(periodName(c))}<small>${esc(sub)}</small></th>`;
+    }
+
+    const coCharts = {};
+    const coChart = (id, config) => {
+      coCharts[id]?.destroy();
+      coCharts[id] = config ? new Chart($(id), config) : undefined;
+    };
+    const dropCharts = () => Object.keys(coCharts).forEach((id) => coChart(id, null));
+    // Line and column styling shared by the Company charts: 2px lines, 8px points ringed in the surface
+    // colour, columns at most 24px wide with rounded ends.
+    const lineSet = (label, data, color, extra = {}) => ({ label, data, borderColor: color, backgroundColor: color, borderWidth: 2,
+      pointRadius: 4, pointHoverRadius: 6, pointBorderColor: cssVar("--surface"), pointBorderWidth: 2, spanGaps: true, ...extra });
+    const barSet = (label, data, color) => ({ label, data, backgroundColor: color, maxBarThickness: 24, borderRadius: 4, borderSkipped: "start" });
+    const zeroGrid = { color: (c) => (c.tick.value === 0 ? cssVar("--muted") : Chart.defaults.borderColor) };
+    function coOptions({ y, title, legend = false, tooltip = {} }) {
+      return {
+        maintainAspectRatio: false,
+        animation: false,
+        interaction: { mode: "index", intersect: false },
+        scales: { x: { grid: { display: false } }, y: { grace: "8%", ...y, afterFit: (s) => { s.width = 72; } } },
+        plugins: {
+          title: title ? { display: true, text: title, align: "start", color: cssVar("--text"), font: { weight: 600, size: 13 }, padding: { bottom: 10 } } : { display: false },
+          legend: legend ? { position: "bottom", labels: { boxWidth: 12 } } : { display: false },
+          tooltip: { callbacks: tooltip },
+        },
+      };
+    }
+
+    // Financials: one statement, the margins or the valuation multiples at a time, annual or quarterly.
+    const VIEW_NAMES = { income: "Income statement", balance: "Balance sheet", cash: "Cash flow", margins: "Margins", valuation: "Valuation" };
+    function renderFinancials() {
+      const d = co.data, fin = d.financials;
+      const tc = d.currency, fc = d.financial_currency || tc;
+      if (!fin) {
+        $("fin-table").innerHTML = "";
+        $("fin-note").textContent = `Yahoo Finance has no financial statements for ${d.symbol}. Funds, indexes and crypto don't file them.`;
+        return;
+      }
+      const t = fin[co.freq][co.view];
+      const statement = ["income", "balance", "cash"].includes(co.view);
+      $("fin-table").innerHTML = !t.rows.length
+        ? `<tbody><tr><td class="muted">Yahoo Finance has no ${esc(VIEW_NAMES[co.view].toLowerCase())} figures for ${esc(d.symbol)} by ${co.freq === "annual" ? "year" : "quarter"}.</td></tr></tbody>`
+        : `<thead><tr><th scope="col">${statement ? `In ${esc(fc)}` : esc(VIEW_NAMES[co.view])}</th>${t.columns.map(colHead).join("")}</tr></thead>
+          <tbody>${t.rows.map((r) => `<tr class="${r.style}"><td>${esc(r.label)}</td>${r.values.map((v) =>
+            `<td class="num${v == null ? " empty" : ""}">${esc(cellText(v, r.fmt))}</td>`).join("")}</tr>`).join("")}</tbody>`;
+      const converted = fc !== tc ? ` Figures reported in ${fc} are converted to ${tc} at the exchange rate of each period's end.` : "";
+      $("fin-note").textContent = {
+        income: `From Yahoo Finance, in ${fc}, as standardized from the company's filings. Fiscal years are named for the year they end in; TTM is the twelve months to the latest quarter.`,
+        balance: `From Yahoo Finance, in ${fc}: balances at each period's end.`,
+        cash: `From Yahoo Finance, in ${fc}, as standardized from the company's filings. Free cash flow is operating cash flow less capital expenditure.`,
+        margins: "Each figure as a share of total revenue for the same period. FCF is free cash flow: operating cash flow less capital expenditure.",
+        valuation: `Market cap and enterprise value in ${tc}. Past periods use the share price at the period's end and the twelve months to it${co.freq === "quarterly" ? " (four quarters added up, so the earliest quarters have none)" : ""}; Current uses today's price and the TTM. Enterprise value is market cap plus debt and minority interest, less cash and short-term investments. A dash means a figure is missing or negative.${converted}`,
+      }[co.view];
+    }
+
+    // Ownership: by holder type, the largest institutions or funds, and insiders.
+    function hbar(v, max) {
+      const width = max > 0 && v > 0 ? Math.max(1, (100 * v) / max) : 0;
+      return `<div class="hbar"><div class="hbar-track"><div class="hbar-fill" style="width: ${width.toFixed(1)}%"></div></div><strong>${share(v)}</strong></div>`;
+    }
+    function renderOwnership() {
+      const d = co.data, o = d.ownership;
+      const any = o && (o.insiders != null || o.institutions != null || o.top_institutions.length || o.top_funds.length || o.insider_holders.length);
+      $("own-list").hidden = !any;
+      if (!any) {
+        $("own-types").innerHTML = `<p class="muted">Yahoo Finance has no ownership figures for ${esc(d.symbol)}.</p>`;
+        ["own-holders", "own-insiders"].forEach((id) => { $(id).innerHTML = ""; });
+        $("own-insider-lede").textContent = "";
+        $("own-note").textContent = "";
+        return;
+      }
+      // Yahoo's institutional share can top 100% (lent shares count twice), so the bar is capped.
+      const types = [["Institutions", o.institutions, "--co-1"], ["Insiders", o.insiders, "--co-2"], ["Public & other", o.public, "--chart-3"]]
+        .filter(([, v]) => v != null);
+      let room = 1;
+      const widths = types.map(([, v]) => { const w = Math.max(0, Math.min(v, room)); room -= w; return w; });
+      const label = types.map(([name, v]) => `${name} ${share(v)}`).join(", ");
+      $("own-types").innerHTML = types.length ? `
+        <div class="own-split" role="img" aria-label="${esc(label)}">${types.map(([name, , color], i) => (widths[i] > 0
+          ? `<span style="--seg: var(${color}); flex: ${widths[i]} 1 0" title="${esc(`${name}: ${share(types[i][1])}`)}"></span>` : "")).join("")}</div>
+        <ul class="own-legend">${types.map(([name, v, color]) => `<li><span class="swatch" style="--seg: var(${color})"></span>${esc(name)} <strong>${share(v)}</strong></li>`).join("")}</ul>
+        ${o.institutions_count ? `<p class="co-lede muted">${o.institutions_count.toLocaleString("en-CA")} institutions hold shares${o.institutions_float != null ? `, ${share(o.institutions_float)} of the float` : ""}.</p>` : ""}`
+        : '<p class="muted">Yahoo Finance has no breakdown by holder type.</p>';
+
+      const funds = co.list === "funds", list = funds ? o.top_funds : o.top_institutions;
+      const max = Math.max(0, ...list.map((h) => h.pct || 0));
+      $("own-holders").innerHTML = list.length ? `<thead><tr><th scope="col">${funds ? "Fund" : "Institution"}</th><th scope="col">Share of stock</th>
+          <th class="num" scope="col">Shares</th><th class="num" scope="col">Value</th>
+          <th class="num" scope="col" title="Change in the position since the holder's previous report">Change</th><th class="num" scope="col">Reported</th></tr></thead>
+        <tbody>${list.map((h) => `<tr><td class="who">${esc(h.name)}</td><td class="bar-cell">${hbar(h.pct, max)}</td>
+          <td class="num">${compact(h.shares)}</td><td class="num nowrap">${h.value == null ? "—" : esc(bigMoney(h.value, d.currency))}</td>
+          <td class="num ${tone(h.change)}">${pct(h.change)}</td><td class="num nowrap">${h.date ? esc(dayText(h.date)) : "—"}</td></tr>`).join("")}</tbody>`
+        : `<tbody><tr><td class="muted">Yahoo Finance lists no ${funds ? "funds" : "institutions"} holding ${esc(d.symbol)}.</td></tr></tbody>`;
+
+      const insiders = o.insider_holders;
+      const imax = Math.max(0, ...insiders.map((h) => h.pct || 0));
+      $("own-insider-lede").textContent = o.insiders != null
+        ? `Insiders hold ${share(o.insiders)} of the shares.${insiders.length ? " The insiders Yahoo Finance lists, by shares held:" : ""}` : "";
+      $("own-insiders").innerHTML = insiders.length ? `<thead><tr><th scope="col">Insider</th><th scope="col">Share of stock</th>
+          <th class="num" scope="col">Shares</th><th class="num" scope="col" title="Held directly, and through trusts, family or companies">Direct / indirect</th>
+          <th class="num" scope="col">As of</th></tr></thead>
+        <tbody>${insiders.map((h) => `<tr><td class="who">${esc(h.name)}<span class="sym-name">${esc(h.relation || "")}</span></td>
+          <td class="bar-cell">${hbar(h.pct, imax)}</td><td class="num">${compact(h.shares)}</td>
+          <td class="num nowrap">${compact(h.direct)} / ${compact(h.indirect)}</td><td class="num nowrap">${h.date ? esc(dayText(h.date)) : "—"}</td></tr>`).join("")}</tbody>`
+        : `<tbody><tr><td class="muted">Yahoo Finance lists no insider holdings for ${esc(d.symbol)}.</td></tr></tbody>`;
+      $("own-note").textContent = `From Yahoo Finance: institutions and funds as of their latest 13F and fund reports, insiders as of their latest filing. Values are in ${d.currency}; shares of stock are of the shares outstanding.`;
+    }
+
+    // Capital returns: share count, dividends, and returns on capital against the WACC.
+    function renderShares() {
+      const d = co.data, { mode, basis, freq, eps } = co.sc;
+      const rows = (d.shares?.[freq] || []).filter((r) => r[basis] != null);
+      $("sc-eps-box").hidden = !eps || !rows.length;
+      if (!rows.length) {
+        coChart("sc-chart", null);
+        coChart("sc-eps-chart", null);
+        $("sc-lede").textContent = `Yahoo Finance has no share counts for ${d.symbol}.`;
+        return;
+      }
+      const labels = rows.map((r) => periodName({ kind: freq, date: r.date }));
+      const changes = rows.map((r, i) => (i && rows[i - 1][basis] ? r[basis] / rows[i - 1][basis] - 1 : null));
+      const name = `${basis === "basic" ? "Basic" : "Diluted"} average shares`;
+      const first = rows[0][basis], last = rows[rows.length - 1][basis];
+      const total = rows.length > 1 ? last / first - 1 : null;
+      const yearly = freq === "annual" && rows.length > 1 ? (last / first) ** (1 / (rows.length - 1)) - 1 : null;
+      $("sc-lede").innerHTML = total == null ? "" : `${esc(name)} ${total < 0 ? "fell" : "rose"} <strong class="${tone(-total)}">${pct(Math.abs(total), { signed: false })}</strong>
+        from ${esc(labels[0])} to ${esc(labels[labels.length - 1])}${yearly != null ? ` (${pct(yearly)} a year)` : ""}${total < 0 ? ", so each share owns more of the company" : ""}.`;
+      const c1 = cssVar("--co-1");
+      const prior = freq === "annual" ? "the year before" : "the quarter before";
+      coChart("sc-chart", mode === "count"
+        ? { type: "line", data: { labels, datasets: [lineSet(name, rows.map((r) => r[basis]), c1)] },
+            options: coOptions({ title: name, y: { ticks: { callback: (v) => axisCompact(v) } },
+              tooltip: { label: (c) => ` ${compact(c.parsed.y)}${changes[c.dataIndex] != null ? ` (${pct(changes[c.dataIndex])} on ${prior})` : ""}` } }) }
+        : { type: "bar", data: { labels, datasets: [barSet(name, changes, c1)] },
+            options: coOptions({ title: `${name}, % change on ${prior}`, y: { ticks: { callback: (v) => pct(v) }, grid: zeroGrid },
+              tooltip: { label: (c) => (c.parsed.y == null ? " No earlier period" : ` ${pct(c.parsed.y)} on ${prior}`) } }) });
+      if (!eps) { coChart("sc-eps-chart", null); return; }
+      const fc = d.financial_currency || d.currency;
+      const epsName = `${basis === "basic" ? "Basic" : "Diluted"} EPS${freq === "quarterly" ? " for the quarter" : ""} (${fc})`;
+      coChart("sc-eps-chart", { type: "line", data: { labels, datasets: [lineSet(epsName, rows.map((r) => r[`${basis}_eps`]), cssVar("--co-2"))] },
+        options: coOptions({ title: epsName, y: { ticks: { callback: (v) => signedFixed(v) }, grid: zeroGrid },
+          tooltip: { label: (c) => ` ${c.parsed.y == null ? "—" : signedFixed(c.parsed.y)} ${fc}` } }) });
+    }
+
+    function renderDividends() {
+      const d = co.data, dv = d.dividends, cur = d.currency, fc = d.financial_currency || cur;
+      const years = dv.years || [];
+      if (!years.length && !dv.forward_rate && !dv.trailing_yield) {
+        $("div-kpis").innerHTML = `<p class="muted co-lede">${esc(d.symbol)} doesn't pay a dividend.</p>`;
+        $("div-body").hidden = true;
+        coChart("div-chart", null);
+        return;
+      }
+      const g = dv.growth || {};
+      const lastFull = [...years].reverse().find((y) => !y.partial);
+      const tiles = [  // [label, value, sub-line HTML]; tiles Yahoo has no figure for are left out
+        ["Forward dividend & yield", dv.forward_rate != null ? `${money(dv.forward_rate, cur)}${dv.forward_yield != null ? ` (${pct(dv.forward_yield, { signed: false })})` : ""}` : "—",
+          dv.ex_date ? `Ex-dividend ${esc(dayText(dv.ex_date))}` : "No regular dividend declared"],
+        ["Trailing yield", pct(dv.trailing_yield, { signed: false }), dv.ttm_amount ? `${esc(money(dv.ttm_amount, cur))} over the past 12 months` : ""],
+        ["5-year average yield", pct(dv.five_year_yield, { signed: false })],
+        ["Payout ratio", pct(dv.payout_ratio, { signed: false }), dv.fcf_payout != null ? `${pct(dv.fcf_payout, { signed: false })} of free cash flow` : "Of earnings"],
+        ["Dividend coverage", times(dv.coverage), dv.fcf_coverage != null ? `${times(dv.fcf_coverage)} by free cash flow` : "Earnings over dividends"],
+        ["Dividend growth (5Y)", g["5Y"] != null ? `${pct(g["5Y"])} a year` : "—",
+          ["1Y", "3Y", "10Y"].filter((k) => g[k] != null).map((k) => `${k} ${pct(g[k])}`).join(" · ")],
+      ].filter(([, value], i) => i === 0 || value !== "—");
+      if (d.financials) {  // a fund's distributions rise and fall with what its holdings pay
+        tiles.push(["Years of increases", String(dv.streak), dv.streak && lastFull ? `In a row, through ${lastFull.year}` : "No raise last year"]);
+      }
+      $("div-kpis").innerHTML = tiles.map((t) => kpi(...t)).join("");
+      $("div-body").hidden = !years.length;
+      const shown = years.slice(-15), c1 = cssVar("--co-1");
+      coChart("div-chart", years.length ? {
+        type: "bar",
+        data: { labels: shown.map((y) => (y.partial ? `${y.year}*` : String(y.year))),
+          datasets: [{ ...barSet("Dividends per share", shown.map((y) => y.amount), c1), backgroundColor: shown.map((y) => (y.partial ? withAlpha(c1, 0.35) : c1)) }] },
+        options: coOptions({ y: { beginAtZero: true, ticks: { callback: (v) => money(v, cur) } },
+          tooltip: {
+            title: (items) => { const y = shown[items[0].dataIndex]; return y.partial ? `${y.year} so far` : String(y.year); },
+            label: (c) => { const y = shown[c.dataIndex]; return ` ${money(y.amount, cur)}${y.growth != null ? ` (${pct(y.growth)})` : ""}`; },
+          } }),
+      } : null);
+      const hist = dv.history || [];
+      $("div-table").innerHTML = hist.length ? `<thead><tr><th scope="col">Fiscal year</th><th class="num" scope="col">Dividends paid</th>
+          <th class="num" scope="col">Net income</th><th class="num" scope="col">Payout ratio</th><th class="num" scope="col">Free cash flow</th>
+          <th class="num" scope="col">FCF payout</th><th class="num" scope="col">Coverage</th></tr></thead>
+        <tbody>${[...hist].reverse().map((h) => `<tr><td class="nowrap">${esc(periodName({ kind: "annual", date: h.date }))}</td>
+          <td class="num">${compact(h.paid || null)}</td><td class="num">${compact(h.net_income)}</td><td class="num">${pct(h.payout, { signed: false })}</td>
+          <td class="num">${compact(h.fcf)}</td><td class="num">${pct(h.fcf_payout, { signed: false })}</td>
+          <td class="num">${times(h.payout ? 1 / h.payout : null)}</td></tr>`).join("")}</tbody>
+        <tfoot><tr><td colspan="7" class="hint">Cash paid to shareholders in ${esc(fc)}, from the cash flow statement.</td></tr></tfoot>` : "";
+    }
+
+    const RETURNS = [["roic", "ROIC", "--co-1"], ["roe", "ROE", "--co-2"], ["roce", "ROCE", "--co-3"]];
+    function renderReturns() {
+      const d = co.data, r = d.returns, w = r?.wacc;
+      if (!r || !r.points.length) {
+        $("ret-kpis").innerHTML = `<p class="muted co-lede">Yahoo Finance has no figures to work out returns on capital for ${esc(d.symbol)}.</p>`;
+        $("ret-body").hidden = true;
+        coChart("ret-chart", null);
+        return "";
+      }
+      $("ret-body").hidden = false;
+      const latest = (key) => [...r.points].reverse().find((p) => p[key] != null);
+      const noEbit = !r.points.some((p) => p.roic != null);
+      const tiles = RETURNS.map(([key, label]) => {
+        const p = latest(key);
+        return kpi(label, p ? pct(p[key], { signed: false }) : "—", p ? esc(periodName(p)) : "Not reported");
+      });
+      tiles.push(kpi("WACC (estimate)", w ? pct(w.wacc, { signed: false }) : "—",
+        w ? `Equity ${pct(w.cost_of_equity, { signed: false })} · debt ${pct(w.cost_of_debt * (1 - w.tax_rate), { signed: false })} after tax`
+          : noEbit ? "Not meaningful without ROIC" : "Needs a beta and market cap"));
+      tiles.push(kpi("ROIC − WACC", r.spread == null ? "—" : pct(r.spread), r.spread == null ? ""
+        : r.spread > 0 ? "Earns more than its capital costs" : "Earns less than its capital costs", r.spread == null ? "" : tone(r.spread)));
+      $("ret-kpis").innerHTML = tiles.join("");
+
+      const labels = r.points.map(periodName);
+      const series = RETURNS.filter(([key]) => r.points.some((p) => p[key] != null));
+      const datasets = series.map(([key, label, color]) => lineSet(label, r.points.map((p) => p[key]), cssVar(color)));
+      if (w) {
+        datasets.push(lineSet("WACC (today)", labels.map(() => w.wacc), cssVar("--muted"),
+          { borderWidth: 1.5, borderDash: [6, 4], pointRadius: 0, pointHoverRadius: 0 }));
+      }
+      coChart("ret-chart", { type: "line", data: { labels, datasets },
+        options: coOptions({ legend: true, y: { ticks: { callback: (v) => pct(v, { signed: false }) }, grid: zeroGrid },
+          tooltip: { label: (c) => ` ${c.dataset.label}: ${c.parsed.y == null ? "—" : pct(c.parsed.y, { signed: false })}` } }) });
+      $("ret-table").innerHTML = `<thead><tr><th scope="col">Return</th>${r.points.map((p) => colHead(p)).join("")}</tr></thead>
+        <tbody>${series.map(([key, label]) => `<tr><td>${label}</td>${r.points.map((p) => `<td class="num">${pct(p[key], { signed: false })}</td>`).join("")}</tr>`).join("")}
+        ${w ? `<tr><td>ROIC − WACC</td>${r.points.map((p) => `<td class="num ${tone(p.roic == null ? null : p.roic - w.wacc)}">${p.roic == null ? "—" : pct(p.roic - w.wacc)}</td>`).join("")}</tr>` : ""}</tbody>`;
+      return `ROIC is EBIT after tax over invested capital (equity plus debt); ROE is earnings to common shareholders over their equity; ROCE is EBIT over total assets less current liabilities. All use capital at each period's end.${noEbit ? " Yahoo Finance reports no EBIT for banks and insurers, so they have no ROIC or ROCE here, and no WACC: their debt includes customer deposits." : ""}`
+        + (w ? ` The WACC is an estimate weighted by today's market cap and debt (${pct(w.weight_equity, { signed: false })} equity): equity costs the 10-year US Treasury yield (${pct(w.risk_free, { signed: false })}) plus a beta of ${w.beta.toFixed(2)} times a ${pct(w.risk_premium, { signed: false })} equity risk premium; debt costs ${w.debt_cost_reported ? "its interest expense over total debt" : "the Treasury yield, as no interest expense is reported"}, less tax at ${pct(w.tax_rate, { signed: false })}. ROIC − WACC compares every year with today's WACC.` : "");
+    }
+
+    function renderCapital() {
+      renderShares();
+      renderDividends();
+      const returnsNote = renderReturns();
+      $("cap-note").textContent = `Share counts are averages over each period, restated for splits. Dividends per share are by calendar year of the ex-dividend date, adjusted for splits; * marks this year so far. ${returnsNote}`;
+    }
+
+    function renderCompany() {
+      if (!co.data) return;
+      ({ financials: renderFinancials, ownership: renderOwnership, capital: renderCapital })[co.tab]();
+    }
+    const COMPANY_TABS = ["financials", "ownership", "capital"];
+    function showTab(tab, focus = false) {
+      co.tab = tab;
+      $("co-tabs").querySelectorAll("[role=tab]").forEach((b) => {
+        const on = b.dataset.tab === tab;
+        b.setAttribute("aria-selected", String(on));
+        b.tabIndex = on ? 0 : -1;
+        if (on && focus) b.focus();
+      });
+      COMPANY_TABS.forEach((t) => { $(`co-${t}`).hidden = !co.data || t !== tab; });
+      dropCharts();  // charts are drawn for the visible tab, so they get its size
+      renderCompany();
+    }
+    $("co-tabs").addEventListener("click", (e) => {
+      const b = e.target.closest("[role=tab]");
+      if (!b) return;
+      showTab(b.dataset.tab);
+      saveCompany();
+    });
+    $("co-tabs").addEventListener("keydown", (e) => {
+      const i = COMPANY_TABS.indexOf(co.tab);
+      const next = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: COMPANY_TABS.length - 1 }[e.key];
+      if (next == null) return;
+      e.preventDefault();
+      showTab(COMPANY_TABS[(next + COMPANY_TABS.length) % COMPANY_TABS.length], true);
+      saveCompany();
+    });
+    const companyPick = (groupId, attr, apply) => $(groupId).addEventListener("click", (e) => {
+      const b = e.target.closest(`button[data-${attr}]`);
+      if (!b) return;
+      pressed(groupId, attr, b.dataset[attr]);
+      apply(b.dataset[attr]);
+      saveCompany();
+      renderCompany();
+    });
+    companyPick("fin-view", "view", (v) => { co.view = v; });
+    companyPick("fin-freq", "freq", (v) => { co.freq = v; });
+    companyPick("own-list", "list", (v) => { co.list = v; });
+    companyPick("sc-mode", "mode", (v) => { co.sc.mode = v; });
+    companyPick("sc-basis", "basis", (v) => { co.sc.basis = v; });
+    companyPick("sc-freq", "freq", (v) => { co.sc.freq = v; });
+    $("sc-eps").addEventListener("click", () => {
+      co.sc.eps = !co.sc.eps;
+      $("sc-eps").setAttribute("aria-pressed", String(co.sc.eps));
+      saveCompany();
+      renderCompany();
+    });
+    pressed("fin-view", "view", co.view);
+    pressed("fin-freq", "freq", co.freq);
+    pressed("own-list", "list", co.list);
+    pressed("sc-mode", "mode", co.sc.mode);
+    pressed("sc-basis", "basis", co.sc.basis);
+    pressed("sc-freq", "freq", co.sc.freq);
+    $("sc-eps").setAttribute("aria-pressed", String(co.sc.eps));
+
+    let companySeq = 0;
+    async function loadCompany() {
+      const mine = ++companySeq;
+      co.data = null;
+      dropCharts();
+      $("co-status").hidden = false;
+      $("co-status").textContent = "Loading…";
+      showTab(co.tab);
+      try {
+        const d = await getJSON(root.dataset.companyApi.replace("SYMBOL", encodeURIComponent(state.symbol)));
+        if (mine !== companySeq) return;
+        co.data = d;
+        $("co-status").hidden = true;
+        showTab(co.tab);
+      } catch (err) {
+        if (mine !== companySeq) return;
+        $("co-status").textContent = `Couldn't load the company figures for ${state.symbol}: ${err.message}`;
+      }
+    }
+
     pressed("r-mode", "mode", state.mode);
     pressed("r-range", "range", state.range);
     syncMenu();
     syncReset();
     refresh();
     loadStats();
+    loadCompany();
   }
 
   const pages = { dashboard: () => { dashboardWorth(); if (root) dashboard(); }, performance, position, "txn-form": txnForm, markets, assets: myAssets, "asset-form": assetForms, research };

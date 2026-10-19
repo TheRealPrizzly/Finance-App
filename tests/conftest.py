@@ -14,7 +14,8 @@ SAMPLE_CSV = pathlib.Path(__file__).resolve().parents[1] / "samples" / "sample_t
 class FakeMarket:
     """Deterministic stand-in for MarketData."""
 
-    def __init__(self, quotes=None, history=None, fx=None, sectors=None, candles=None, earnings=None, stats=None):
+    def __init__(self, quotes=None, history=None, fx=None, sectors=None, candles=None, earnings=None, stats=None,
+                 fundamentals=None, facts=None):
         self._quotes = quotes or {}  # symbol -> (price, prev_close, currency)
         self._history = history or {}  # symbol -> (currency, {date: close})
         self._fx = fx or {}  # currency -> (rate_now, {date: rate})
@@ -23,6 +24,8 @@ class FakeMarket:
         self.candles = candles or {}
         self._earnings = earnings or {}  # symbol -> [(date, estimate, actual)]
         self.stats = stats or {}  # symbol -> key stats, as from market.key_stats()
+        self.fundamentals_by_symbol = fundamentals or {}  # symbol -> as from market.parse_timeseries()
+        self.facts = facts or {}  # symbol -> as from market.company_facts()
 
     def resolve(self, symbol, currency):
         return symbol if symbol in self._quotes or symbol in self._history else None
@@ -56,6 +59,12 @@ class FakeMarket:
 
     def key_stats(self, symbol):
         return self.stats.get(symbol)
+
+    def fundamentals(self, symbol, keys):
+        return self.fundamentals_by_symbol.get(symbol)
+
+    def company_facts(self, symbol):
+        return self.facts.get(symbol)
 
     def fx_rate(self, currency):
         return self._fx.get(currency, (None, {}))[0]

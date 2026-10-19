@@ -25,6 +25,7 @@ QUOTE_TTL = 60  # seconds
 HISTORY_TTL = 60 * 60
 EARNINGS_TTL = 12 * 60 * 60
 STATS_TTL = 15 * 60
+FUNDAMENTALS_TTL = 12 * 60 * 60
 INTRADAY_TTL = 2 * 60
 RESOLVE_RETRY = timedelta(days=1)  # retry symbols Yahoo didn't recognise after this long
 SECTOR_TTL = timedelta(days=7)
@@ -53,6 +54,7 @@ MAX_START = date(1900, 1, 1)  # asking from here gets every daily bar Yahoo has
 # Intraday chart spans: (Yahoo range, bar size). The range is wider than the span shown so the
 # moving averages have earlier bars to start from.
 INTRADAY_SPANS = {"1D": ("5d", "5m"), "1W": ("1mo", "30m")}
+FUNDAMENTALS_START = 493590046  # 1985: asking from here gets every period Yahoo has (4 years, 5 quarters)
 
 
 def _utc(ts):
@@ -146,6 +148,76 @@ def key_stats(summary):
             "summary": profile.get("longBusinessSummary"),
             "website": _web_url(profile.get("website")),
             "ir_website": _web_url(profile.get("irWebsite")),
+        },
+    }
+
+
+def _iso_day(ts):
+    return _utc(ts).date().isoformat() if ts else None
+
+
+def parse_timeseries(data):
+    """Yahoo's fundamentals timeseries as {"currency": reporting currency, "annual" | "quarterly" |
+    "trailing": {line item: {ISO period end: value}}}. "trailing" is the twelve months to a quarter's end.
+    Share counts and per-share figures are restated for later splits, like Yahoo's prices."""
+    out = {"currency": None, "annual": {}, "quarterly": {}, "trailing": {}}
+    for result in ((data or {}).get("timeseries") or {}).get("result") or []:
+        name = ((result.get("meta") or {}).get("type") or [""])[0]
+        freq = next((f for f in ("annual", "quarterly", "trailing") if name.startswith(f)), None)
+        if not freq:
+            continue
+        for point in result.get(name) or []:
+            value = ((point or {}).get("reportedValue") or {}).get("raw")
+            if value is None or not point.get("asOfDate"):
+                continue
+            out[freq].setdefault(name[len(freq):], {})[point["asOfDate"]] = value
+            if name.endswith("TotalRevenue") or not out["currency"]:  # share counts carry a currency code too
+                out["currency"] = point.get("currencyCode") or out["currency"]
+    return out
+
+
+def company_facts(summary):
+    """Ownership and dividend figures for the Research tab's Company section from a Yahoo quote
+    summary (majorHoldersBreakdown, institutionOwnership, fundOwnership, insiderHolders,
+    summaryDetail, defaultKeyStatistics and financialData modules). Missing figures are None.
+    Percentages are fractions, except Yahoo's 5-year average yield, which comes in percent."""
+    def raw(value):
+        return value.get("raw") if isinstance(value, dict) else value
+
+    def get(module, key):
+        return raw((summary.get(module) or {}).get(key))
+
+    def holders(module):
+        return [{"name": h["organization"], "pct": raw(h.get("pctHeld")), "shares": raw(h.get("position")),
+                 "value": raw(h.get("value")), "change": raw(h.get("pctChange")), "date": _iso_day(raw(h.get("reportDate")))}
+                for h in (summary.get(module) or {}).get("ownershipList") or [] if h.get("organization")]
+
+    insiders = []
+    for h in (summary.get("insiderHolders") or {}).get("holders") or []:
+        direct, indirect = raw(h.get("positionDirect")), raw(h.get("positionIndirect"))
+        if h.get("name") and (direct or indirect):
+            insiders.append({
+                "name": h["name"], "relation": h.get("relation"), "shares": (direct or 0) + (indirect or 0),
+                "direct": direct, "indirect": indirect,
+                "date": _iso_day(raw(h.get("positionDirectDate")) or raw(h.get("positionIndirectDate"))
+                                 or raw(h.get("latestTransDate"))),
+            })
+    five_year = get("summaryDetail", "fiveYearAvgDividendYield")
+    return {
+        "financial_currency": get("financialData", "financialCurrency"),
+        "shares_outstanding": get("defaultKeyStatistics", "sharesOutstanding"),
+        "insiders": get("majorHoldersBreakdown", "insidersPercentHeld"),
+        "institutions": get("majorHoldersBreakdown", "institutionsPercentHeld"),
+        "institutions_float": get("majorHoldersBreakdown", "institutionsFloatPercentHeld"),
+        "institutions_count": get("majorHoldersBreakdown", "institutionsCount"),
+        "top_institutions": holders("institutionOwnership"),
+        "top_funds": holders("fundOwnership"),
+        "insider_holders": insiders,
+        "dividend": {
+            "trailing_yield": get("summaryDetail", "trailingAnnualDividendYield") or None,
+            "five_year_yield": five_year / 100 if five_year else None,
+            "payout_ratio": get("summaryDetail", "payoutRatio"),
+            "ex_date": _iso_day(get("summaryDetail", "exDividendDate")),
         },
     }
 
@@ -330,6 +402,15 @@ class YahooClient:
         results = ((data or {}).get("quoteSummary") or {}).get("result") or []
         return results[0] if results else {}
 
+    def fundamentals(self, symbol, keys):
+        """Annual, quarterly and trailing figures for Yahoo line items like "TotalRevenue"; see parse_timeseries."""
+        return parse_timeseries(self._get_json(
+            f"{self.BASE1}/ws/fundamentals-timeseries/v1/finance/timeseries/{urlquote(symbol, safe='')}",
+            {"symbol": symbol, "type": ",".join(f + k for f in ("annual", "quarterly", "trailing") for k in keys),
+             "period1": FUNDAMENTALS_START, "period2": int(time.time()) + 86400},
+            crumb=True,
+        ))
+
 
 class MarketData:
     """Market data with caching. Prices are in each security's own currency;
@@ -345,6 +426,8 @@ class MarketData:
         self._candles = {}  # yahoo symbol -> (fetched_at, start, currency, rows, splits, dividends); (symbol, span) for intraday
         self._earnings = {}  # yahoo symbol -> (fetched_at, reports)
         self._stats = {}  # yahoo symbol -> (fetched_at, key stats)
+        self._fundamentals = {}  # yahoo symbol -> (fetched_at, parsed timeseries)
+        self._facts = {}  # yahoo symbol -> (fetched_at, company facts)
         self._lock = threading.Lock()
 
     # -- symbols ---------------------------------------------------------------
@@ -553,6 +636,37 @@ class MarketData:
         with self._lock:
             self._stats[yahoo_symbol] = (time.time(), stats)
         return stats
+
+    def fundamentals(self, yahoo_symbol, keys):
+        """Financial statement line items; see parse_timeseries(). None if Yahoo couldn't be reached."""
+        cached = self._fundamentals.get(yahoo_symbol)
+        if cached and time.time() - cached[0] < FUNDAMENTALS_TTL:
+            return cached[1]
+        try:
+            figures = self.client.fundamentals(yahoo_symbol, keys)
+        except (requests.RequestException, ValueError) as exc:
+            log.warning("Fundamentals request for %s failed: %s", yahoo_symbol, exc)
+            return cached[1] if cached else None
+        with self._lock:
+            self._fundamentals[yahoo_symbol] = (time.time(), figures)
+        return figures
+
+    def company_facts(self, yahoo_symbol):
+        """Holders and dividend figures; see company_facts(). None if Yahoo couldn't be reached."""
+        cached = self._facts.get(yahoo_symbol)
+        if cached and time.time() - cached[0] < STATS_TTL:
+            return cached[1]
+        try:
+            summary = self.client.summary(yahoo_symbol, [
+                "majorHoldersBreakdown", "institutionOwnership", "fundOwnership", "insiderHolders",
+                "summaryDetail", "defaultKeyStatistics", "financialData"])
+        except (requests.RequestException, ValueError) as exc:
+            log.warning("Company facts request for %s failed: %s", yahoo_symbol, exc)
+            return cached[1] if cached else None
+        facts = company_facts(summary) if summary else None
+        with self._lock:
+            self._facts[yahoo_symbol] = (time.time(), facts)
+        return facts
 
     # -- FX --------------------------------------------------------------------
 
