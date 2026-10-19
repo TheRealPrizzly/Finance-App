@@ -326,14 +326,22 @@ def financials(fig, mkt, today, filed=None):
     return out
 
 
-def share_counts(fig):
-    """Average basic and diluted shares, with EPS, for each fiscal year and quarter."""
-    keys = ("BasicAverageShares", "DilutedAverageShares", "BasicEPS", "DilutedEPS")
-    out = {}
+SHARE_COUNTS = (("BasicAverageShares", "basic", "shares"), ("DilutedAverageShares", "diluted", "shares"),
+                ("BasicEPS", "basic_eps", "eps"), ("DilutedEPS", "diluted_eps", "eps"))
+
+
+def share_counts(fig, filed=None):
+    """Average basic and diluted shares, with EPS, for each fiscal year and quarter: the last
+    STATEMENT_PERIODS of them, from SEC filings when they go back further than Yahoo (as in
+    statement()). "source" says where each frequency's figures come from."""
+    out = {"source": {}}
     for freq in ("annual", "quarterly"):
-        cols = fig.columns(freq, keys[:2])
-        out[freq] = [{"date": c["date"], "basic": fig.at(c, keys[0]), "diluted": fig.at(c, keys[1]),
-                      "basic_eps": fig.at(c, keys[2]), "diluted_eps": fig.at(c, keys[3])} for c in cols]
+        t = statement(SHARE_COUNTS, fig, freq, filed, ttm=False)
+        rows = {r["key"]: r["values"] for r in t["rows"]}
+        points = [{"date": c["date"], "source": c["source"], **{name: rows[key][i] if key in rows else None for key, name, _ in SHARE_COUNTS}}
+                  for i, c in enumerate(t["columns"])]
+        out[freq] = [p for p in points if p["basic"] is not None or p["diluted"] is not None]
+        out["source"][freq] = t["source"]
     return out
 
 
@@ -499,7 +507,7 @@ def company_report(fundamentals, facts, stats, closes, paid_dividends, fx_now, f
         "financial_currency": (facts or {}).get("financial_currency") or (fundamentals or {}).get("currency"),
         "financials": financials(fig, mkt, today, filed) if has_statements else None,
         "ownership": ownership(facts),
-        "shares": share_counts(fig) if has_statements else None,
+        "shares": share_counts(fig, filed) if has_statements else None,
         "dividends": dividends(fig, facts, paid_dividends, stats.get("dividend"), stats.get("yield"), today),
         "returns": capital_returns(fig, mkt, stats.get("beta"), risk_free, today) if has_statements else None,
     }

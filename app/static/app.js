@@ -3103,10 +3103,20 @@
         coChart("sc-chart", null);
         coChart("sc-eps-chart", null);
         $("sc-lede").textContent = `Yahoo Finance has no share counts for ${d.symbol}.`;
+        $("sc-source").innerHTML = "";
         return;
       }
+      // Filings give a fourth quarter's share count only within the full year's, so quarters can skip:
+      // a change is only worked out on the period right before.
+      const days = (a, b) => (new Date(b) - new Date(a)) / 864e5;
+      const adjacent = rows.map((r, i) => i > 0 && days(rows[i - 1].date, r.date) <= (freq === "annual" ? 400 : 100));
+      const span = `${rows.length} ${freq === "annual" ? (rows.length === 1 ? "year" : "years") : (rows.length === 1 ? "quarter" : "quarters")}`;
+      $("sc-source").innerHTML = d.shares.source?.[freq] === "sec"
+        ? `<strong>Source:</strong> SEC filings (EDGAR) · ${span}${rows.some((r) => r.source === "yahoo") ? " · the newest from Yahoo Finance" : ""}${
+          freq === "quarterly" && adjacent.slice(1).some((a) => !a) ? " · fourth quarters only come in the full year's figures, so most are missing" : ""}`
+        : `<strong>Source:</strong> Yahoo Finance · ${span}. ${esc(whyYahoo(d))}`;
       const labels = rows.map((r) => periodName({ kind: freq, date: r.date }));
-      const changes = rows.map((r, i) => (i && rows[i - 1][basis] ? r[basis] / rows[i - 1][basis] - 1 : null));
+      const changes = rows.map((r, i) => (adjacent[i] && rows[i - 1][basis] ? r[basis] / rows[i - 1][basis] - 1 : null));
       const name = `${basis === "basic" ? "Basic" : "Diluted"} average shares`;
       const first = rows[0][basis], last = rows[rows.length - 1][basis];
       const total = rows.length > 1 ? last / first - 1 : null;
@@ -3121,7 +3131,7 @@
               tooltip: { label: (c) => ` ${compact(c.parsed.y)}${changes[c.dataIndex] != null ? ` (${pct(changes[c.dataIndex])} on ${prior})` : ""}` } }) }
         : { type: "bar", data: { labels, datasets: [barSet(name, changes, c1)] },
             options: coOptions({ title: `${name}, % change on ${prior}`, y: { ticks: { callback: (v) => pct(v) }, grid: zeroGrid },
-              tooltip: { label: (c) => (c.parsed.y == null ? " No earlier period" : ` ${pct(c.parsed.y)} on ${prior}`) } }) });
+              tooltip: { label: (c) => (c.parsed.y == null ? ` No figure for ${prior}` :` ${pct(c.parsed.y)} on ${prior}`) } }) });
       if (!eps) { coChart("sc-eps-chart", null); return; }
       const fc = d.financial_currency || d.currency;
       const epsName = `${basis === "basic" ? "Basic" : "Diluted"} EPS${freq === "quarterly" ? " for the quarter" : ""} (${fc})`;

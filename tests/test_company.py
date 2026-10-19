@@ -124,10 +124,23 @@ def test_negative_earnings_have_no_pe_but_a_negative_yield():
 
 def test_share_counts(report):
     assert report["shares"]["annual"] == [
-        {"date": "2024-12-31", "basic": 111, "diluted": 112, "basic_eps": None, "diluted_eps": 0.89},
-        {"date": "2025-12-31", "basic": 103, "diluted": 104, "basic_eps": None, "diluted_eps": 1.44},
+        {"date": "2024-12-31", "source": "yahoo", "basic": 111, "diluted": 112, "basic_eps": None, "diluted_eps": 0.89},
+        {"date": "2025-12-31", "source": "yahoo", "basic": 103, "diluted": 104, "basic_eps": None, "diluted_eps": 1.44},
     ]
     assert report["shares"]["quarterly"] == []
+    assert report["shares"]["source"] == {"annual": "yahoo", "quarterly": "yahoo"}
+
+
+def test_share_counts_go_back_ten_years_in_sec_filings():
+    ends = [f"{y}-12-31" for y in range(2012, 2025)]
+    filed = {"currency": "USD", "source": "sec", "quarterly": {}, "trailing": {},
+             "annual": {"DilutedAverageShares": {d: 112.0 for d in ends}, "BasicAverageShares": {d: 111.0 for d in ends},
+                        "DilutedEPS": {d: 0.5 for d in ends}}}
+    shares = co.company_report(FUNDAMENTALS, FACTS, STATS, CLOSES, PAID, 1.40, FX, 0.04, TODAY, filed=filed)["shares"]
+    assert shares["source"]["annual"] == "sec"
+    assert [(p["date"][:4], p["source"]) for p in shares["annual"]] == [(str(y), "sec") for y in range(2016, 2025)] + [("2025", "yahoo")]
+    assert shares["annual"][-1]["diluted"] == 104  # counts agree on 2024 (112 both), so Yahoo's FY2025 joins
+    assert shares["annual"][-2]["diluted_eps"] == 0.5 and shares["annual"][-1]["diluted_eps"] is None  # EPS doesn't (0.89 against 0.5)
 
 
 def test_dividends(report):
