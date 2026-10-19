@@ -668,6 +668,8 @@ def test_research_company(client, market):
     html = client.get("/research?symbol=AAPL").get_data(as_text=True)
     assert 'data-company-api="/api/research/SYMBOL/company"' in html
     assert 'role="tablist"' in html and "Capital Returns" in html and 'id="co-financials"' in html
+    assert re.search(r'src="/static/app\.js\?v=\d+"', html)  # a deploy changes the URL, so browsers fetch it anew
+    assert 'aria-controls="fin-note" hidden' in html and 'id="fin-note" hidden' in html  # notes start closed
     data = client.get("/api/research/aapl/company").get_json()
     assert data["symbol"] == "AAPL" and data["risk_free_symbol"] == "^TNX"
     assert (data["currency"], data["financial_currency"]) == ("CAD", "USD")

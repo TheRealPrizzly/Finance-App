@@ -2844,7 +2844,7 @@
     // ---- Company: financials, ownership and capital returns, below the key statistics
     const COMPANY_STORAGE = "research.company";
     const co = { data: null, tab: "financials", view: "income", freq: "annual", list: "institutions",
-      sc: { mode: "count", basis: "diluted", freq: "annual", eps: false } };
+      sc: { mode: "count", basis: "diluted", freq: "annual", eps: false }, notes: false };
     try {
       const s = JSON.parse(localStorage.getItem(COMPANY_STORAGE) || "{}");
       const pick = (v, options, fallback) => (options.includes(v) ? v : fallback);
@@ -2854,10 +2854,11 @@
       co.list = pick(s.list, ["institutions", "funds"], co.list);
       co.sc = { mode: pick(s.sc?.mode, ["count", "change"], "count"), basis: pick(s.sc?.basis, ["basic", "diluted"], "diluted"),
         freq: pick(s.sc?.freq, ["annual", "quarterly"], "annual"), eps: s.sc?.eps === true };
+      co.notes = s.notes === true;
     } catch { /* storage blocked */ }
     const saveCompany = () => {
       try {
-        localStorage.setItem(COMPANY_STORAGE, JSON.stringify({ tab: co.tab, view: co.view, freq: co.freq, list: co.list, sc: co.sc }));
+        localStorage.setItem(COMPANY_STORAGE, JSON.stringify({ tab: co.tab, view: co.view, freq: co.freq, list: co.list, sc: co.sc, notes: co.notes }));
       } catch { /* storage blocked */ }
     };
 
@@ -2935,23 +2936,30 @@
       if (!t.rows.length) {
         $("fin-table").innerHTML = `<tbody><tr><td class="muted">Yahoo Finance has no ${esc(VIEW_NAMES[co.view].toLowerCase())} figures for ${esc(d.symbol)} by ${co.freq === "annual" ? "year" : "quarter"}.</td></tr></tbody>`;
       } else {
-        const n = t.columns.length, fit = Math.min(n, fitPeriods()), key = `${co.view}|${co.freq}`;
-        const back = Math.min(Math.max(finBack[key] || 0, 0), n - fit);
-        const lo = n - fit - back, hi = lo + fit;
-        if (fit < n) {
-          const range = $("fin-range");
-          range.max = String(n - fit);
-          range.value = String(lo);
-          range.dataset.key = key;
-          range.setAttribute("aria-valuetext", `${periodName(t.columns[lo])} to ${periodName(t.columns[hi - 1])}`);
-          $("fin-range-text").innerHTML = `Showing <strong>${esc(periodName(t.columns[lo]))} – ${esc(periodName(t.columns[hi - 1]))}</strong> of ${n} ${co.freq === "annual" ? "periods" : "quarters"}`;
-          $("fin-prev").disabled = lo === 0;
-          $("fin-next").disabled = hi === n;
-          $("fin-slider").hidden = false;
-        }
-        $("fin-table").innerHTML = `<thead><tr><th scope="col">${statement ? `In ${esc(cur)}` : esc(VIEW_NAMES[co.view])}</th>${t.columns.slice(lo, hi).map((c) => colHead(c, t.source === "sec" && c.source === "yahoo")).join("")}</tr></thead>
-          <tbody>${t.rows.map((r) => `<tr class="${r.style}"><th scope="row">${esc(r.label)}</th>${r.values.slice(lo, hi).map((v) =>
-            `<td class="num${v == null ? " empty" : ""}">${esc(cellText(v, r.fmt))}</td>`).join("")}</tr>`).join("")}</tbody>`;
+        // Start from an estimate of how many periods fit, then drop one at a time while the table is
+        // still wider than its box (fonts differ between computers), so no period is ever cut off.
+        const n = t.columns.length, key = `${co.view}|${co.freq}`, wrap = $("fin-table").parentElement;
+        const draw = (fit) => {
+          const back = Math.min(Math.max(finBack[key] || 0, 0), n - fit);
+          const lo = n - fit - back, hi = lo + fit;
+          $("fin-slider").hidden = fit >= n;
+          if (fit < n) {
+            const range = $("fin-range");
+            range.max = String(n - fit);
+            range.value = String(lo);
+            range.dataset.key = key;
+            range.setAttribute("aria-valuetext", `${periodName(t.columns[lo])} to ${periodName(t.columns[hi - 1])}`);
+            $("fin-range-text").innerHTML = `Showing <strong>${esc(periodName(t.columns[lo]))} – ${esc(periodName(t.columns[hi - 1]))}</strong> of ${n} ${co.freq === "annual" ? "periods" : "quarters"}`;
+            $("fin-prev").disabled = lo === 0;
+            $("fin-next").disabled = hi === n;
+          }
+          $("fin-table").innerHTML = `<thead><tr><th scope="col">${statement ? `In ${esc(cur)}` : esc(VIEW_NAMES[co.view])}</th>${t.columns.slice(lo, hi).map((c) => colHead(c, t.source === "sec" && c.source === "yahoo")).join("")}</tr></thead>
+            <tbody>${t.rows.map((r) => `<tr class="${r.style}"><th scope="row">${esc(r.label)}</th>${r.values.slice(lo, hi).map((v) =>
+              `<td class="num${v == null ? " empty" : ""}">${esc(cellText(v, r.fmt))}</td>`).join("")}</tr>`).join("")}</tbody>`;
+        };
+        let fit = Math.min(n, fitPeriods());
+        draw(fit);
+        while (fit > 1 && wrap.clientWidth && $("fin-table").scrollWidth > wrap.clientWidth + 1) draw(--fit);
       }
       const converted = fc !== tc ? ` Figures reported in ${fc} are converted to ${tc} at the exchange rate of each period's end.` : "";
       const filed = co.view === "income" && t.source === "sec";
@@ -3131,7 +3139,7 @@
           <td class="num">${compact(h.paid || null)}</td><td class="num">${compact(h.net_income)}</td><td class="num">${pct(h.payout, { signed: false })}</td>
           <td class="num">${compact(h.fcf)}</td><td class="num">${pct(h.fcf_payout, { signed: false })}</td>
           <td class="num">${times(h.payout ? 1 / h.payout : null)}</td></tr>`).join("")}</tbody>
-        <tfoot><tr><td colspan="7" class="hint">Cash paid to shareholders in ${esc(fc)}, from the cash flow statement.</td></tr></tfoot>` : "";
+` : "";
     }
 
     const RETURNS = [["roic", "ROIC", "--co-1"], ["roe", "ROE", "--co-2"], ["roce", "ROCE", "--co-3"]];
@@ -3178,12 +3186,29 @@
       renderShares();
       renderDividends();
       const returnsNote = renderReturns();
-      $("cap-note").textContent = `Share counts are averages over each period, restated for splits. Dividends per share are by calendar year of the ex-dividend date, adjusted for splits; * marks this year so far. ${returnsNote}`;
+      const fc = co.data.financial_currency || co.data.currency;
+      $("cap-note").textContent = `Share counts are averages over each period, restated for splits. Dividends per share are by calendar year of the ex-dividend date, adjusted for splits; * marks this year so far. The table's dividends paid are the cash paid to shareholders, in ${fc}, from the cash flow statement. ${returnsNote}`;
     }
+
+    // Each tab's notes sit behind a Notes button, closed until opened (and then kept open).
+    function syncNotes() {
+      document.querySelectorAll("[data-notes]").forEach((b) => {
+        const note = $(b.getAttribute("aria-controls"));
+        b.hidden = !note.textContent.trim();
+        b.setAttribute("aria-expanded", String(co.notes));
+        note.hidden = !co.notes;
+      });
+    }
+    document.querySelectorAll("[data-notes]").forEach((b) => b.addEventListener("click", () => {
+      co.notes = !co.notes;
+      saveCompany();
+      syncNotes();
+    }));
 
     function renderCompany() {
       if (!co.data) return;
       ({ financials: renderFinancials, ownership: renderOwnership, capital: renderCapital })[co.tab]();
+      syncNotes();
     }
     const COMPANY_TABS = ["financials", "ownership", "capital"];
     function showTab(tab, focus = false) {

@@ -298,8 +298,9 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
 .card .co-sub-head .co-sub { margin: 0; }
 .co-lede { margin: 0 0 10px; font-size: .9rem; }
 .co-lede:empty { display: none; }
-.co-note { margin: 12px 0 0; max-width: 100ch; }
-.co-note:empty { display: none; }
+.co-notes { margin-top: 12px; }
+.co-notes .notes-toggle[hidden], .co-note[hidden] { display: none; }
+.co-note { margin: 4px 0 0; max-width: 100ch; }
 .co-kpis { margin-bottom: 16px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 .co-kpis .kpi { box-shadow: none; border-color: transparent; background: var(--surface-2); min-height: 0; }
 .co-kpis .kpi-value { font-variant-numeric: normal; white-space: normal; }  /* "$1.08 USD (0.31%)" wraps */

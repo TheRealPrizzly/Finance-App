@@ -54,6 +54,16 @@ def create_app(test_config=None):
     app.register_blueprint(auth.bp)
     app.register_blueprint(views.bp)
 
+    @app.url_defaults
+    def static_version(endpoint, values):
+        # /static/app.js?v=<modified time>: after a deploy, browsers load the new file rather than
+        # a copy they kept.
+        if endpoint == "static" and "filename" in values and "v" not in values:
+            try:
+                values["v"] = int(os.stat(os.path.join(app.static_folder, values["filename"])).st_mtime)
+            except OSError:
+                pass
+
     @app.errorhandler(400)
     @app.errorhandler(404)
     def http_error(err):

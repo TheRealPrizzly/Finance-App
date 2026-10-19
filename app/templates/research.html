@@ -198,7 +198,11 @@
         <span class="fin-range-text" id="fin-range-text"></span>
       </div>
       <div class="table-wrap"><table class="table compact fin-table" id="fin-table"></table></div>
-      <p class="hint co-note" id="fin-note"></p>
+      <div class="co-notes">
+        <button type="button" class="btn btn-ghost btn-sm notes-toggle" data-notes aria-expanded="false" aria-controls="fin-note" hidden>
+          <span class="caret" aria-hidden="true">▾</span>Notes</button>
+        <p class="hint co-note" id="fin-note" hidden></p>
+      </div>
     </div>
 
     <div class="co-panel" role="tabpanel" id="co-ownership" aria-labelledby="co-tab-ownership" hidden>
@@ -215,7 +219,11 @@
       <h3 class="co-sub">Insider ownership</h3>
       <p class="co-lede" id="own-insider-lede"></p>
       <div class="table-wrap"><table class="table compact own-table" id="own-insiders"></table></div>
-      <p class="hint co-note" id="own-note"></p>
+      <div class="co-notes">
+        <button type="button" class="btn btn-ghost btn-sm notes-toggle" data-notes aria-expanded="false" aria-controls="own-note" hidden>
+          <span class="caret" aria-hidden="true">▾</span>Notes</button>
+        <p class="hint co-note" id="own-note" hidden></p>
+      </div>
     </div>
 
     <div class="co-panel" role="tabpanel" id="co-capital" aria-labelledby="co-tab-capital" hidden>
@@ -256,7 +264,11 @@
         <div class="chart-box co-chart"><canvas id="ret-chart" role="img" aria-label="ROIC, ROE and ROCE by year, against the WACC"></canvas></div>
         <div class="table-wrap"><table class="table compact fin-table" id="ret-table"></table></div>
       </div>
-      <p class="hint co-note" id="cap-note"></p>
+      <div class="co-notes">
+        <button type="button" class="btn btn-ghost btn-sm notes-toggle" data-notes aria-expanded="false" aria-controls="cap-note" hidden>
+          <span class="caret" aria-hidden="true">▾</span>Notes</button>
+        <p class="hint co-note" id="cap-note" hidden></p>
+      </div>
     </div>
   </section>
 </div>
