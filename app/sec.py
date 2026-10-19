@@ -223,6 +223,8 @@ class SecData:
         r = self.session.get(url, timeout=self.timeout)
         if r.status_code == 404:
             return None
+        if r.status_code in (403, 429):  # EDGAR turns away requests without a contact, and over 10 a second
+            raise requests.HTTPError(f"HTTP {r.status_code}: EDGAR refused the request", response=r)
         r.raise_for_status()
         return r.json()
 
@@ -230,9 +232,11 @@ class SecData:
         """(CIK, SEC name) for a Yahoo symbol, or None. A symbol from another exchange (SHOP.TO) is
         matched on its ticker and only counts if the names agree."""
         if not self._tickers or time.time() - self._tickers[0] > TICKERS_TTL:
-            data = self._get(TICKERS_URL) or {}
+            tickers = {row["ticker"].upper(): (row["cik_str"], row["title"]) for row in (self._get(TICKERS_URL) or {}).values()}
+            if not tickers:  # never keep an empty list: every company would look like a non-filer for a week
+                raise ValueError("EDGAR's list of tickers came back empty")
             with self._lock:
-                self._tickers = (time.time(), {row["ticker"].upper(): (row["cik_str"], row["title"]) for row in data.values()})
+                self._tickers = (time.time(), tickers)
         base, _, suffix = yahoo_symbol.upper().partition(".")
         found = self._tickers[1].get(base)
         if not found or (suffix and not same_company(name, found[1])):
@@ -240,27 +244,30 @@ class SecData:
         return found
 
     def income_statement(self, yahoo_symbol, name=None, splits=()):
-        """The filed income statement for a Yahoo symbol (see parse_company_facts), or None if the company
-        doesn't file with the SEC or EDGAR couldn't be reached. Only the parsed statement is kept: the
-        filings themselves run to several megabytes."""
+        """The filed income statement for a Yahoo symbol: {"statement": see parse_company_facts, or None;
+        "status": "ok", "not_filed" (the company doesn't file with the SEC) or "unavailable" (EDGAR
+        couldn't be reached; "detail" says why)}. Only the parsed statement is kept: the filings
+        themselves run to several megabytes."""
         key = None
         try:
             found = self.company(yahoo_symbol, name)
             if not found:
-                return None
+                return {"statement": None, "status": "not_filed"}
             key = (found[0], tuple(splits))
             cached = self._facts.get(key)
             if cached and time.time() - cached[0] < FACTS_TTL:
-                return cached[1]
+                return {"statement": cached[1], "status": "ok" if cached[1] else "not_filed"}
             data = self._get(FACTS_URL.format(found[0]))
         except (requests.RequestException, ValueError) as exc:
             log.warning("EDGAR request for %s failed: %s", yahoo_symbol, exc)
             cached = self._facts.get(key) if key else None
-            return cached[1] if cached else None
+            if cached and cached[1]:
+                return {"statement": cached[1], "status": "ok"}
+            return {"statement": None, "status": "unavailable", "detail": str(exc)}
         statement = parse_company_facts(data, splits) if data else None
         with self._lock:
             self._facts[key] = (time.time(), statement)
-        return statement
+        return {"statement": statement, "status": "ok" if statement else "not_filed"}
 
 
 def get_sec():

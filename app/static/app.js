@@ -2958,12 +2958,20 @@
       $("fin-note").textContent = filed
         ? `As filed with the US SEC in the company's reports (10-K, 10-Q, 20-F or 40-F), in ${cur}; restated figures replace the originals. Fourth quarters are the year less the first three, so their per-share figures and share counts are left blank. EBIT is pretax income plus interest expense; EPS and share counts are adjusted for later splits. TTM is the last four quarters.${fromYahoo}`
         : {
-          income: `From Yahoo Finance, in ${cur}, as standardized from the company's filings. Fiscal years are named for the year they end in; TTM is the twelve months to the latest quarter.`,
+          income: `From Yahoo Finance, in ${cur}, as standardized from the company's filings. Fiscal years are named for the year they end in; TTM is the twelve months to the latest quarter.${whyYahoo(d)}`,
           balance: `From Yahoo Finance, in ${fc}: balances at each period's end.`,
           cash: `From Yahoo Finance, in ${fc}, as standardized from the company's filings. Free cash flow is operating cash flow less capital expenditure.`,
           margins: "Each figure as a share of total revenue for the same period. FCF is free cash flow: operating cash flow less capital expenditure.",
           valuation: `Market cap and enterprise value in ${tc}. Past periods use the share price at the period's end and the twelve months to it${co.freq === "quarterly" ? " (four quarters added up, so the earliest quarters have none)" : ""}; Current uses today's price and the TTM. Enterprise value is market cap plus debt and minority interest, less cash and short-term investments. A dash means a figure is missing or negative.${converted}`,
         }[co.view];
+    }
+    // Why the income statement shows Yahoo's few years rather than ten from SEC filings.
+    function whyYahoo(d) {
+      const f = d.filings || {};
+      if (f.status === "off") return " Ten years come from SEC filings, which are switched off on this server: set SEC_CONTACT in its .env file and reload the app.";
+      if (f.status === "not_filed") return ` ${d.symbol} doesn't file reports with the US SEC, so these are all the years available.`;
+      if (f.status === "unavailable") return ` The SEC's EDGAR service couldn't be reached for ten years of filings (${f.detail || "no answer"}); reload to try again.`;
+      return f.status === "ok" ? " The company's SEC filings don't go back further than this." : "";
     }
     $("fin-range").addEventListener("input", (e) => {
       const range = e.currentTarget, t = co.data?.financials?.[co.freq]?.[co.view];

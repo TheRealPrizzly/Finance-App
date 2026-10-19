@@ -2,7 +2,7 @@ from datetime import date
 
 import pytest
 
-from app.sec import parse_company_facts, same_company
+from app.sec import SecData, parse_company_facts, same_company
 
 FY = [("2023-01-01", "2023-12-31"), ("2024-01-01", "2024-12-31")]
 Q24 = [("2024-01-01", "2024-03-31"), ("2024-04-01", "2024-06-30"), ("2024-07-01", "2024-09-30"), ("2024-10-01", "2024-12-31")]
@@ -109,3 +109,65 @@ def test_same_company():
     assert same_company("Royal Bank of Canada", "ROYAL BANK OF CANADA")
     assert not same_company("TELUS Corporation", "AT&T INC.")
     assert not same_company(None, "AT&T INC.")
+
+
+class FakeResponse:
+    def __init__(self, status, body=None):
+        self.status_code, self.body = status, body
+
+    @property
+    def ok(self):
+        return self.status_code < 400
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            import requests
+            raise requests.HTTPError(f"HTTP {self.status_code}")
+
+    def json(self):
+        return self.body
+
+
+class FakeSession:
+    def __init__(self, answers):
+        self.answers, self.headers, self.asked = answers, {}, []
+
+    def get(self, url, timeout=None):
+        self.asked.append(url)
+        answer = self.answers[url]
+        return answer.pop(0) if isinstance(answer, list) else answer
+
+
+TICKERS = "https://www.sec.gov/files/company_tickers.json"
+AAPL_FACTS = "https://data.sec.gov/api/xbrl/companyfacts/CIK0000320193.json"
+
+
+def sec_with(answers):
+    sec = SecData("me@example.com")
+    sec.session = FakeSession(answers)
+    return sec
+
+
+def test_statement_and_status():
+    sec = sec_with({TICKERS: FakeResponse(200, {"0": {"cik_str": 320193, "ticker": "AAPL", "title": "Apple Inc."},
+                                                "1": {"cik_str": 1, "ticker": "T", "title": "AT&T INC."}}),
+                    AAPL_FACTS: FakeResponse(200, FILINGS)})
+    found = sec.income_statement("AAPL", "Apple Inc.")
+    assert found["status"] == "ok" and found["statement"]["annual"]["TotalRevenue"]["2024-12-31"] == 120.0
+    assert sec.income_statement("T.TO", "TELUS Corporation") == {"statement": None, "status": "not_filed"}
+    assert sec.income_statement("XEQT.TO", "iShares Core Equity ETF") == {"statement": None, "status": "not_filed"}
+    sec.income_statement("AAPL", "Apple Inc.")
+    assert sec.session.asked.count(AAPL_FACTS) == 1  # kept for a while
+
+
+def test_an_empty_ticker_list_is_not_kept():
+    sec = sec_with({TICKERS: [FakeResponse(200, {}), FakeResponse(200, {"0": {"cik_str": 320193, "ticker": "AAPL", "title": "Apple Inc."}})],
+                    AAPL_FACTS: FakeResponse(200, FILINGS)})
+    first = sec.income_statement("AAPL")
+    assert first["status"] == "unavailable" and "empty" in first["detail"]
+    assert sec.income_statement("AAPL")["status"] == "ok"  # asked again, rather than every company being a non-filer for a week
+
+
+def test_a_refusal_says_so():
+    found = sec_with({TICKERS: FakeResponse(403)}).income_statement("AAPL")
+    assert found == {"statement": None, "status": "unavailable", "detail": "HTTP 403: EDGAR refused the request"}

@@ -535,13 +535,18 @@ def api_research_company(symbol):
         fx_now = (market.quotes([pair]).get(pair) or {}).get("price")
         fx_closes = market.history(pair, date.today() - timedelta(days=FX_HISTORY_YEARS * 366))[1]
     rate = (market.quotes([RISK_FREE_SYMBOL]).get(RISK_FREE_SYMBOL) or {}).get("price")
-    sec = get_sec() if fundamentals and any(fundamentals.get(f) for f in ("annual", "quarterly")) else None
-    filed = sec.income_statement(ysym, (stats.get("profile") or {}).get("name"), splits) if sec else None
+    # Ten years of income statements from SEC filings; "filings" tells the page why not, if not.
+    filed, filings = None, {"status": "off"}
+    if fundamentals and any(fundamentals.get(f) for f in ("annual", "quarterly")):
+        sec = get_sec()
+        if sec:
+            filings = sec.income_statement(ysym, (stats.get("profile") or {}).get("name"), splits)
+            filed = filings.pop("statement", None)
     report = co.company_report(
         fundamentals, facts, stats, [(d, c) for d, _, _, _, c, _ in daily], dividends,
         fx_now, list(fx_closes.items()), rate / 100 if rate else None, filed=filed,
     )
-    return jsonify(symbol=ysym, risk_free_symbol=RISK_FREE_SYMBOL, **report)
+    return jsonify(symbol=ysym, risk_free_symbol=RISK_FREE_SYMBOL, filings=filings, **report)
 
 
 # -- transactions -------------------------------------------------------------------------
