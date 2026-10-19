@@ -313,12 +313,23 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
 .fin-table thead th small { display: block; font-weight: 500; text-transform: none; letter-spacing: 0; }
 .fin-table th:first-child, .fin-table td:first-child { position: sticky; left: 0; z-index: 1; background: var(--surface);
   width: 230px; min-width: 150px; white-space: normal; }
-.fin-slider { display: flex; align-items: center; gap: 12px; margin: 0 0 8px; }
+/* The period slider: a plain track with a round handle (a filled bar read as a progress bar), between
+   buttons that page through the periods. */
+.fin-slider { display: flex; align-items: center; gap: 8px 12px; margin: 0 0 10px; padding: 8px 10px; border-radius: 10px; background: var(--surface-2); }
 .fin-slider[hidden] { display: none; }
-.fin-slider input[type="range"] { flex: 1; padding: 0; border: 0; background: none; accent-color: var(--accent); min-width: 120px; }
+.fin-slider .btn:disabled { opacity: .45; cursor: not-allowed; }
+.fin-slider input[type="range"] { -webkit-appearance: none; appearance: none; flex: 1; min-width: 100px; height: 24px; padding: 0; border: 0;
+  background: none; cursor: grab; }
+.fin-slider input[type="range"]:active { cursor: grabbing; }
 .fin-slider input[type="range"]:focus { outline: none; }
-.fin-slider input[type="range"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.fin-slider .hint { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.fin-slider input[type="range"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.fin-slider input[type="range"]::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: var(--border); }
+.fin-slider input[type="range"]::-moz-range-track { height: 6px; border-radius: 3px; background: var(--border); }
+.fin-slider input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; margin-top: -7px;
+  border-radius: 50%; background: var(--accent); border: 3px solid var(--surface); box-shadow: 0 0 0 1px var(--accent); }
+.fin-slider input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--accent);
+  border: 3px solid var(--surface); box-shadow: 0 0 0 1px var(--accent); }
+.fin-range-text { font-size: .85rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .fin-table tbody th { font-size: inherit; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--text); }
 .fin-table tbody tr:hover > :first-child { background: var(--surface-2); }
 .fin-table tr.total > * { font-weight: 650; }
@@ -515,7 +526,11 @@ details summary { cursor: pointer; font-weight: 600; font-size: .9rem; margin: 1
   .head-actions .account-filter { width: 100%; }
   .symbol-form { width: 100%; }
   .fin-table th:first-child, .fin-table td:first-child { width: 150px; }
-  .fin-slider { flex-wrap: wrap; gap: 4px 12px; }
+  .fin-slider { flex-wrap: wrap; }  /* Earlier, the text and Later in a row, the slider under them */
+  #fin-prev { order: 0; }
+  .fin-range-text { order: 1; flex: 1; text-align: center; white-space: normal; }
+  #fin-next { order: 2; }
+  .fin-slider input[type="range"] { order: 3; flex-basis: 100%; }
   .symbol-form input, .compare-form input { flex: 1; width: auto; }
   .chart-lg { height: 320px; }
   .chart-volume { height: 100px; }

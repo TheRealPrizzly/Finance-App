@@ -2918,7 +2918,7 @@
     function fitPeriods() {
       const width = $("fin-table").parentElement.clientWidth || 900;
       const narrow = width < 560;
-      return Math.max(2, Math.floor((width - (narrow ? 150 : 230)) / (narrow ? 92 : 104)));
+      return Math.max(2, Math.floor((width - (narrow ? 140 : 210)) / (narrow ? 82 : 90)));
     }
     function renderFinancials() {
       const d = co.data, fin = d.financials;
@@ -2944,7 +2944,9 @@
           range.value = String(lo);
           range.dataset.key = key;
           range.setAttribute("aria-valuetext", `${periodName(t.columns[lo])} to ${periodName(t.columns[hi - 1])}`);
-          $("fin-range-text").textContent = `${periodName(t.columns[lo])} – ${periodName(t.columns[hi - 1])} of ${n} ${co.freq === "annual" ? "periods" : "quarters"}`;
+          $("fin-range-text").innerHTML = `Showing <strong>${esc(periodName(t.columns[lo]))} – ${esc(periodName(t.columns[hi - 1]))}</strong> of ${n} ${co.freq === "annual" ? "periods" : "quarters"}`;
+          $("fin-prev").disabled = lo === 0;
+          $("fin-next").disabled = hi === n;
           $("fin-slider").hidden = false;
         }
         $("fin-table").innerHTML = `<thead><tr><th scope="col">${statement ? `In ${esc(cur)}` : esc(VIEW_NAMES[co.view])}</th>${t.columns.slice(lo, hi).map((c) => colHead(c, t.source === "sec" && c.source === "yahoo")).join("")}</tr></thead>
@@ -2979,6 +2981,16 @@
       finBack[range.dataset.key] = Number(range.max) - Number(range.value);
       renderFinancials();
     });
+    // The buttons move a whole screen of periods at a time.
+    const finPage = (dir) => {
+      const range = $("fin-range");
+      const fit = co.data.financials[co.freq][co.view].columns.length - Number(range.max);
+      const lo = Math.min(Math.max(Number(range.value) + dir * fit, 0), Number(range.max));
+      finBack[range.dataset.key] = Number(range.max) - lo;
+      renderFinancials();
+    };
+    $("fin-prev").addEventListener("click", () => finPage(-1));
+    $("fin-next").addEventListener("click", () => finPage(1));
     let finResize = 0;
     window.addEventListener("resize", () => {
       cancelAnimationFrame(finResize);
