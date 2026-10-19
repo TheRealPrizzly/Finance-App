@@ -675,9 +675,34 @@ def test_research_company(client, market):
     assert round(valuation["ev"][0]) == 1540 + 520  # converted at the year-end rate
     assert round(data["returns"]["wacc"]["risk_free"], 4) == 0.04
     assert data["dividends"]["streak"] == 4 and data["ownership"]["institutions_count"] == 812
+    assert data["financials"]["annual"]["income"]["source"] == "yahoo"  # SEC filings are off in tests
     assert client.get("/api/research/MSFT/company").status_code == 502  # Yahoo sent nothing
     assert client.get("/api/research/NOPE/company").status_code == 404
     assert client.get("/api/research/BAD%20SYMBOL/company").status_code == 400
+
+
+def test_research_company_uses_sec_filings(app, client, market):
+    from datetime import date
+
+    from test_company import FACTS, FUNDAMENTALS, STATS
+
+    class FakeSec:
+        def income_statement(self, symbol, name=None, splits=()):
+            self.asked = (symbol, name, splits)
+            return {"currency": "USD", "source": "sec", "annual": {"TotalRevenue": {f"{y}-12-31": 1.0 for y in range(2015, 2026)}},
+                    "quarterly": {}, "trailing": {}}
+
+    sec = app.config["SEC"] = FakeSec()
+    market.fundamentals_by_symbol["AAPL"] = FUNDAMENTALS
+    market.facts["AAPL"] = FACTS
+    market.stats["AAPL"] = {**STATS, "currency": "USD", "profile": {"name": "Apple Inc."}}
+    market.candles["AAPL"] = ("USD", [(date(2025, 12, 31), 1, 1, 1, 1, 1)], [(date(2020, 8, 31), 4.0)], [], [])
+    login(client)
+    income = client.get("/api/research/AAPL/company").get_json()["financials"]["annual"]["income"]
+    assert income["source"] == "sec" and len(income["columns"]) == 11
+    assert income["columns"][-1] == {"kind": "ttm", "date": "2026-03-31", "source": "yahoo"}  # newer than the filings
+    assert income["rows"][0]["values"][-1] is None  # the sources disagree on revenue, so Yahoo's isn't mixed in
+    assert sec.asked == ("AAPL", "Apple Inc.", [(date(2020, 8, 31), 4.0)])
 
 
 def test_research_needs_sign_in(client):

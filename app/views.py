@@ -21,6 +21,7 @@ from .macro import (
     FEAR_GREED_COMPARE, FEAR_GREED_INDICATORS, FEAR_GREED_PAGE, FEAR_GREED_URL, Unavailable, get_macro,
 )
 from .market import INTRADAY_SPANS, MarketData, get_market
+from .sec import get_sec
 
 bp = Blueprint("views", __name__)
 PAGE_SIZE = 100
@@ -525,7 +526,7 @@ def api_research_company(symbol):
     if fundamentals is None and facts is None:
         return jsonify(error=f"Couldn't load the company figures for {ysym}."), 502
     stats = dict(market.key_stats(ysym) or {})
-    currency, daily, _, dividends = market.daily_candles(ysym)
+    currency, daily, splits, dividends = market.daily_candles(ysym)
     stats["currency"] = stats.get("currency") or currency
     reporting = (facts or {}).get("financial_currency") or (fundamentals or {}).get("currency")
     fx_now, fx_closes = 1.0, {}
@@ -534,9 +535,11 @@ def api_research_company(symbol):
         fx_now = (market.quotes([pair]).get(pair) or {}).get("price")
         fx_closes = market.history(pair, date.today() - timedelta(days=FX_HISTORY_YEARS * 366))[1]
     rate = (market.quotes([RISK_FREE_SYMBOL]).get(RISK_FREE_SYMBOL) or {}).get("price")
+    sec = get_sec() if fundamentals and any(fundamentals.get(f) for f in ("annual", "quarterly")) else None
+    filed = sec.income_statement(ysym, (stats.get("profile") or {}).get("name"), splits) if sec else None
     report = co.company_report(
         fundamentals, facts, stats, [(d, c) for d, _, _, _, c, _ in daily], dividends,
-        fx_now, list(fx_closes.items()), rate / 100 if rate else None,
+        fx_now, list(fx_closes.items()), rate / 100 if rate else None, filed=filed,
     )
     return jsonify(symbol=ysym, risk_free_symbol=RISK_FREE_SYMBOL, **report)
 

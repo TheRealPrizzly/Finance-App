@@ -312,10 +312,17 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
 .fin-table thead th { vertical-align: bottom; }
 .fin-table thead th small { display: block; font-weight: 500; text-transform: none; letter-spacing: 0; }
 .fin-table th:first-child, .fin-table td:first-child { position: sticky; left: 0; z-index: 1; background: var(--surface);
-  min-width: 190px; white-space: normal; }
-.fin-table tbody tr:hover td:first-child { background: var(--surface-2); }
-.fin-table tr.total td { font-weight: 650; }
-.fin-table tr.sub td:first-child { padding-left: 26px; color: var(--muted); }
+  width: 230px; min-width: 150px; white-space: normal; }
+.fin-slider { display: flex; align-items: center; gap: 12px; margin: 0 0 8px; }
+.fin-slider[hidden] { display: none; }
+.fin-slider input[type="range"] { flex: 1; padding: 0; border: 0; background: none; accent-color: var(--accent); min-width: 120px; }
+.fin-slider input[type="range"]:focus { outline: none; }
+.fin-slider input[type="range"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.fin-slider .hint { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.fin-table tbody th { font-size: inherit; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--text); }
+.fin-table tbody tr:hover > :first-child { background: var(--surface-2); }
+.fin-table tr.total > * { font-weight: 650; }
+.fin-table tr.sub > :first-child { padding-left: 26px; color: var(--muted); }
 .fin-table td.empty { color: var(--muted); }
 .own-split { display: flex; gap: 2px; height: 14px; border-radius: 4px; overflow: hidden; margin: 4px 0 10px; }
 .own-split span { background: var(--seg); min-width: 2px; }
@@ -507,6 +514,8 @@ details summary { cursor: pointer; font-weight: 600; font-size: .9rem; margin: 1
   .head-actions { width: 100%; }
   .head-actions .account-filter { width: 100%; }
   .symbol-form { width: 100%; }
+  .fin-table th:first-child, .fin-table td:first-child { width: 150px; }
+  .fin-slider { flex-wrap: wrap; gap: 4px 12px; }
   .symbol-form input, .compare-form input { flex: 1; width: auto; }
   .chart-lg { height: 320px; }
   .chart-volume { height: 100px; }

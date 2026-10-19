@@ -43,7 +43,7 @@ Open http://localhost:5000. When `DEV_LOGIN=true`, you can click **Continue as l
 - **Holdings-only mode**: if you import trades but no deposits or withdrawals, buys are treated as contributions and cash is left out of the total.
 - **Net worth**: a portfolio or a set of accounts counts at its dashboard total value, at live prices. Other assets, such as a home, count at the value you enter. Mortgage balances are subtracted.
 - **Mortgages**: interest is compounded semi-annually (the Canadian standard for fixed rates) or monthly. Without a set payment, the payment is the one that pays the balance off over the amortization; accelerated bi-weekly and weekly payments are the monthly payment split in two or four. If you enter a balance from a statement, the projection starts from it. Estimates assume the current rate until the mortgage is paid off. With **Continued contributions** on the payback chart, once a mortgage is paid off its payments go to the remaining mortgage with the highest rate, and the chart shows how much sooner they are all paid off and the interest saved.
-- **Company figures** (Research tab): statements are Yahoo Finance's standardized figures, four fiscal years and five quarters, in the company's reporting currency. Past valuation multiples use the market cap at each period's end (today's, scaled by the price and share count since) and the twelve months to it, converted into the trading currency at that day's exchange rate. Returns on capital use capital at each period's end. The WACC is an estimate: equity costs the 10-year US Treasury yield plus beta × a 5% equity risk premium, and debt costs its interest expense over total debt, after tax.
+- **Company figures** (Research tab): the income statement covers the last 10 fiscal years or 40 quarters, as filed with the US SEC (EDGAR's XBRL data), for companies that file there; a fourth quarter is its year less the first three, and periods newer than the latest filing come from Yahoo Finance. The other statements are Yahoo Finance's standardized figures, four fiscal years and five quarters, as is the income statement for companies that don't file with the SEC. All are in the company's reporting currency. Past valuation multiples use the market cap at each period's end (today's, scaled by the price and share count since) and the twelve months to it, converted into the trading currency at that day's exchange rate. Returns on capital use capital at each period's end. The WACC is an estimate: equity costs the 10-year US Treasury yield plus beta × a 5% equity risk premium, and debt costs its interest expense over total debt, after tax.
 - **Symbols**: CAD symbols without a suffix, such as `XEQT`, are matched to their TSX listing automatically (`XEQT.TO`). Symbols Yahoo doesn't know are valued at their last trade price.
 
 ## Deploy to PythonAnywhere (free)
@@ -70,6 +70,7 @@ The app runs at `https://<username>.pythonanywhere.com`. In the steps below, rep
    - `DEV_LOGIN=false`
    - `SESSION_COOKIE_SECURE=true`
    - `ALLOWED_EMAILS` (optional)
+   - `SEC_CONTACT`: your email address, which the SEC asks every EDGAR request to carry (optional; without it, income statements show 4 years instead of 10)
 4. **Create the web app** in the **Web** tab: Add a new web app → **Manual configuration** → **Python 3.13**. Then set:
    - **Source code:** `/home/<username>/Finance-App`
    - **Virtualenv:** `/home/<username>/Finance-App/.venv`
@@ -109,6 +110,8 @@ The app runs at `https://<username>.pythonanywhere.com`. In the steps below, rep
 | `app/portfolio.py` | Calculation engine (pure functions) |
 | `app/mortgage.py` | Mortgage payments and payoff projections (pure functions) |
 | `app/market.py` | Yahoo Finance client and caching |
+| `app/sec.py` | SEC EDGAR income statements and caching |
+| `app/company.py` | Research tab's Company figures (pure functions) |
 | `app/csv_io.py` | CSV import and export |
 | `app/views.py` | Pages and JSON API |
 | `app/auth.py` | Google sign-in, sessions and CSRF |

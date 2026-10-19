@@ -191,6 +191,10 @@
           <button type="button" data-freq="quarterly" aria-pressed="false">Quarterly</button>
         </div>
       </div>
+      <div class="fin-slider" id="fin-slider" hidden>
+        <input type="range" id="fin-range" min="0" max="0" step="1" value="0" aria-label="Periods shown" aria-describedby="fin-range-text">
+        <span class="hint" id="fin-range-text"></span>
+      </div>
       <div class="table-wrap"><table class="table compact fin-table" id="fin-table"></table></div>
       <p class="hint co-note" id="fin-note"></p>
     </div>

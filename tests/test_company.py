@@ -188,3 +188,41 @@ def test_no_wacc_without_ebit():
     assert [p["roe"] for p in r["points"]] == [0.2, 150 / 800, pytest.approx(170 / 800)]
     assert all(p["roic"] is None and p["roce"] is None for p in r["points"])
     assert r["wacc"] is None and r["spread"] is None
+
+
+def test_income_statement_comes_from_sec_filings_when_they_go_back_further():
+    filed = {"currency": "USD", "source": "sec",
+             "annual": {"TotalRevenue": {f"{y}-12-31": 100.0 + y for y in range(2012, 2026)}},
+             "quarterly": {"TotalRevenue": {"2026-03-31": 300.0}}, "trailing": {"TotalRevenue": {"2026-03-31": 1300.0}}}
+    fin = co.company_report(FUNDAMENTALS, FACTS, STATS, CLOSES, PAID, 1.40, FX, 0.04, TODAY, filed=filed)["financials"]
+    income = fin["annual"]["income"]
+    assert income["source"] == "sec" and income["currency"] == "USD"
+    assert [c["date"][:4] for c in income["columns"]] == [str(y) for y in range(2016, 2026)] + ["2026"]  # 10 years and the TTM
+    assert income["columns"][-1]["kind"] == "ttm" and income["rows"][0]["values"][-1] == 1300.0
+    assert fin["quarterly"]["income"]["source"] == "yahoo"  # one filed quarter against Yahoo's five
+    assert fin["annual"]["balance"]["columns"][0]["date"] == "2024-12-31"  # the other statements stay on Yahoo
+
+
+def test_newer_yahoo_periods_follow_the_filings_where_the_sources_agree():
+    years = range(2015, 2025)
+    filed = {"currency": "USD", "source": "sec", "quarterly": {}, "trailing": {},
+             "annual": {"TotalRevenue": {f"{y}-12-28": 1000.0 for y in years},  # 52-week years ending a few days early
+                        "DilutedEPS": {f"{y}-12-28": 0.18 for y in years}}}
+    income = co.company_report(FUNDAMENTALS, FACTS, STATS, CLOSES, PAID, 1.40, FX, 0.04, TODAY, filed=filed)["financials"]["annual"]["income"]
+    assert [(c["date"], c["source"]) for c in income["columns"][-3:]] == [
+        ("2024-12-28", "sec"), ("2025-12-31", "yahoo"), ("2026-03-31", "yahoo")]  # Yahoo's FY2025 and TTM
+    rows = {r["key"]: r["values"] for r in income["rows"]}
+    assert rows["TotalRevenue"][-2:] == [1200, 1250]  # revenue agrees on 2024 (1,000 both), so Yahoo's newer years join
+    assert rows["DilutedEPS"][-3:] == [0.18, None, None]  # EPS doesn't (0.89 against 0.18): left blank
+
+
+def test_a_filed_ttm_borrows_what_it_lacks_from_yahoos_for_the_same_quarter():
+    years = range(2015, 2026)
+    filed = {"currency": "USD", "source": "sec", "quarterly": {},
+             "annual": {"NetIncome": {f"{y}-12-31": 150.0 for y in years}},
+             "trailing": {"NetIncome": {"2026-03-28": 170.0}, "TotalRevenue": {"2026-03-28": 1300.0}}}
+    income = co.company_report(FUNDAMENTALS, FACTS, STATS, CLOSES, PAID, 1.40, FX, 0.04, TODAY, filed=filed)["financials"]["annual"]["income"]
+    rows = {r["key"]: r["values"] for r in income["rows"]}
+    assert income["columns"][-1] == {"kind": "ttm", "date": "2026-03-28", "source": "sec"}
+    assert rows["NetIncome"][-1] == 170.0 and rows["TotalRevenue"][-1] == 1300.0  # the filings' own
+    assert rows["EBIT"][-1] == 250  # missing from the filings: Yahoo's TTM, as nothing contradicts it

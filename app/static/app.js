@@ -2878,10 +2878,10 @@
     const monthYear = (iso) => dayText(iso, { month: "short", year: "numeric" });
     const periodName = (c) => (c.kind === "annual" ? `FY${c.date.slice(0, 4)}` : c.kind === "quarterly" ? monthYear(c.date)
       : c.kind === "ttm" ? "TTM" : "Current");
-    function colHead(c) {
+    function colHead(c, marked = false) {
       const sub = c.kind === "annual" ? dayText(c.date) : c.kind === "quarterly" ? "Quarter"
         : c.kind === "ttm" ? `to ${monthYear(c.date)}` : "Today";
-      return `<th class="num" scope="col">${esc(periodName(c))}<small>${esc(sub)}</small></th>`;
+      return `<th class="num" scope="col">${esc(periodName(c))}<small>${esc(sub)}${marked ? " · Yahoo" : ""}</small></th>`;
     }
 
     const coCharts = {};
@@ -2912,9 +2912,18 @@
 
     // Financials: one statement, the margins or the valuation multiples at a time, annual or quarterly.
     const VIEW_NAMES = { income: "Income statement", balance: "Balance sheet", cash: "Cash flow", margins: "Margins", valuation: "Valuation" };
+    // Only as many periods as fit are shown, beside the always-visible line item names; a slider
+    // moves along the rest. Each statement and period type keeps its place, starting at the latest.
+    const finBack = {};  // "view|freq" -> periods hidden after the last one shown
+    function fitPeriods() {
+      const width = $("fin-table").parentElement.clientWidth || 900;
+      const narrow = width < 560;
+      return Math.max(2, Math.floor((width - (narrow ? 150 : 230)) / (narrow ? 92 : 104)));
+    }
     function renderFinancials() {
       const d = co.data, fin = d.financials;
       const tc = d.currency, fc = d.financial_currency || tc;
+      $("fin-slider").hidden = true;
       if (!fin) {
         $("fin-table").innerHTML = "";
         $("fin-note").textContent = `Yahoo Finance has no financial statements for ${d.symbol}. Funds, indexes and crypto don't file them.`;
@@ -2922,20 +2931,51 @@
       }
       const t = fin[co.freq][co.view];
       const statement = ["income", "balance", "cash"].includes(co.view);
-      $("fin-table").innerHTML = !t.rows.length
-        ? `<tbody><tr><td class="muted">Yahoo Finance has no ${esc(VIEW_NAMES[co.view].toLowerCase())} figures for ${esc(d.symbol)} by ${co.freq === "annual" ? "year" : "quarter"}.</td></tr></tbody>`
-        : `<thead><tr><th scope="col">${statement ? `In ${esc(fc)}` : esc(VIEW_NAMES[co.view])}</th>${t.columns.map(colHead).join("")}</tr></thead>
-          <tbody>${t.rows.map((r) => `<tr class="${r.style}"><td>${esc(r.label)}</td>${r.values.map((v) =>
+      const cur = t.currency || fc;
+      if (!t.rows.length) {
+        $("fin-table").innerHTML = `<tbody><tr><td class="muted">Yahoo Finance has no ${esc(VIEW_NAMES[co.view].toLowerCase())} figures for ${esc(d.symbol)} by ${co.freq === "annual" ? "year" : "quarter"}.</td></tr></tbody>`;
+      } else {
+        const n = t.columns.length, fit = Math.min(n, fitPeriods()), key = `${co.view}|${co.freq}`;
+        const back = Math.min(Math.max(finBack[key] || 0, 0), n - fit);
+        const lo = n - fit - back, hi = lo + fit;
+        if (fit < n) {
+          const range = $("fin-range");
+          range.max = String(n - fit);
+          range.value = String(lo);
+          range.dataset.key = key;
+          range.setAttribute("aria-valuetext", `${periodName(t.columns[lo])} to ${periodName(t.columns[hi - 1])}`);
+          $("fin-range-text").textContent = `${periodName(t.columns[lo])} – ${periodName(t.columns[hi - 1])} of ${n} ${co.freq === "annual" ? "periods" : "quarters"}`;
+          $("fin-slider").hidden = false;
+        }
+        $("fin-table").innerHTML = `<thead><tr><th scope="col">${statement ? `In ${esc(cur)}` : esc(VIEW_NAMES[co.view])}</th>${t.columns.slice(lo, hi).map((c) => colHead(c, t.source === "sec" && c.source === "yahoo")).join("")}</tr></thead>
+          <tbody>${t.rows.map((r) => `<tr class="${r.style}"><th scope="row">${esc(r.label)}</th>${r.values.slice(lo, hi).map((v) =>
             `<td class="num${v == null ? " empty" : ""}">${esc(cellText(v, r.fmt))}</td>`).join("")}</tr>`).join("")}</tbody>`;
+      }
       const converted = fc !== tc ? ` Figures reported in ${fc} are converted to ${tc} at the exchange rate of each period's end.` : "";
-      $("fin-note").textContent = {
-        income: `From Yahoo Finance, in ${fc}, as standardized from the company's filings. Fiscal years are named for the year they end in; TTM is the twelve months to the latest quarter.`,
-        balance: `From Yahoo Finance, in ${fc}: balances at each period's end.`,
-        cash: `From Yahoo Finance, in ${fc}, as standardized from the company's filings. Free cash flow is operating cash flow less capital expenditure.`,
-        margins: "Each figure as a share of total revenue for the same period. FCF is free cash flow: operating cash flow less capital expenditure.",
-        valuation: `Market cap and enterprise value in ${tc}. Past periods use the share price at the period's end and the twelve months to it${co.freq === "quarterly" ? " (four quarters added up, so the earliest quarters have none)" : ""}; Current uses today's price and the TTM. Enterprise value is market cap plus debt and minority interest, less cash and short-term investments. A dash means a figure is missing or negative.${converted}`,
-      }[co.view];
+      const filed = co.view === "income" && t.source === "sec";
+      const fromYahoo = filed && t.columns.some((c) => c.source === "yahoo")
+        ? " Periods marked Yahoo are newer than the company's latest SEC filing and come from Yahoo Finance; lines on which the two sources disagree are left blank there." : "";
+      $("fin-note").textContent = filed
+        ? `As filed with the US SEC in the company's reports (10-K, 10-Q, 20-F or 40-F), in ${cur}; restated figures replace the originals. Fourth quarters are the year less the first three, so their per-share figures and share counts are left blank. EBIT is pretax income plus interest expense; EPS and share counts are adjusted for later splits. TTM is the last four quarters.${fromYahoo}`
+        : {
+          income: `From Yahoo Finance, in ${cur}, as standardized from the company's filings. Fiscal years are named for the year they end in; TTM is the twelve months to the latest quarter.`,
+          balance: `From Yahoo Finance, in ${fc}: balances at each period's end.`,
+          cash: `From Yahoo Finance, in ${fc}, as standardized from the company's filings. Free cash flow is operating cash flow less capital expenditure.`,
+          margins: "Each figure as a share of total revenue for the same period. FCF is free cash flow: operating cash flow less capital expenditure.",
+          valuation: `Market cap and enterprise value in ${tc}. Past periods use the share price at the period's end and the twelve months to it${co.freq === "quarterly" ? " (four quarters added up, so the earliest quarters have none)" : ""}; Current uses today's price and the TTM. Enterprise value is market cap plus debt and minority interest, less cash and short-term investments. A dash means a figure is missing or negative.${converted}`,
+        }[co.view];
     }
+    $("fin-range").addEventListener("input", (e) => {
+      const range = e.currentTarget, t = co.data?.financials?.[co.freq]?.[co.view];
+      if (!t) return;
+      finBack[range.dataset.key] = Number(range.max) - Number(range.value);
+      renderFinancials();
+    });
+    let finResize = 0;
+    window.addEventListener("resize", () => {
+      cancelAnimationFrame(finResize);
+      finResize = requestAnimationFrame(() => { if (co.data && co.tab === "financials") renderFinancials(); });
+    });
 
     // Ownership: by holder type, the largest institutions or funds, and insiders.
     function hbar(v, max) {

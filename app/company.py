@@ -10,6 +10,7 @@ import bisect
 from datetime import date
 
 EQUITY_RISK_PREMIUM = 0.05  # assumed for the cost of equity in the WACC
+INCOME_PERIODS = {"annual": 10, "quarterly": 40}  # the income statement's history: 10 years either way
 
 # Statement lines: (Yahoo line item, label, format, style). Formats: "money" (reporting currency),
 # "eps" (per share), "shares", "pct". Styles: "total" for subtotals, "sub" for the items under them.
@@ -244,14 +245,66 @@ def valuation(fig, mkt, col):
     }
 
 
-def financials(fig, mkt, today):
+def _same_period(a, b):
+    """Whether two period ends are the same period (Apple's fiscal year ends on the last Saturday of
+    September, which Yahoo calls September 30)."""
+    return abs((date.fromisoformat(a) - date.fromisoformat(b)).days) <= 10
+
+
+def income_statement(fig, freq, filed=None):
+    """The income statement table for the last INCOME_PERIODS periods, with the TTM after the years.
+
+    With ``filed`` (SEC filings) going back further than Yahoo, the history comes from the filings,
+    and periods Yahoo has that the SEC doesn't yet are added after it (each column's "source" says
+    which). In those, a line is left blank where the two sources disagree on the periods they share:
+    Yahoo's EPS for an ADR is per ADR, not per share, and its EBIT is operating income."""
+    keys = [k for k, *_ in INCOME_STATEMENT]
+    yahoo_cols = [{**c, "source": "yahoo"} for c in fig.columns(freq, keys)]
+    sec = Figures(filed) if filed else None
+    sec_cols = [{**c, "source": "sec"} for c in sec.columns(freq, keys)] if sec else []
+    use_sec = len(sec_cols) > len(yahoo_cols)
+    base = sec_cols if use_sec else yahoo_cols
+    newer = [c for c in yahoo_cols if c["date"] > base[-1]["date"] and not _same_period(c["date"], base[-1]["date"])] if use_sec else []
+    cols = (base + newer)[-INCOME_PERIODS[freq]:]
+    if freq == "annual" and cols:
+        options = [{**t, "source": src} for t, src in ((sec.ttm_column(keys, sec_cols) if use_sec else None, "sec"),
+                                                        (fig.ttm_column(keys, yahoo_cols), "yahoo")) if t]
+        latest = max(options, key=lambda t: t["date"], default=None)
+        if latest and latest["date"] > cols[-1]["date"]:  # the filings' TTM when both run to the same quarter
+            cols.append(next((t for t in options if t["source"] == "sec" and _same_period(t["date"], latest["date"])), latest))
+
+    def agrees(key):
+        shared = [(sec.at(a, key), fig.at(b, key)) for a in sec_cols for b in yahoo_cols if _same_period(a["date"], b["date"])]
+        return all(abs(x - y) <= 0.02 * max(abs(x), abs(y)) for x, y in shared if x is not None and y is not None)
+
+    trusted = {key: agrees(key) for key in keys} if use_sec else {}
+    yahoo_ttm = fig.ttm_column(keys, yahoo_cols)
+
+    def value(col, key):
+        if col["source"] == "sec":
+            found = sec.at(col, key)
+            # A TTM through a fourth quarter has no per-share figures (they aren't filed for it): Yahoo's
+            # TTM to the same quarter fills them in, where the sources agree.
+            if found is None and col["kind"] == "ttm" and yahoo_ttm and _same_period(col["date"], yahoo_ttm["date"]) and trusted[key]:
+                found = fig.at(yahoo_ttm, key)
+            return found
+        return fig.at(col, key) if not use_sec or trusted[key] else None
+
+    return {"columns": cols, "rows": _rows(INCOME_STATEMENT, cols, value),
+            "source": "sec" if use_sec else "yahoo", "currency": (filed if use_sec else fig.data).get("currency")}
+
+
+def financials(fig, mkt, today, filed=None):
     """Each statement, the margins and the valuation multiples as tables for the annual and the
-    quarterly view: {"annual" | "quarterly": {name: {"columns": [...], "rows": [...]}}}."""
+    quarterly view: {"annual" | "quarterly": {name: {"columns": [...], "rows": [...]}}}. The income
+    statement comes from ``filed`` (SEC filings, see sec.parse_company_facts) when they go back further
+    than Yahoo's figures; its "source" says which ("sec" or "yahoo") and "currency" what it's in."""
     flows = [k for k, *_ in INCOME_STATEMENT + CASH_FLOW]
     out = {}
     for freq in ("annual", "quarterly"):
         income, balance, cash = (fig.columns(freq, [k for k, *_ in spec]) for spec in (INCOME_STATEMENT, BALANCE_SHEET, CASH_FLOW))
         ttm = fig.ttm_column(flows, income) if freq == "annual" else None
+        statement = income_statement(fig, freq, filed)
         with_ttm = lambda cols: cols + [ttm] if ttm else cols  # noqa: E731
         periods = sorted({c["date"] for c in income + cash})
         flow_cols = [{"kind": freq, "date": d} for d in periods]
@@ -261,7 +314,7 @@ def financials(fig, mkt, today):
         margin_vals = [margins(fig, c) for c in margin_cols]
         value_vals = [valuation(fig, mkt, c) for c in value_cols]
         out[freq] = {
-            "income": {"columns": with_ttm(income), "rows": _rows(INCOME_STATEMENT, with_ttm(income), fig.at)},
+            "income": statement,
             "balance": {"columns": balance, "rows": _rows(BALANCE_SHEET, balance, fig.at)},
             "cash": {"columns": with_ttm(cash), "rows": _rows(CASH_FLOW, with_ttm(cash), fig.at)},
             "margins": {"columns": margin_cols,
@@ -430,10 +483,11 @@ def ownership(facts):
     }
 
 
-def company_report(fundamentals, facts, stats, closes, paid_dividends, fx_now, fx_closes, risk_free, today=None):
+def company_report(fundamentals, facts, stats, closes, paid_dividends, fx_now, fx_closes, risk_free, today=None, filed=None):
     """Everything the Company section shows. ``stats`` is market.key_stats() (market cap, price,
     beta, forward dividend), ``closes`` and ``paid_dividends`` the split-adjusted daily closes and
-    dividends [(date, value)], ``fx_now``/``fx_closes`` the reporting-to-trading currency rate."""
+    dividends [(date, value)], ``fx_now``/``fx_closes`` the reporting-to-trading currency rate, and
+    ``filed`` the income statement from SEC filings, if the company files there."""
     today = today or date.today()
     stats = stats or {}
     fig = Figures(fundamentals or {})
@@ -442,7 +496,7 @@ def company_report(fundamentals, facts, stats, closes, paid_dividends, fx_now, f
     return {
         "currency": stats.get("currency"),
         "financial_currency": (facts or {}).get("financial_currency") or (fundamentals or {}).get("currency"),
-        "financials": financials(fig, mkt, today) if has_statements else None,
+        "financials": financials(fig, mkt, today, filed) if has_statements else None,
         "ownership": ownership(facts),
         "shares": share_counts(fig) if has_statements else None,
         "dividends": dividends(fig, facts, paid_dividends, stats.get("dividend"), stats.get("yield"), today),

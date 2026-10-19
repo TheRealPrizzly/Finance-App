@@ -96,6 +96,7 @@ def app(tmp_path, market):
         "GOOGLE_CLIENT_ID": "",
         "GOOGLE_CLIENT_SECRET": "",
         "MARKET": market,
+        "SEC": None,  # no EDGAR requests unless a test sets one
     })
     return app
 

@@ -26,6 +26,7 @@ def create_app(test_config=None):
         GOOGLE_CLIENT_SECRET=os.environ.get("GOOGLE_CLIENT_SECRET", ""),
         ALLOWED_EMAILS={e.strip().lower() for e in os.environ.get("ALLOWED_EMAILS", "").split(",") if e.strip()},
         DEV_LOGIN=_flag("DEV_LOGIN"),
+        SEC_CONTACT=os.environ.get("SEC_CONTACT", "").strip(),  # email the SEC asks EDGAR requests to carry
         BASE_CURRENCY="CAD",
         BENCHMARK_SYMBOL="VFV.TO",
         SESSION_COOKIE_HTTPONLY=True,
