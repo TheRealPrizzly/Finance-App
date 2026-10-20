@@ -222,6 +222,31 @@ def company_facts(summary):
     }
 
 
+def parse_estimates(summary):
+    """Analysts' average revenue and EPS estimates from a Yahoo quote summary's earningsTrend module:
+    {"annual" | "quarterly": [{"date": ISO period end, "revenue", "eps", "revenue_analysts",
+    "eps_analysts", "year_ago_eps"}], "revenue_currency", "eps_currency"}, oldest first. Yahoo has the
+    current and next fiscal year and quarter. A revenue of zero is a missing one."""
+    def raw(value):
+        return value.get("raw") if isinstance(value, dict) else value
+
+    out = {"annual": [], "quarterly": [], "revenue_currency": None, "eps_currency": None}
+    for t in ((summary or {}).get("earningsTrend") or {}).get("trend") or []:
+        freq = {"0y": "annual", "+1y": "annual", "0q": "quarterly", "+1q": "quarterly"}.get(t.get("period"))
+        revenue, eps = t.get("revenueEstimate") or {}, t.get("earningsEstimate") or {}
+        point = {"date": t.get("endDate"), "revenue": raw(revenue.get("avg")) or None, "eps": raw(eps.get("avg")),
+                 "revenue_analysts": raw(revenue.get("numberOfAnalysts")), "eps_analysts": raw(eps.get("numberOfAnalysts")),
+                 "year_ago_eps": raw(eps.get("yearAgoEps"))}
+        if not freq or not point["date"] or (point["revenue"] is None and point["eps"] is None):
+            continue
+        out[freq].append(point)
+        out["revenue_currency"] = out["revenue_currency"] or (revenue.get("revenueCurrency") if point["revenue"] else None)
+        out["eps_currency"] = out["eps_currency"] or (eps.get("earningsCurrency") if point["eps"] is not None else None)
+    for freq in ("annual", "quarterly"):
+        out[freq].sort(key=lambda p: p["date"])
+    return out
+
+
 class YahooClient:
     """Thin HTTP client for the unofficial Yahoo Finance endpoints."""
 
@@ -428,6 +453,7 @@ class MarketData:
         self._stats = {}  # yahoo symbol -> (fetched_at, key stats)
         self._fundamentals = {}  # yahoo symbol -> (fetched_at, parsed timeseries)
         self._facts = {}  # yahoo symbol -> (fetched_at, company facts)
+        self._estimates = {}  # yahoo symbol -> (fetched_at, analysts' estimates)
         self._lock = threading.Lock()
 
     # -- symbols ---------------------------------------------------------------
@@ -667,6 +693,21 @@ class MarketData:
         with self._lock:
             self._facts[yahoo_symbol] = (time.time(), facts)
         return facts
+
+    def estimates(self, yahoo_symbol):
+        """Analysts' revenue and EPS estimates; see parse_estimates(). None if Yahoo couldn't be reached."""
+        cached = self._estimates.get(yahoo_symbol)
+        if cached and time.time() - cached[0] < STATS_TTL:
+            return cached[1]
+        try:
+            summary = self.client.summary(yahoo_symbol, ["earningsTrend"])
+        except (requests.RequestException, ValueError) as exc:
+            log.warning("Estimates request for %s failed: %s", yahoo_symbol, exc)
+            return cached[1] if cached else None
+        estimates = parse_estimates(summary)
+        with self._lock:
+            self._estimates[yahoo_symbol] = (time.time(), estimates)
+        return estimates
 
     # -- FX --------------------------------------------------------------------
 

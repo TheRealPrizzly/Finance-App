@@ -2889,11 +2889,18 @@
     }
     const monthYear = (iso) => dayText(iso, { month: "short", year: "numeric" });
     const periodName = (c) => (c.kind === "annual" ? `FY${c.date.slice(0, 4)}` : c.kind === "quarterly" ? monthYear(c.date)
-      : c.kind === "ttm" ? "TTM" : "Current");
+      : c.kind === "ttm" ? "TTM" : c.kind === "estimate" ? `${periodName({ kind: c.freq, date: c.date })}E` : "Current");
+    // How many analysts an estimate column averages, for its tooltip.
+    function analystsText(c) {
+      const count = (n, what) => (n ? `${what} from ${n} analyst${n === 1 ? "" : "s"}` : "");
+      const parts = [count(c.revenue_analysts, "revenue"), count(c.eps_analysts, `EPS${c.eps_source === "nasdaq" ? " (Nasdaq)" : ""}`)].filter(Boolean);
+      return `Analysts' average estimate${parts.length ? `: ${parts.join(", ")}` : ""}`;
+    }
     function colHead(c, marked = false) {
       const sub = c.kind === "annual" ? dayText(c.date) : c.kind === "quarterly" ? "Quarter"
-        : c.kind === "ttm" ? `to ${monthYear(c.date)}` : "Today";
-      return `<th class="num" scope="col">${esc(periodName(c))}<small>${esc(sub)}${marked ? " · Yahoo" : ""}</small></th>`;
+        : c.kind === "ttm" ? `to ${monthYear(c.date)}` : c.kind === "estimate" ? "Estimate" : "Today";
+      const est = c.kind === "estimate";
+      return `<th class="num${est ? " est" : ""}" scope="col"${est ? ` title="${esc(analystsText(c))}"` : ""}>${esc(periodName(c))}<small>${esc(sub)}${marked ? " · Yahoo" : ""}</small></th>`;
     }
 
     const coCharts = {};
@@ -2948,10 +2955,13 @@
       // Where the figures come from, in plain sight: SEC filings, or Yahoo Finance and why.
       const periods = t.columns.filter((c) => c.kind === co.freq).length;
       const span = `${periods} ${co.freq === "annual" ? (periods === 1 ? "year" : "years") : (periods === 1 ? "quarter" : "quarters")}`;
-      $("fin-source").innerHTML = !statement ? "<strong>Source:</strong> Yahoo Finance"
+      const ests = t.columns.filter((c) => c.kind === "estimate");
+      const estSource = !ests.length ? ""
+        : ` · estimates for ${ests.length} ${co.freq === "annual" ? (ests.length === 1 ? "year" : "years") : (ests.length === 1 ? "quarter" : "quarters")} ahead from Yahoo Finance${ests.some((c) => c.eps_source === "nasdaq") ? " and Nasdaq" : ""}`;
+      $("fin-source").innerHTML = !statement ? `<strong>Source:</strong> Yahoo Finance${estSource}`
         : t.source === "sec"
-          ? `<strong>Source:</strong> SEC filings (EDGAR) · ${span}${t.columns.some((c) => c.source === "yahoo") ? " · the newest from Yahoo Finance" : ""}`
-          : `<strong>Source:</strong> Yahoo Finance · ${span}. ${esc(whyYahoo(d))}`;
+          ? `<strong>Source:</strong> SEC filings (EDGAR) · ${span}${t.columns.some((c) => c.source === "yahoo") ? " · the newest from Yahoo Finance" : ""}${estSource}`
+          : `<strong>Source:</strong> Yahoo Finance · ${span}${estSource}. ${esc(whyYahoo(d))}`;
       if (!t.rows.length) {
         $("fin-table").innerHTML = `<tbody><tr><td class="muted">Yahoo Finance has no ${esc(VIEW_NAMES[co.view].toLowerCase())} figures for ${esc(d.symbol)} by ${co.freq === "annual" ? "year" : "quarter"}.</td></tr></tbody>`;
       } else {
@@ -2973,8 +2983,8 @@
             $("fin-next").disabled = hi === n;
           }
           $("fin-table").innerHTML = `<thead><tr><th scope="col">${statement ? `In ${esc(cur)}` : esc(VIEW_NAMES[co.view])}</th>${t.columns.slice(lo, hi).map((c) => colHead(c, t.source === "sec" && c.source === "yahoo")).join("")}</tr></thead>
-            <tbody>${t.rows.map((r) => `<tr class="${r.style}"><th scope="row">${esc(r.label)}</th>${r.values.slice(lo, hi).map((v) =>
-              `<td class="num${v == null ? " empty" : ""}">${esc(cellText(v, r.fmt))}</td>`).join("")}</tr>`).join("")}</tbody>`;
+            <tbody>${t.rows.map((r) => `<tr class="${r.style}"><th scope="row">${esc(r.label)}</th>${r.values.slice(lo, hi).map((v, i) =>
+              `<td class="num${v == null ? " empty" : ""}${t.columns[lo + i].kind === "estimate" ? " est" : ""}">${esc(cellText(v, r.fmt))}</td>`).join("")}</tr>`).join("")}</tbody>`;
         };
         let fit = Math.min(n, fitPeriods());
         draw(fit);
@@ -2984,7 +2994,15 @@
       const fromYahoo = filed && t.columns.some((c) => c.source === "yahoo")
         ? ["Periods marked Yahoo are newer than the company's latest SEC filing and come from Yahoo Finance.",
           "Lines on which the two sources disagree are left blank there."] : [];
-      setNotes($("fin-note"), filed ? [
+      const estNotes = !ests.length ? [] : [
+        "Columns marked E (shaded) are analysts' average estimates, not reported figures; hover a heading for how many analysts.",
+        co.view === "valuation"
+          ? "Estimate columns use today's price and enterprise value on the estimated revenue and EPS."
+          : "Analysts estimate revenue and EPS only, so the other lines are blank there.",
+        "Analysts' EPS usually leaves out one-off items, so it can differ from the EPS the company will report.",
+        ests.some((c) => c.eps_source === "nasdaq") && "Yahoo Finance has estimates for this year and next; EPS further ahead is Nasdaq's consensus.",
+      ];
+      setNotes($("fin-note"), [...(filed ? [
         `As filed with the US SEC in the company's reports (10-K, 10-Q, 20-F or 40-F), in ${cur}; restated figures replace the originals.`,
         ...{
           income: ["Fourth quarters are the year less the first three, so their per-share figures and share counts are left blank.",
@@ -3008,7 +3026,7 @@
             "Enterprise value is market cap plus debt and minority interest, less cash and short-term investments.",
             "A dash means a figure is missing or negative.",
             fc !== tc && `Figures reported in ${fc} are converted to ${tc} at the exchange rate of each period's end.`],
-        }[co.view]);
+        }[co.view]), ...estNotes]);
     }
     // Why a statement shows Yahoo's few years rather than ten from SEC filings.
     function whyYahoo(d) {

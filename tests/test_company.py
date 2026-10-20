@@ -268,3 +268,67 @@ def test_balance_sheet_and_cash_flow_come_from_sec_filings_too():
         assert fin[name]["source"] == "sec"
         assert [c["date"][:4] for c in fin[name]["columns"] if c["source"] == "sec"] == [str(y) for y in range(2016, 2026)]
     assert all(c["kind"] != "ttm" for c in fin["balance"]["columns"])  # balances have no TTM
+
+
+def yahoo_estimates(eps_currency="USD", year_ago=1.44, first_year="2026-12-31"):
+    point = lambda d, rev, eps, ago=None: {"date": d, "revenue": rev, "eps": eps, "revenue_analysts": 20,  # noqa: E731
+                                           "eps_analysts": 25, "year_ago_eps": ago}
+    return {"annual": [point(first_year, 1400, 1.80, year_ago), point("2027-12-31", 1600, 2.10, 1.80)],
+            "quarterly": [point("2026-06-30", 340, 0.40), point("2026-09-30", 350, 0.45)],
+            "revenue_currency": "USD", "eps_currency": eps_currency}
+
+
+NASDAQ = {"annual": [{"month": m, "eps": e, "analysts": 4} for m, e in (("2026-12", 1.75), ("2027-12", 2.0), ("2028-12", 2.5), ("2029-12", 3.0))],
+          "quarterly": [{"month": m, "eps": e, "analysts": 3} for m, e in (("2026-06", 0.41), ("2026-09", 0.44), ("2026-12", 0.5))]}
+
+
+def with_estimates(analysts=None, forecast=NASDAQ):
+    return co.company_report(FUNDAMENTALS, FACTS, STATS, CLOSES, PAID, 1.40, FX, 0.04, TODAY,
+                             analysts=analysts or yahoo_estimates(), forecast=forecast)["financials"]
+
+
+def test_estimates_follow_the_reported_periods_up_to_four_years():
+    fin = with_estimates()
+    cols, rows = table({"financials": fin}, "annual", "income")
+    assert cols == ["a2024-12-31", "a2025-12-31", "t2026-03-31", "e2026-12-31", "e2027-12-31", "e2028-12-31", "e2029-12-31"]
+    assert rows["TotalRevenue"][3:] == [1400, 1600, None, None]  # analysts' revenue only from Yahoo, for two years
+    assert rows["DilutedEPS"][3:] == [1.80, 2.10, 2.5, 3.0]  # then Nasdaq's EPS, as it agrees with Yahoo's on 2026 and 2027
+    assert rows["NetIncome"][3:] == [None] * 4
+    est = fin["annual"]["income"]["columns"][3]
+    assert (est["freq"], est["revenue_analysts"], est["eps_analysts"], est["eps_source"]) == ("annual", 20, 25, "yahoo")
+    assert fin["annual"]["income"]["columns"][5]["eps_source"] == "nasdaq"
+    # Quarters: the income statement has no EPS line by quarter, so Nasdaq's EPS-only quarters add nothing
+    cols, rows = table({"financials": fin}, "quarterly", "income")
+    assert cols[-3:] == ["q2026-03-31", "e2026-06-30", "e2026-09-30"] and rows["TotalRevenue"][-2:] == [340, 350]
+    assert table({"financials": fin}, "annual", "margins")[0][-1] == "t2026-03-31"  # no estimated margins
+
+
+def test_forward_multiples_use_todays_price_and_enterprise_value():
+    cols, rows = table({"financials": with_estimates()}, "annual", "valuation")
+    assert cols[2:] == ["c2026-06-15", "e2026-12-31", "e2027-12-31", "e2028-12-31", "e2029-12-31"]
+    assert rows["ps"][3] == pytest.approx(2800 / (1400 * 1.40))
+    assert rows["ev_sales"][3] == pytest.approx((2800 + 200 * 1.40) / (1400 * 1.40))
+    assert rows["pe"][3] == pytest.approx(28 / (1.80 * 1.40)) and rows["pe"][5] == pytest.approx(28 / (2.5 * 1.40))
+    assert rows["earnings_yield"][6] == pytest.approx(3.0 * 1.40 / 28)
+    assert rows["ps"][5] is None and rows["market_cap"][3] is None  # no revenue that far ahead; no market cap for the future
+
+
+def test_eps_estimates_in_other_units_are_left_out():
+    # in another currency than the statements (an ADR's per-ADR EPS in USD, statements in TWD)
+    _, rows = table({"financials": with_estimates(yahoo_estimates(eps_currency="TWD"))}, "annual", "income")
+    assert rows["DilutedEPS"][3:] == [None, None] and rows["TotalRevenue"][3:] == [1400, 1600]
+    # Yahoo's EPS a year before is twice the reported 1.44 (per something else than a share): no EPS, nor Nasdaq's
+    cols, rows = table({"financials": with_estimates(yahoo_estimates(year_ago=2.88))}, "annual", "income")
+    assert len(cols) == 5 and rows["DilutedEPS"][3:] == [None, None]
+    # but analysts' adjusted EPS can be well off the reported one (Shopify's 1.43 against 0.94)
+    _, rows = table({"financials": with_estimates(yahoo_estimates(year_ago=2.1))}, "annual", "income")
+    assert rows["DilutedEPS"][3] == 1.80
+    # Nasdaq disagreeing with Yahoo on the years both have: only Yahoo's two years
+    off = {**NASDAQ, "annual": [{**r, "eps": r["eps"] * 1.5} for r in NASDAQ["annual"]]}
+    cols, _ = table({"financials": with_estimates(forecast=off)}, "annual", "income")
+    assert cols[3:] == ["e2026-12-31", "e2027-12-31"]
+
+
+def test_estimates_for_a_reported_year_are_dropped():
+    cols, _ = table({"financials": with_estimates(yahoo_estimates(first_year="2025-12-31"), forecast=None)}, "annual", "income")
+    assert cols[3:] == ["e2027-12-31"]  # Yahoo hadn't moved on from FY2025 yet

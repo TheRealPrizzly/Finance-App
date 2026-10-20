@@ -711,6 +711,26 @@ def test_research_company_uses_sec_filings(app, client, market):
     assert sec.asked == ("AAPL", "Apple Inc.", [(date(2020, 8, 31), 4.0)])
 
 
+def test_research_company_adds_analysts_estimates(app, client, market):
+    from test_company import CLOSES, FACTS, FUNDAMENTALS, NASDAQ, STATS, yahoo_estimates
+
+    class FakeNasdaq:
+        def forecast(self, symbol):
+            self.asked = symbol
+            return NASDAQ
+
+    nasdaq = app.config["NASDAQ"] = FakeNasdaq()
+    market.fundamentals_by_symbol["AAPL"] = FUNDAMENTALS
+    market.facts["AAPL"] = FACTS
+    market.stats["AAPL"] = STATS
+    market.candles["AAPL"] = ("CAD", [(d, c, c, c, c, 1000) for d, c in CLOSES], [], [], [])
+    market.estimates_by_symbol["AAPL"] = yahoo_estimates()
+    login(client)
+    income = client.get("/api/research/AAPL/company").get_json()["financials"]["annual"]["income"]
+    assert [c["date"] for c in income["columns"] if c["kind"] == "estimate"] == ["2026-12-31", "2027-12-31", "2028-12-31", "2029-12-31"]
+    assert nasdaq.asked == "AAPL"
+
+
 def test_research_needs_sign_in(client):
     assert client.get("/research").status_code == 302
     assert client.get("/api/research/AAPL").status_code == 401

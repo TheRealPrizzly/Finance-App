@@ -21,6 +21,7 @@ from .macro import (
     FEAR_GREED_COMPARE, FEAR_GREED_INDICATORS, FEAR_GREED_PAGE, FEAR_GREED_URL, Unavailable, get_macro,
 )
 from .market import INTRADAY_SPANS, MarketData, get_market
+from .nasdaq import get_nasdaq
 from .sec import get_sec
 
 bp = Blueprint("views", __name__)
@@ -542,9 +543,13 @@ def api_research_company(symbol):
         if sec:
             filings = sec.income_statement(ysym, (stats.get("profile") or {}).get("name"), splits)
             filed = filings.pop("statement", None)
+    # Analysts' estimates: Yahoo's for this year and next, Nasdaq's EPS further ahead for US listings.
+    analysts = market.estimates(ysym)
+    nasdaq = get_nasdaq() if analysts and (analysts["annual"] or analysts["quarterly"]) else None
     report = co.company_report(
         fundamentals, facts, stats, [(d, c) for d, _, _, _, c, _ in daily], dividends,
         fx_now, list(fx_closes.items()), rate / 100 if rate else None, filed=filed,
+        analysts=analysts, forecast=nasdaq.forecast(ysym) if nasdaq else None,
     )
     return jsonify(symbol=ysym, risk_free_symbol=RISK_FREE_SYMBOL, filings=filings, **report)
 

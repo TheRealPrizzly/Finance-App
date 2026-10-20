@@ -343,6 +343,9 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
 .fin-table tr.total > * { font-weight: 650; }
 .fin-table tr.sub > :first-child { padding-left: 26px; color: var(--muted); }
 .fin-table td.empty { color: var(--muted); }
+/* Analysts' estimates: shaded and italic, so they never read as reported figures */
+.fin-table .est { background: var(--surface-2); font-style: italic; }
+.fin-table thead th.est { font-style: normal; }
 .own-split { display: flex; gap: 2px; height: 14px; border-radius: 4px; overflow: hidden; margin: 4px 0 10px; }
 .own-split span { background: var(--seg); min-width: 2px; }
 .own-legend { list-style: none; margin: 0 0 4px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: .9rem; }

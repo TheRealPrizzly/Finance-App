@@ -7,10 +7,15 @@ figures are in the company's reporting currency, which can differ from the curre
 trade in (Shopify reports in USD but trades in CAD on the TSX); valuations convert them at the
 exchange rate of each period's end."""
 import bisect
-from datetime import date
+from datetime import date, timedelta
 
 EQUITY_RISK_PREMIUM = 0.05  # assumed for the cost of equity in the WACC
 STATEMENT_PERIODS = {"annual": 10, "quarterly": 40}  # the statements' history: 10 years either way
+ESTIMATE_PERIODS = {"annual": 4, "quarterly": 4}  # analysts' estimates after the last reported period
+EPS_AGREEMENT = 0.10  # how far Yahoo's and Nasdaq's consensus EPS can differ and still be the same estimate
+# Analysts' EPS leaves out one-off items, so it can be far from the EPS reported (Shopify's 1.43 for 2025
+# against 0.94); only a factor this big says it's per something else (a class B share, an ADR).
+EPS_UNITS_RATIO = 2.0
 
 # Statement lines: (Yahoo line item, label, format, style). Formats: "money" (reporting currency),
 # "eps" (per share), "shares", "pct". Styles: "total" for subtotals, "sub" for the items under them.
@@ -326,6 +331,87 @@ def financials(fig, mkt, today, filed=None):
     return out
 
 
+def _close(a, b, within=EPS_AGREEMENT):
+    return abs(a - b) <= within * max(abs(a), abs(b))
+
+
+def _month_end(month):
+    """"2026-09" -> "2026-09-30"."""
+    year, m = map(int, month.split("-"))
+    return (date(year + m // 12, m % 12 + 1, 1) - timedelta(days=1)).isoformat()
+
+
+def estimates(yahoo, nasdaq, currency, reported_eps):
+    """Analysts' revenue and EPS estimates by fiscal year and quarter: {"annual" | "quarterly":
+    [{"date", "revenue", "eps", "revenue_analysts", "eps_analysts", "eps_source"}]}, oldest first.
+
+    ``yahoo`` (market.parse_estimates) has the current and next year and quarter; ``nasdaq``
+    (nasdaq.parse_forecast) EPS further ahead, in US dollars, used only where it agrees with Yahoo's
+    on the periods both have. Estimates in a currency other than the statements' ``currency`` are
+    left out, as are EPS estimates when Yahoo's EPS a year before them is EPS_UNITS_RATIO or more
+    times the one reported then (``reported_eps``: {fiscal year end: diluted EPS}): the units differ."""
+    yahoo = yahoo or {"annual": [], "quarterly": []}
+    use_revenue, use_eps = yahoo.get("revenue_currency") == currency, yahoo.get("eps_currency") == currency
+    first = next((p for p in yahoo["annual"] if p["eps"] is not None and p["year_ago_eps"] is not None), None)
+    if first and use_eps:
+        before = [d for d in reported_eps if 330 <= (date.fromisoformat(first["date"]) - date.fromisoformat(d)).days <= 400]
+        reported, ago = (reported_eps[before[-1]], first["year_ago_eps"]) if before else (None, None)
+        use_eps = not (reported and ago and reported > 0 and ago > 0) or max(reported, ago) / min(reported, ago) < EPS_UNITS_RATIO
+    out = {}
+    for freq in ("annual", "quarterly"):
+        out[freq] = [{"date": p["date"], "revenue": p["revenue"] if use_revenue else None,
+                      "eps": p["eps"] if use_eps else None, "revenue_analysts": p["revenue_analysts"] if use_revenue else None,
+                      "eps_analysts": p["eps_analysts"] if use_eps else None, "eps_source": "yahoo" if use_eps and p["eps"] is not None else None}
+                     for p in yahoo[freq]]
+    if use_eps and currency == "USD" and nasdaq:
+        yahoo_eps = {(f, p["date"][:7]): p["eps"] for f in out for p in out[f] if p["eps"] is not None}
+        shared = [(r["eps"], yahoo_eps[f, r["month"]]) for f in out for r in nasdaq.get(f) or [] if (f, r["month"]) in yahoo_eps]
+        if shared and all(_close(a, b) for a, b in shared):
+            for freq in out:
+                have = {p["date"][:7] for p in out[freq]}
+                out[freq] += [{"date": _month_end(r["month"]), "revenue": None, "eps": r["eps"], "revenue_analysts": None,
+                               "eps_analysts": r["analysts"], "eps_source": "nasdaq"}
+                              for r in nasdaq.get(freq) or [] if r["month"] not in have]
+    for freq in out:
+        out[freq] = sorted((p for p in out[freq] if p["revenue"] is not None or p["eps"] is not None), key=lambda p: p["date"])
+    return out
+
+
+def _append_column(table, freq, p, values):
+    """Add an estimate column to a table, if any of its lines has a figure for it."""
+    if all(values.get(r["key"]) is None for r in table["rows"]):
+        return
+    table["columns"].append({"kind": "estimate", "freq": freq, "date": p["date"], "source": "estimate",
+                             "revenue_analysts": p["revenue_analysts"], "eps_analysts": p["eps_analysts"],
+                             "eps_source": p["eps_source"]})
+    for r in table["rows"]:
+        r["values"].append(values.get(r["key"]))
+
+
+def add_estimates(fin, est, mkt, currency):
+    """Estimate columns (see estimates(), in ``currency``) after the last reported period: revenue
+    and EPS in the income statement, and for years, the price multiples on them at today's price
+    and enterprise value."""
+    for freq in ("annual", "quarterly"):
+        income = fin[freq]["income"]
+        reported = [c["date"] for c in income["columns"] if c["kind"] == freq]
+        ahead = [p for p in est[freq] if not reported or (p["date"] > reported[-1] and not _same_period(p["date"], reported[-1]))]
+        ahead = ahead[:ESTIMATE_PERIODS[freq]]
+        if income.get("currency") == currency:  # SEC filings can be in another currency than Yahoo's figures
+            for p in ahead:
+                _append_column(income, freq, p, {"TotalRevenue": p["revenue"], "DilutedEPS": p["eps"]})
+        if freq != "annual" or not (mkt.market_cap and mkt.price and mkt.fx_now):
+            continue
+        table = fin[freq]["valuation"]
+        current = bool(table["columns"]) and table["columns"][-1]["kind"] == "current"  # today's EV is the last column's
+        ev = next((r["values"][-1] for r in table["rows"] if r["key"] == "ev"), None) if current else None
+        for p in ahead:
+            revenue = p["revenue"] * mkt.fx_now if p["revenue"] is not None else None
+            eps = p["eps"] * mkt.fx_now if p["eps"] is not None else None
+            _append_column(table, freq, p, {"ps": _ratio(mkt.market_cap, revenue), "ev_sales": _ratio(ev, revenue),
+                                            "pe": _ratio(mkt.price, eps), "earnings_yield": None if eps is None else eps / mkt.price})
+
+
 SHARE_COUNTS = (("BasicAverageShares", "basic", "shares"), ("DilutedAverageShares", "diluted", "shares"),
                 ("BasicEPS", "basic_eps", "eps"), ("DilutedEPS", "diluted_eps", "eps"))
 
@@ -512,20 +598,28 @@ def ownership(facts):
     }
 
 
-def company_report(fundamentals, facts, stats, closes, paid_dividends, fx_now, fx_closes, risk_free, today=None, filed=None):
+def company_report(fundamentals, facts, stats, closes, paid_dividends, fx_now, fx_closes, risk_free, today=None, filed=None,
+                   analysts=None, forecast=None):
     """Everything the Company section shows. ``stats`` is market.key_stats() (market cap, price,
     beta, forward dividend), ``closes`` and ``paid_dividends`` the split-adjusted daily closes and
-    dividends [(date, value)], ``fx_now``/``fx_closes`` the reporting-to-trading currency rate, and
-    ``filed`` the income statement from SEC filings, if the company files there."""
+    dividends [(date, value)], ``fx_now``/``fx_closes`` the reporting-to-trading currency rate,
+    ``filed`` the statements from SEC filings, if the company files there, and ``analysts`` and
+    ``forecast`` the estimates from Yahoo (market.parse_estimates) and Nasdaq (nasdaq.parse_forecast)."""
     today = today or date.today()
     stats = stats or {}
     fig = Figures(fundamentals or {})
     mkt = Market(stats.get("market_cap"), stats.get("price"), closes, fx_now, fx_closes)
     has_statements = any((fundamentals or {}).get(f) for f in ("annual", "quarterly"))
+    fin = financials(fig, mkt, today, filed) if has_statements else None
+    if fin and analysts:
+        income = fin["annual"]["income"]
+        eps = next((r["values"] for r in income["rows"] if r["key"] == "DilutedEPS"), [])
+        reported = {c["date"]: v for c, v in zip(income["columns"], eps) if c["kind"] == "annual" and v is not None}
+        add_estimates(fin, estimates(analysts, forecast, fig.data.get("currency"), reported), mkt, fig.data.get("currency"))
     return {
         "currency": stats.get("currency"),
         "financial_currency": (facts or {}).get("financial_currency") or (fundamentals or {}).get("currency"),
-        "financials": financials(fig, mkt, today, filed) if has_statements else None,
+        "financials": fin,
         "ownership": ownership(facts),
         "shares": share_counts(fig, filed) if has_statements else None,
         "dividends": dividends(fig, facts, paid_dividends, stats.get("dividend"), stats.get("yield"), today),

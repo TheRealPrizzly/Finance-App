@@ -175,3 +175,24 @@ def test_company_facts():
         {"name": "HUANG JEN-HSUN", "relation": "CEO", "shares": 812050000, "direct": None, "indirect": 812050000, "date": day},
     ]
     assert facts["dividend"] == {"trailing_yield": 0.0031, "five_year_yield": pytest.approx(0.0047), "payout_ratio": 0.1204, "ex_date": day}
+
+
+def test_parse_estimates():
+    from app.market import parse_estimates
+
+    def trend(period, end, revenue, eps, cur="USD", year_ago=None):
+        return {"period": period, "endDate": end,
+                "revenueEstimate": {"avg": {"raw": revenue}, "numberOfAnalysts": {"raw": 30}, "revenueCurrency": cur if revenue else None},
+                "earningsEstimate": {"avg": {"raw": eps}, "numberOfAnalysts": {"raw": 35}, "yearAgoEps": {"raw": year_ago},
+                                     "earningsCurrency": "USD"}}
+
+    est = parse_estimates({"earningsTrend": {"trend": [
+        trend("+1y", "2027-09-30", 527e9, 9.56, year_ago=8.82), trend("0y", "2026-09-30", 477e9, 8.82, year_ago=7.46),
+        trend("0q", "2026-09-30", 0, 1.98),  # Yahoo's zero revenue is a missing one
+        trend("+5y", None, None, None), {"period": "-5y"}]}})
+    assert [(p["date"], p["revenue"], p["eps"], p["year_ago_eps"]) for p in est["annual"]] == [
+        ("2026-09-30", 477e9, 8.82, 7.46), ("2027-09-30", 527e9, 9.56, 8.82)]
+    assert est["quarterly"] == [{"date": "2026-09-30", "revenue": None, "eps": 1.98, "revenue_analysts": 30,
+                                 "eps_analysts": 35, "year_ago_eps": None}]
+    assert (est["revenue_currency"], est["eps_currency"]) == ("USD", "USD")
+    assert parse_estimates({}) == {"annual": [], "quarterly": [], "revenue_currency": None, "eps_currency": None}

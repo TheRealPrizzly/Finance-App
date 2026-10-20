@@ -26,6 +26,7 @@ class FakeMarket:
         self.stats = stats or {}  # symbol -> key stats, as from market.key_stats()
         self.fundamentals_by_symbol = fundamentals or {}  # symbol -> as from market.parse_timeseries()
         self.facts = facts or {}  # symbol -> as from market.company_facts()
+        self.estimates_by_symbol = {}  # symbol -> as from market.parse_estimates()
 
     def resolve(self, symbol, currency):
         return symbol if symbol in self._quotes or symbol in self._history else None
@@ -66,6 +67,9 @@ class FakeMarket:
     def company_facts(self, symbol):
         return self.facts.get(symbol)
 
+    def estimates(self, symbol):
+        return self.estimates_by_symbol.get(symbol)
+
     def fx_rate(self, currency):
         return self._fx.get(currency, (None, {}))[0]
 
@@ -97,6 +101,7 @@ def app(tmp_path, market):
         "GOOGLE_CLIENT_SECRET": "",
         "MARKET": market,
         "SEC": None,  # no EDGAR requests unless a test sets one
+        "NASDAQ": None,  # nor Nasdaq ones
     })
     return app
 
