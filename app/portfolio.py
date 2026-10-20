@@ -564,7 +564,7 @@ def snapshot(txns, account_labels, market, base="CAD"):
 
 # -- performance history -------------------------------------------------------
 
-PERIODS = (("1M", 30), ("3M", 91), ("6M", 182), ("YTD", None), ("1Y", 365), ("5Y", 1826), ("All", None))
+PERIODS = (("1D", None), ("1M", 30), ("3M", 91), ("6M", 182), ("YTD", None), ("1Y", 365), ("5Y", 1826), ("All", None))
 
 
 def history(txns, market, base="CAD", benchmark="VFV.TO", today=None):
@@ -719,7 +719,12 @@ def period_returns(points, today):
         if label == "All":
             base = {"twr": 0.0, "benchmark_twr": 0.0}
         else:
-            since = date(today.year, 1, 1) if label == "YTD" else today - timedelta(days=days)
+            if label == "YTD":
+                since = date(today.year, 1, 1)
+            elif label == "1D":  # the last trading day's change: Friday's on a weekend
+                since = today - timedelta(days=max(today.weekday() - 4, 0))
+            else:
+                since = today - timedelta(days=days)
             i = bisect.bisect_left(dates, since) - 1  # last point before the period starts
             if i < 0:
                 out.append({"label": label, "portfolio": None, "benchmark": None})

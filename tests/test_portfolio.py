@@ -342,6 +342,24 @@ def test_period_returns_include_five_years_between_one_year_and_inception():
     assert short["5Y"]["portfolio"] is None
 
 
+def test_period_returns_start_with_one_day():
+    points = [
+        {"date": "2025-10-01", "twr": 0.0, "benchmark_twr": 0.0},
+        {"date": "2025-10-02", "twr": 0.10, "benchmark_twr": 0.20},
+        {"date": "2025-10-03", "twr": 0.21, "benchmark_twr": 0.26},  # Friday
+        {"date": "2025-10-04", "twr": 0.21, "benchmark_twr": 0.26},  # Saturday: no trading
+    ]
+    friday = pf.period_returns(points[:3], date(2025, 10, 3))
+    assert friday[0]["label"] == "1D"
+    assert friday[0]["portfolio"] == pytest.approx(1.21 / 1.10 - 1)
+    assert friday[0]["benchmark"] == pytest.approx(1.26 / 1.20 - 1)
+    # on the weekend it still shows Friday's change rather than zero
+    saturday = pf.period_returns(points, date(2025, 10, 4))
+    assert saturday[0]["portfolio"] == pytest.approx(1.21 / 1.10 - 1)
+    # nothing before today: no figure yet
+    assert pf.period_returns(points[:1], date(2025, 10, 1))[0]["portfolio"] is None
+
+
 def test_annual_returns_chain_each_calendar_year():
     points = [
         {"date": "2023-06-01", "twr": 0.0, "benchmark_twr": 0.0, "value": 1000, "contributions": 1000},
