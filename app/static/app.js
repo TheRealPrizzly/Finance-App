@@ -3210,6 +3210,11 @@
       tiles.push(kpi("ROIC − WACC", r.spread == null ? "—" : pct(r.spread), r.spread == null ? ""
         : r.spread > 0 ? "Earns more than its capital costs" : "Earns less than its capital costs", r.spread == null ? "" : tone(r.spread)));
       $("ret-kpis").innerHTML = tiles.join("");
+      const years = r.points.filter((p) => p.kind === "annual").length;
+      const span = `${years} ${years === 1 ? "year" : "years"}${r.points.some((p) => p.kind === "ttm") ? " and the TTM" : ""}`;
+      $("ret-source").innerHTML = r.source === "sec"
+        ? `<strong>Source:</strong> SEC filings (EDGAR) · ${span}${r.points.some((p) => p.source === "yahoo") ? " · the newest from Yahoo Finance" : ""}`
+        : `<strong>Source:</strong> Yahoo Finance · ${span}. ${esc(whyYahoo(d))}`;
 
       const labels = r.points.map(periodName);
       const series = RETURNS.filter(([key]) => r.points.some((p) => p[key] != null));

@@ -455,18 +455,38 @@ def wacc(fig, mkt, beta, risk_free, today):
     }
 
 
-def capital_returns(fig, mkt, beta, risk_free, today):
+def _return_points(fig, source):
+    """Returns on capital for each fiscal year and the TTM that ``fig`` has figures for."""
     keys = ("EBIT", "NetIncome", "NetIncomeCommonStockholders")
     cols = fig.columns("annual", keys)
     ttm = fig.ttm_column(keys, cols)
-    cols = cols + [ttm] if ttm else cols
-    points = [{"date": c["date"], "kind": c["kind"], **returns_on_capital(fig, c)} for c in cols]
-    points = [p for p in points if any(p[k] is not None for k in ("roic", "roe", "roce"))]
+    points = [{"date": c["date"], "kind": c["kind"], "source": source, **returns_on_capital(fig, c)}
+              for c in (cols + [ttm] if ttm else cols)]
+    return [p for p in points if any(p[k] is not None for k in ("roic", "roe", "roce"))]
+
+
+def capital_returns(fig, mkt, beta, risk_free, today, filed=None):
+    """Returns on capital for the last STATEMENT_PERIODS fiscal years and the TTM, against the WACC.
+    As in statement(), the years come from ``filed`` (SEC filings) when they go back further than
+    Yahoo, with Yahoo's newer years after them; "source" says which."""
+    points = _return_points(fig, "yahoo")
+    filed_points = _return_points(Figures(filed), "sec") if filed else []
+    years = [p for p in filed_points if p["kind"] == "annual"]
+    source = "sec" if len(years) > sum(p["kind"] == "annual" for p in points) else "yahoo"
+    if source == "sec":
+        last = years[-1]["date"]
+        years += [p for p in points if p["kind"] == "annual" and p["date"] > last and not _same_period(p["date"], last)]
+        ttms = [p for p in filed_points + points if p["kind"] == "ttm" and p["date"] > years[-1]["date"]]
+        latest = max(ttms, key=lambda p: p["date"], default=None)  # the filings' TTM when both run to the same quarter
+        ttm = next((p for p in ttms if _same_period(p["date"], latest["date"])), None) if latest else None
+        points = years + ([ttm] if ttm else [])
+    annual = [p for p in points if p["kind"] == "annual"][-STATEMENT_PERIODS["annual"]:]
+    points = annual + [p for p in points if p["kind"] == "ttm"]
     # Without EBIT (banks and insurers) there's no ROIC to set against the WACC, and a bank's "debt"
     # includes its deposits, which would make the WACC meaningless anyway.
     cost = wacc(fig, mkt, beta, risk_free, today) if any(p["roic"] is not None for p in points) else None
     latest_roic = next((p["roic"] for p in reversed(points) if p["roic"] is not None), None)
-    return {"points": points, "wacc": cost,
+    return {"points": points, "wacc": cost, "source": source,
             "spread": latest_roic - cost["wacc"] if cost and latest_roic is not None else None}
 
 
@@ -509,5 +529,5 @@ def company_report(fundamentals, facts, stats, closes, paid_dividends, fx_now, f
         "ownership": ownership(facts),
         "shares": share_counts(fig, filed) if has_statements else None,
         "dividends": dividends(fig, facts, paid_dividends, stats.get("dividend"), stats.get("yield"), today),
-        "returns": capital_returns(fig, mkt, stats.get("beta"), risk_free, today) if has_statements else None,
+        "returns": capital_returns(fig, mkt, stats.get("beta"), risk_free, today, filed) if has_statements else None,
     }

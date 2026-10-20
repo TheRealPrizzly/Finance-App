@@ -177,6 +177,23 @@ def test_returns_on_capital_and_wacc(report):
     assert r["spread"] == pytest.approx(ttm["roic"] - w["wacc"])
 
 
+def test_returns_on_capital_go_back_ten_years_in_sec_filings():
+    ends = [f"{y}-12-31" for y in range(2012, 2025)]
+    lines = {"EBIT": 100.0, "NetIncome": 60.0, "TaxRateForCalcs": 0.2, "InvestedCapital": 800.0,
+             "StockholdersEquity": 600.0, "TotalAssets": 1500.0, "CurrentLiabilities": 500.0}
+    filed = {"currency": "USD", "source": "sec", "quarterly": {}, "trailing": {},
+             "annual": {key: {d: v for d in ends} for key, v in lines.items()}}
+    r = co.company_report(FUNDAMENTALS, FACTS, STATS, CLOSES, PAID, 1.40, FX, 0.04, TODAY, filed=filed)["returns"]
+    assert r["source"] == "sec"
+    # the last ten years (2016-2024 filed, then Yahoo's newer FY2025), and Yahoo's TTM as the filings have none
+    assert [(p["date"][:4], p["kind"], p["source"]) for p in r["points"]] == (
+        [(str(y), "annual", "sec") for y in range(2016, 2025)] + [("2025", "annual", "yahoo"), ("2026", "ttm", "yahoo")])
+    first = r["points"][0]
+    assert (first["roic"], first["roe"], first["roce"]) == (pytest.approx(100 * 0.8 / 800), 0.1, 0.1)
+    assert r["points"][-2]["roe"] == 150 / 800  # Yahoo's own figures for its years
+    assert co.company_report(FUNDAMENTALS, FACTS, STATS, CLOSES, PAID, 1.40, FX, 0.04, TODAY)["returns"]["source"] == "yahoo"
+
+
 def test_wacc_needs_a_beta():
     assert co.company_report(FUNDAMENTALS, FACTS, {**STATS, "beta": None}, CLOSES, PAID, 1.40, FX, 0.04, TODAY)["returns"]["wacc"] is None
 
