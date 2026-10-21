@@ -462,6 +462,7 @@ def test_my_assets_net_worth(client):
     values = {a["id"]: a["value"] for a in data["assets"]}
     assert values == {1: whole, 2: rrsp, 3: 650000}
     assert {a["id"]: a["name"] for a in data["assets"]}[3] == "House"  # names label the breakdown chart
+    assert {a["id"]: a.get("portfolio") for a in data["assets"]} == {1: "Retirement", 2: None, 3: None}
     assert data["total_assets"] == whole + rrsp + 650000
     assert len(data["mortgages"]) == 1 and 400000 < data["total_liabilities"] < 500000
     assert data["net_worth"] == data["total_assets"] - data["total_liabilities"]

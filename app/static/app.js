@@ -1476,7 +1476,9 @@
 
     // Asset breakdown: each asset's share of total assets, updated in place when values refresh.
     // Mortgages can't be a slice of a doughnut; they're mentioned in the note instead.
+    // Portfolios are labelled "Portfolio - <its name>".
     let worthChart = null;
+    const assetLabel = (a) => (a.kind === "portfolio" ? `Portfolio - ${a.portfolio || a.name}` : a.name);
     function renderBreakdown(data) {
       if (!$("worth-chart")) return;
       const shown = data.assets.filter((a) => a.value > 0).sort((a, b) => b.value - a.value);
@@ -1484,7 +1486,7 @@
       const colors = shown.map((_, i) => SECTOR_COLORS[i % SECTOR_COLORS.length]);
       $("worth-legend").innerHTML = shown.length
         ? shown.map((a, i) => `<li><span class="swatch" style="background:${colors[i]}"></span>
-            <span>${esc(a.name)}</span><span class="pct">${money(a.value)} · ${pct(a.value / total, { signed: false })}</span></li>`).join("")
+            <span>${esc(assetLabel(a))}</span><span class="pct">${money(a.value)} · ${pct(a.value / total, { signed: false })}</span></li>`).join("")
         : '<li class="muted">None of your assets has a value above zero yet.</li>';
       const left = data.assets.length - shown.length;
       setNotes($("worth-note"), [
@@ -1493,7 +1495,7 @@
         data.mortgages.length ? `Mortgages (${money(data.total_liabilities)}) aren't part of the chart; they're subtracted from your net worth.` : "",
       ]);
       const chartData = {
-        labels: shown.map((a) => a.name),
+        labels: shown.map(assetLabel),
         datasets: [{ data: shown.map((a) => a.value), backgroundColor: colors, borderColor: cssVar("--surface"), borderWidth: 2 }],
       };
       if (worthChart) {

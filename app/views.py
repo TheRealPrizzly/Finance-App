@@ -1215,6 +1215,7 @@ def api_assets():
     """Each asset's value (live for portfolios and accounts), mortgage balances and net worth."""
     labels = account_labels()
     portfolios, members = portfolio_members(), asset_members()
+    portfolio_names = {p["id"]: p["name"] for p in user_portfolios()}
     market, base = get_market(), current_app.config["BASE_CURRENCY"]
     values, totals, counted, warnings = [], {}, {}, []
     for a in user_assets():
@@ -1231,7 +1232,8 @@ def api_assets():
             totals[key] = pf.snapshot(load_txns(ids), labels, market, base)["totals"]["total_value"] if ids else 0.0
         for account_id in ids:
             counted.setdefault(account_id, []).append(a["name"])
-        values.append({"id": a["id"], "name": a["name"], "kind": a["kind"], "value": totals[key]})
+        values.append({"id": a["id"], "name": a["name"], "kind": a["kind"], "value": totals[key],
+                       "portfolio": portfolio_names.get(a["portfolio_id"])})
     for account_id, names in counted.items():
         if len(names) > 1:
             warnings.append(f"{labels[account_id]} is part of {_and_list(names)}, so your net worth counts it "
