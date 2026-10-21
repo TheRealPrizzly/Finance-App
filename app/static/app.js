@@ -3519,11 +3519,13 @@
   // ---- Budget tab ------------------------------------------------------------------
   // The line form shows only the fields its frequency uses: no amount or dates for lines that
   // vary, one date for a one-time line, and an optional start for lines paid every pay day.
+  // Only expenses have a group.
   function budgetFields() {
     document.querySelectorAll("[data-budget-fields]").forEach((box) => {
-      const freq = box.querySelector('select[name="frequency"]');
+      const freq = box.querySelector('select[name="frequency"]'), kind = box.querySelector('select[name="kind"]');
       const update = () => {
         const f = freq.value, once = f === "once";
+        box.querySelector('[data-for="grouped"]').hidden = kind.value !== "expense";
         box.querySelector('[data-for="fixed"]').hidden = f === "varies";
         box.querySelector('[data-for="dated"]').hidden = f === "varies";
         box.querySelector('[data-for="ending"]').hidden = f === "varies" || once;
@@ -3534,6 +3536,7 @@
         box.querySelector('input[name="start_date"]').required = f !== "pay" && f !== "varies";
       };
       freq.addEventListener("change", update);
+      kind.addEventListener("change", update);
       update();
     });
   }
@@ -3549,6 +3552,10 @@
     const long = (iso) => day(iso).toLocaleDateString("en-CA", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
     const amountText = (v) => (v == null ? "" : v.toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
     let plan = JSON.parse($("budget-data").textContent);
+    // Expense groups folded away, remembered in this browser.
+    const COLLAPSED_KEY = "budgetCollapsedGroups";
+    let collapsed;
+    try { collapsed = new Set(JSON.parse(localStorage.getItem(COLLAPSED_KEY)) || []); } catch { collapsed = new Set(); }
 
     function renderKpis() {
       const { periods, sums, today } = plan;
@@ -3575,17 +3582,28 @@
         return `<th class="num${now(i)}" title="${esc(`${long(p.date)} to ${long(p.end)}`)}">${esc(short(p.date))}
           <small>${i === current ? "This pay" : year}</small></th>`;
       }).join("");
-      const lineRow = (l) => `<tr data-line="${l.id}">
+      const lineRow = (l, group = null) => `<tr data-line="${l.id}"${group == null ? "" : ` class="in-group" data-group-of="${group}"`}>
         <th scope="row" class="line-name"><a href="${esc(urls.editUrl.replace("/0/", `/${l.id}/`))}" title="Edit ${esc(l.name)}">${esc(l.name)}</a>
           <span class="sym-name" title="${esc(l.schedule)}">${esc(l.schedule)}</span></th>
         ${l.cells.map((_, i) => `<td class="num${now(i)}"><input class="cell-input" inputmode="decimal" autocomplete="off" data-line="${l.id}"
           data-index="${i}" aria-label="${esc(`${l.name}, ${short(periods[i].date)}`)}"></td>`).join("")}
         <td class="num nowrap line-total" data-total="${l.id}"></td></tr>`;
+      const groupRows = (g, n) => {
+        const open = !collapsed.has(g.name);
+        return `<tr class="budget-group"><th scope="row" class="line-name">
+            <button type="button" class="group-toggle" aria-expanded="${open}" data-group="${n}" data-name="${esc(g.name)}"
+              title="${open ? "Hide" : "Show"} the lines in ${esc(g.name)}"><span class="caret" aria-hidden="true">▾</span>${esc(g.name)}</button>
+            <span class="sym-name">${g.lines.length} ${g.lines.length === 1 ? "line" : "lines"}</span></th>
+          ${periods.map((_, i) => `<td class="num nowrap${now(i)}" data-group-sum="${n}" data-index="${i}"></td>`).join("")}
+          <td class="num nowrap" data-group-sum="${n}" data-index="all"></td></tr>
+          ${g.lines.map((id) => lineRow(lines.find((l) => l.id === id), n).replace("<tr ", `<tr ${open ? "" : "hidden "}`)).join("")}`;
+      };
       const section = (kind, title, totalLabel) => {
         const rows = lines.filter((l) => l.kind === kind);
+        const body = kind === "expense" && plan.groups.length ? plan.groups.map(groupRows).join("") : rows.map((l) => lineRow(l)).join("");
         return `<tbody class="budget-${kind}">
           <tr class="group"><th scope="rowgroup" class="line-name" colspan="${periods.length + 2}">${title}</th></tr>
-          ${rows.length ? rows.map(lineRow).join("") : `<tr><th scope="row" class="line-name muted">None yet</th><td colspan="${periods.length + 1}"></td></tr>`}
+          ${rows.length ? body : `<tr><th scope="row" class="line-name muted">None yet</th><td colspan="${periods.length + 1}"></td></tr>`}
           <tr class="subtotal"><th scope="row" class="line-name">${totalLabel}</th>${periods.map((_, i) =>
             `<td class="num nowrap${now(i)}" data-sum="${kind}" data-index="${i}"></td>`).join("")}<td class="num nowrap" data-sum="${kind}" data-index="all"></td></tr>
         </tbody>`;
@@ -3617,6 +3635,11 @@
         input.dataset.saved = amountText(cell.amount);
       });
       table.querySelectorAll("[data-total]").forEach((td) => { td.textContent = money(byId.get(td.dataset.total).total); });
+      table.querySelectorAll("[data-group-sum]").forEach((td) => {
+        const g = plan.groups[td.dataset.groupSum];
+        const value = td.dataset.index === "all" ? g.total : g.totals[td.dataset.index];
+        td.textContent = value ? money(value) : "—";  // like the lines: a dash when nothing is due
+      });
       table.querySelectorAll("[data-sum]").forEach((td) => {
         const { sum, index } = td.dataset;
         const value = index === "all" ? plan.sums[sum] : plan.totals[sum][index];
@@ -3650,6 +3673,17 @@
 
     const table = $("budget-table");
     table?.addEventListener("change", (e) => { if (e.target.matches(".cell-input")) save(e.target); });
+    table?.addEventListener("click", (e) => {
+      const b = e.target.closest(".group-toggle");
+      if (!b) return;
+      const open = b.getAttribute("aria-expanded") !== "true";
+      b.setAttribute("aria-expanded", String(open));
+      b.title = `${open ? "Hide" : "Show"} the lines in ${b.dataset.name}`;
+      table.querySelectorAll(`[data-group-of="${b.dataset.group}"]`).forEach((row) => { row.hidden = !open; });
+      if (open) collapsed.delete(b.dataset.name);
+      else collapsed.add(b.dataset.name);
+      try { localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...collapsed])); } catch { /* not remembered */ }
+    });
     table?.addEventListener("keydown", (e) => {
       if (!e.target.matches(".cell-input")) return;
       if (e.key === "Enter") e.target.blur();

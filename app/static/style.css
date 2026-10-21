@@ -292,6 +292,13 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
 .cell-input.entered { text-decoration: underline dotted var(--accent); text-underline-offset: 3px; color: var(--accent); }
 .cell-input.invalid { border-color: var(--loss); color: var(--loss); }
 .budget-fields [hidden] { display: none; }
+.budget-table tr.budget-group > * { font-weight: 650; border-top: 1px solid var(--border); }
+.budget-table tr.in-group .line-name { padding-left: 30px; }
+.budget-table tr[hidden] { display: none; }
+.group-toggle { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-weight: 650; color: var(--text);
+  background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
+.group-toggle .caret { display: inline-block; color: var(--muted); transition: transform .15s; }
+.group-toggle[aria-expanded="false"] .caret { transform: rotate(-90deg); }
 .budget-fields > label { align-content: start; }
 
 /* ---- Research ------------------------------------------------------------ */

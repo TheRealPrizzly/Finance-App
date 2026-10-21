@@ -129,6 +129,7 @@ CREATE TABLE IF NOT EXISTS budget_lines (
     user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     kind        TEXT NOT NULL,              -- 'revenue' or 'expense'
     name        TEXT NOT NULL,
+    group_name  TEXT NOT NULL DEFAULT '',   -- expenses only: the group it is subtotalled in, e.g. 'Housing'
     frequency   TEXT NOT NULL,              -- 'pay', 'weekly', 'biweekly', 'monthly', 'quarterly', 'yearly', 'once' or 'varies'
     amount      REAL,                       -- each time it is due; NULL for lines that vary
     start_date  TEXT,                       -- YYYY-MM-DD: the first time it is due

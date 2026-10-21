@@ -47,6 +47,8 @@ def migrate(conn):
         conn.execute("ALTER TABLE users ADD COLUMN default_scope TEXT NOT NULL DEFAULT ''")
     if "pay_day" not in user_columns:
         conn.execute("ALTER TABLE users ADD COLUMN pay_day TEXT")
+    if "group_name" not in {r["name"] for r in conn.execute("PRAGMA table_info(budget_lines)")}:
+        conn.execute("ALTER TABLE budget_lines ADD COLUMN group_name TEXT NOT NULL DEFAULT ''")
     # Imports before in-kind deposits and withdrawals were recognized stored them as cash
     # deposits and withdrawals, which ignores their shares.
     conn.execute(

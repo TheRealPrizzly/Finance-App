@@ -8,6 +8,11 @@
     </select>
   </label>
   <label>Name <input name="name" value="{{ f.get('name', '') }}" placeholder="e.g. Salary, Rent, Groceries" required autocomplete="off"></label>
+  <label data-for="grouped">Group (optional)
+    <input name="group_name" value="{{ f.get('group_name', '') }}" list="budget-groups" maxlength="40" placeholder="e.g. Housing, Taxes" autocomplete="off">
+    <datalist id="budget-groups">{% for name in groups %}<option value="{{ name }}">{% endfor %}</datalist>
+    <span class="hint">Pick one or type a new one. Each group has its own subtotal.</span>
+  </label>
   <label>How often
     <select name="frequency">
       {% for key, text in frequencies.items() %}<option value="{{ key }}" {% if f.get('frequency') == key %}selected{% endif %}>{{ text }}</option>{% endfor %}

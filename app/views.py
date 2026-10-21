@@ -1490,8 +1490,21 @@ def budget_plan(today=None):
 
 def budget_line_form_values(line):
     """The budget line form, filled in from a saved line."""
-    return {"kind": line["kind"], "name": line["name"], "frequency": line["frequency"], "amount": _num(line["amount"]),
-            "start_date": line["start_date"] or "", "end_date": line["end_date"] or ""}
+    return {"kind": line["kind"], "name": line["name"], "group_name": line["group_name"], "frequency": line["frequency"],
+            "amount": _num(line["amount"]), "start_date": line["start_date"] or "", "end_date": line["end_date"] or ""}
+
+
+def budget_groups():
+    """The user's expense groups, in alphabetical order."""
+    return [r["group_name"] for r in get_db().execute(
+        """SELECT DISTINCT group_name FROM budget_lines WHERE user_id = ? AND kind = 'expense' AND group_name <> ''
+           ORDER BY group_name COLLATE NOCASE""", (g.user["id"],))]
+
+
+def group_choices():
+    """Groups to suggest: the user's, then common ones they haven't used."""
+    used = budget_groups()
+    return used + [s for s in bg.SUGGESTED_GROUPS if s.casefold() not in {u.casefold() for u in used}]
 
 
 def _parse_budget_line_form(form):
@@ -1503,6 +1516,9 @@ def _parse_budget_line_form(form):
     name = form.get("name", "").strip()
     if not name:
         errors.append("Enter a name, such as Salary or Rent.")
+    # Only expenses have groups. A group typed in another case joins the existing one ("housing" -> "Housing").
+    group = " ".join(form.get("group_name", "").split())[:40] if kind == "expense" else ""
+    group = next((u for u in budget_groups() if u.casefold() == group.casefold()), group)
     frequency = form.get("frequency", "")
     if frequency not in bg.FREQUENCIES:
         errors.append("Choose how often it comes.")
@@ -1539,18 +1555,18 @@ def _parse_budget_line_form(form):
         errors.append("Enter the date it is due." if frequency == "once" else "Enter the first date it is due.")
     if start and end and end < start:
         errors.append("The end date can't be before the first date.")
-    values = {"kind": kind, "name": name, "frequency": frequency, "amount": amount,
+    values = {"kind": kind, "name": name, "group_name": group, "frequency": frequency, "amount": amount,
               "start_date": start.isoformat() if start else None, "end_date": end.isoformat() if end else None}
     return values, errors
 
 
-BUDGET_COLUMNS = ("kind", "name", "frequency", "amount", "start_date", "end_date")
+BUDGET_COLUMNS = ("kind", "name", "group_name", "frequency", "amount", "start_date", "end_date")
 
 
 def render_budget(**extra):
     kind = request.args.get("kind")
     return render_template(
-        "budget.html", plan=budget_plan(), kinds=bg.KINDS, frequencies=bg.FREQUENCIES,
+        "budget.html", plan=budget_plan(), kinds=bg.KINDS, frequencies=bg.FREQUENCIES, groups=group_choices(),
         **{"line_form": {"kind": kind if kind in bg.KINDS else "expense", "frequency": "monthly"}, "line_errors": [],
            **extra},
     )
@@ -1614,7 +1630,7 @@ def edit_budget_line(line_id):
     else:
         form = budget_line_form_values(line)
     return render_template("budget_line_form.html", line=line, line_form=form, kinds=bg.KINDS,
-                           frequencies=bg.FREQUENCIES)
+                           frequencies=bg.FREQUENCIES, groups=group_choices())
 
 
 @bp.post("/budget/lines/<int:line_id>/delete")

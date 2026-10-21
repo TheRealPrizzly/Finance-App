@@ -4,6 +4,7 @@ Pay arrives every two weeks. Each pay period runs from a pay day to the day befo
 one, and each revenue or expense line counts in the period its dates fall in. A line is either
 recurring, with a fixed amount on a schedule, or varies, with an amount entered for each pay
 period. An amount entered for a recurring line replaces its fixed amount for that one period.
+Expenses can be put in groups (Housing, Taxes, ...), which are subtotalled for each pay period.
 
 Amounts are positive; whether a line is a revenue or an expense gives its direction.
 """
@@ -23,6 +24,9 @@ FREQUENCIES = {
     "once": "Once",
     "varies": "Varies: entered for each pay day",
 }
+# Offered when picking an expense's group, along with the groups already used.
+SUGGESTED_GROUPS = ("Housing", "Taxes", "Transportation", "Food", "Utilities", "Insurance", "Health",
+                    "Debt payments", "Savings", "Entertainment")
 MONTH_STEPS = {"monthly": 1, "quarterly": 3, "yearly": 12}
 NEEDS_DATE = ("weekly", "biweekly", "monthly", "quarterly", "yearly", "once")  # the date sets the schedule
 
@@ -113,6 +117,24 @@ def describe(line, today):
     return text
 
 
+def expense_groups(rows, periods):
+    """The expense groups in alphabetical order, each with its lines' ids and subtotals. Once any
+    expense has a group, the expenses without one come last, as "Other expenses"."""
+    expenses = [r for r in rows if r["kind"] == "expense"]
+    names = sorted({r["group"] for r in expenses if r["group"]}, key=str.casefold)
+    if not names:
+        return []
+    if any(not r["group"] for r in expenses):
+        names.append("")
+    out = []
+    for name in names:
+        members = [r for r in expenses if r["group"] == name]
+        totals = [sum(r["cells"][i]["amount"] or 0 for r in members) for i in range(periods)]
+        out.append({"name": name or "Other expenses", "named": bool(name), "lines": [r["id"] for r in members],
+                    "totals": totals, "total": sum(totals)})
+    return out
+
+
 def plan(lines, entries, anchor, today):
     """The budget for each pay period over the next year.
 
@@ -132,7 +154,7 @@ def plan(lines, entries, anchor, today):
                           "entered": entered is not None})
         rows.append({
             "id": line["id"], "kind": line["kind"], "name": line["name"], "frequency": line["frequency"],
-            "schedule": describe(line, today), "cells": cells,
+            "group": line["group_name"] or "", "schedule": describe(line, today), "cells": cells,
             "total": sum(c["amount"] or 0 for c in cells),
         })
 
@@ -149,6 +171,7 @@ def plan(lines, entries, anchor, today):
         "periods": [{"date": s.isoformat(), "end": (e - timedelta(days=1)).isoformat()} for s, e in zip(bounds, bounds[1:])],
         "today": today.isoformat(),
         "lines": rows,
+        "groups": expense_groups(rows, len(days)),
         "totals": {"revenue": revenue, "expense": expense, "net": net, "running": running},
         "sums": {"revenue": sum(revenue), "expense": sum(expense), "net": sum(net)},
     }

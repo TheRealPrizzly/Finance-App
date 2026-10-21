@@ -10,9 +10,9 @@ TODAY = date(2026, 10, 21)  # a Wednesday
 ANCHOR = date(2026, 1, 9)  # a pay day; so is Oct 16, 2026, 20 pay days later
 
 
-def line(id=1, kind="expense", frequency="monthly", amount=100.0, start="2026-01-01", end=None, name="Rent"):
+def line(id=1, kind="expense", frequency="monthly", amount=100.0, start="2026-01-01", end=None, name="Rent", group=""):
     return {"id": id, "kind": kind, "name": name, "frequency": frequency, "amount": amount,
-            "start_date": start, "end_date": end}
+            "start_date": start, "end_date": end, "group_name": group}
 
 
 # -- schedule ------------------------------------------------------------------------
@@ -95,6 +95,30 @@ def test_plan_totals_and_entered_amounts():
     assert plan["sums"]["expense"] == pytest.approx(rent["total"] + groceries["total"])
 
 
+def test_expense_groups_are_subtotalled_with_ungrouped_expenses_last():
+    lines = [
+        line(1, "revenue", "pay", 2400, None, name="Salary"),
+        line(2, "expense", "monthly", 1850, "2026-01-01", group="Housing"),
+        line(3, "expense", "pay", 50, None, name="Coffee"),
+        line(4, "expense", "monthly", 300, "2026-01-20", name="Income tax", group="Taxes"),
+        line(5, "expense", "monthly", 120, "2026-01-01", name="Home insurance", group="Housing"),
+        line(6, "expense", "yearly", 3000, "2026-11-15", name="Property tax", group="housing tax"),
+    ]
+    plan = bg.plan(lines, {}, ANCHOR, TODAY)
+    assert [l["group"] for l in plan["lines"]] == ["", "Housing", "", "Taxes", "Housing", "housing tax"]
+    groups = plan["groups"]
+    assert [(g["name"], g["named"], g["lines"]) for g in groups] == [
+        ("Housing", True, [2, 5]), ("housing tax", True, [6]), ("Taxes", True, [4]), ("Other expenses", False, [3])]
+    housing = groups[0]
+    assert housing["totals"][:2] == [0, 1970]  # Nov 1: rent and insurance
+    assert housing["total"] == pytest.approx(sum(plan["lines"][i]["total"] for i in (1, 4)))
+    assert groups[1]["totals"][2] == 3000  # Nov 15 falls in the Nov 13 pay period
+    # the groups add up to all the expenses
+    assert sum(g["total"] for g in groups) == pytest.approx(plan["sums"]["expense"])
+    # without any group, expenses are listed as before
+    assert bg.plan([line(1), line(2, name="Phone")], {}, ANCHOR, TODAY)["groups"] == []
+
+
 # -- pages ----------------------------------------------------------------------------
 
 
@@ -164,6 +188,26 @@ def test_budget_lines_and_entries(client):
     assert client.post("/budget/lines/3/delete", data={"csrf_token": token}).status_code == 302
     assert [l["name"] for l in client.get("/api/budget").get_json()["lines"]] == ["Salary", "Rent"]
     assert client.get("/budget/lines/3/edit").status_code == 404
+
+
+def test_expense_groups_from_the_form(client):
+    token = login(client)
+    set_pay_day(client, token)
+    html = client.get("/budget").get_data(as_text=True)
+    assert '<datalist id="budget-groups">' in html and '<option value="Housing">' in html  # suggestions to start
+    add_line(client, token, group_name="  Housing ")
+    add_line(client, token, name="Home insurance", amount="120", group_name="housing")  # joins Housing
+    add_line(client, token, kind="revenue", name="Salary", frequency="pay", start_date="", group_name="Housing")
+    add_line(client, token, name="Income tax", group_name="Taxes")
+    plan = client.get("/api/budget").get_json()
+    assert {l["name"]: l["group"] for l in plan["lines"]} == {
+        "Rent": "Housing", "Home insurance": "Housing", "Salary": "", "Income tax": "Taxes"}  # revenues have no group
+    assert [g["name"] for g in plan["groups"]] == ["Housing", "Taxes"]
+    html = client.get("/budget/lines/1/edit").get_data(as_text=True)
+    assert 'name="group_name" value="Housing"' in html
+    client.post("/budget/lines/1/edit", data={"csrf_token": token, "kind": "expense", "name": "Rent", "group_name": "",
+                                              "frequency": "monthly", "amount": "1850", "start_date": "2026-01-01"})
+    assert [g["name"] for g in client.get("/api/budget").get_json()["groups"]] == ["Housing", "Taxes", "Other expenses"]
 
 
 @pytest.mark.parametrize("fields, error", [
