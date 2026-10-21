@@ -310,9 +310,10 @@ class TransferPricer:
         return price or 0.0, currency
 
 
-def build_lots(txns, fx, transfer_price=None):
+def build_lots(txns, fx, transfer_price=None, sales=None):
     """Average-cost positions keyed by (account_id, symbol). ``transfer_price`` values
-    shares transferred in without a price (see TransferPricer); without it they cost nothing."""
+    shares transferred in without a price (see TransferPricer); without it they cost nothing.
+    Pass a list as ``sales`` to collect each sale's realized gain (see best_and_worst_sales)."""
     lots = {}
 
     def lot_for(t):
@@ -367,6 +368,9 @@ def build_lots(txns, fx, transfer_price=None):
             if t.kind == SELL:
                 proceeds = t.net_amount if t.net_amount > 0 else sold * t.price - abs(t.costs)
                 lot.realized_base += proceeds * rate - cost_base
+                if sales is not None:
+                    sales.append({"date": t.date, "account_id": t.account_id, "symbol": t.symbol, "quantity": sold,
+                                  "proceeds": proceeds * rate, "cost": cost_base})
         if abs(lot.quantity) < 1e-7:
             lot.quantity = lot.cost_native = lot.cost_base = 0.0
     return lots
@@ -567,9 +571,10 @@ def snapshot(txns, account_labels, market, base="CAD"):
 PERIODS = (("1D", None), ("1M", 30), ("3M", 91), ("6M", 182), ("YTD", None), ("1Y", 365), ("5Y", 1826), ("All", None))
 
 
-def history(txns, market, base="CAD", benchmark="VFV.TO", today=None):
+def history(txns, market, base="CAD", benchmark="VFV.TO", today=None, account_labels=None):
     """Daily portfolio value, net contributions and time-weighted return, alongside the
-    benchmark both as a return index and as "the same contributions invested in it"."""
+    benchmark both as a return index and as "the same contributions invested in it".
+    Each year also lists its best and worst sales."""
     today = today or date.today()
     txns = sorted(with_opening_positions(txns), key=lambda t: (t.date, t.id))
     empty = {"points": [], "periods": [], "years": [], "benchmark": benchmark, "holdings_only": True}
@@ -657,10 +662,17 @@ def history(txns, market, base="CAD", benchmark="VFV.TO", today=None):
             prev_value, pending_flow = value, 0.0
         d += timedelta(days=1)
 
+    sales = []
+    build_lots(txns, fx, TransferPricer(market, fetch_from), sales=sales)
+    trades = best_and_worst_sales(sales, account_labels or {})
+    years = annual_returns(points, today)
+    for y in years:
+        y.update(trades.get(y["year"], {"sales": 0, "best": [], "worst": []}))
+
     return {
         "points": points,
         "periods": period_returns(points, today),
-        "years": annual_returns(points, today),
+        "years": years,
         "benchmark": benchmark,
         "holdings_only": holdings_only,
         "warnings": fx.warnings,
@@ -705,6 +717,39 @@ def annual_returns(points, today):
             "gain": end["value"] - start_value - contributions,
         })
         prev = end
+    return out
+
+
+def best_and_worst_sales(sales, account_labels, count=3):
+    """Each year's sales ranked by realized gain in the base currency: {year: {"sales": how
+    many, "best": the top ``count``, "worst": the bottom ``count``, worst first}}. Rows for the
+    same symbol, account and day (partial fills) are one sale. A year with few sales lists
+    each one once: best first, then the rest as the worst."""
+    merged = {}
+    for s in sales:
+        key = (s["date"], s["account_id"], s["symbol"])
+        if key in merged:
+            m = merged[key]
+            m["quantity"] += s["quantity"]
+            m["proceeds"] += s["proceeds"]
+            m["cost"] += s["cost"]
+        else:
+            merged[key] = dict(s)
+    by_year = defaultdict(list)
+    for s in merged.values():
+        gain = s["proceeds"] - s["cost"]
+        by_year[s["date"].year].append({
+            "date": s["date"].isoformat(), "symbol": s["symbol"],
+            "account": account_labels.get(s["account_id"], ""), "quantity": s["quantity"],
+            "proceeds": s["proceeds"], "cost": s["cost"], "gain": gain,
+            "gain_pct": _ratio(gain, s["cost"]),
+        })
+    out = {}
+    for year, rows in by_year.items():
+        rows.sort(key=lambda r: (-r["gain"], r["date"], r["symbol"]))
+        best = rows[:count]
+        worst = rows[count:][-count:][::-1]
+        out[year] = {"sales": len(rows), "best": best, "worst": worst}
     return out
 
 

@@ -396,6 +396,54 @@ def test_annual_returns_without_benchmark_data():
     assert pf.annual_returns([], date(2024, 7, 1)) == []
 
 
+def test_build_lots_collects_each_sales_gain():
+    fx = pf.FxBook(FakeMarket(), "CAD", date(2025, 1, 1))
+    sales = []
+    pf.build_lots(TRADES, fx, sales=sales)
+    (sale,) = sales
+    assert (sale["date"], sale["symbol"], sale["quantity"]) == (date(2025, 3, 3), "VFV.TO", 5)
+    assert sale["proceeds"] == pytest.approx(640) and sale["cost"] == pytest.approx(550)  # 5 shares at 110 average
+
+
+def sale(d, symbol, proceeds, cost, quantity=1.0, account=1):
+    return {"date": date.fromisoformat(d), "account_id": account, "symbol": symbol, "quantity": quantity,
+            "proceeds": proceeds, "cost": cost}
+
+
+def test_best_and_worst_sales_by_year():
+    sales = [sale("2024-05-01", s, 100 + g, 100) for s, g in
+             [("A", 50), ("B", -40), ("C", 10), ("D", 30), ("E", -5), ("F", 20), ("G", -60), ("H", 0)]]
+    sales.append(sale("2025-02-03", "A", 90, 100, account=2))
+    years = pf.best_and_worst_sales(sales, {1: "TFSA · 123", 2: "RRSP · 456"})
+    y = years[2024]
+    assert y["sales"] == 8
+    assert [s["symbol"] for s in y["best"]] == ["A", "D", "F"]
+    assert [s["symbol"] for s in y["worst"]] == ["G", "B", "E"]  # biggest loss first
+    assert y["best"][0]["gain"] == pytest.approx(50) and y["best"][0]["gain_pct"] == pytest.approx(0.5)
+    assert y["best"][0]["account"] == "TFSA · 123" and y["best"][0]["date"] == "2024-05-01"
+    (only,) = years[2025]["best"]  # one sale: listed once, as the best
+    assert only["gain"] == pytest.approx(-10) and years[2025]["worst"] == []
+
+
+def test_best_and_worst_sales_merge_partial_fills():
+    sales = [sale("2024-05-01", "A", 60, 50, 3), sale("2024-05-01", "A", 40, 30, 2), sale("2024-05-01", "A", 5, 6, account=2)]
+    y = pf.best_and_worst_sales(sales, {})[2024]
+    assert y["sales"] == 2
+    assert (y["best"][0]["quantity"], y["best"][0]["gain"]) == (5, pytest.approx(20))
+    assert y["best"][1]["gain"] == pytest.approx(-1) and y["best"][1]["account"] == ""
+    assert pf.best_and_worst_sales(sales, {}).get(2023) is None
+
+
+def test_history_lists_each_years_sales():
+    days = [date(2025, 1, 2) + timedelta(days=i) for i in range(90)]
+    market = FakeMarket(quotes={"VFV.TO": (130.0, 130.0, "CAD")}, history={"VFV.TO": ("CAD", {d: 110.0 for d in days})})
+    h = pf.history(TRADES, market, today=date(2025, 3, 31), account_labels={1: "TFSA · 123"})
+    (year,) = h["years"]
+    assert year["sales"] == 1
+    assert year["best"][0]["symbol"] == "VFV.TO" and year["best"][0]["gain"] == pytest.approx(90)
+    assert year["best"][0]["account"] == "TFSA · 123" and year["worst"] == []
+
+
 def test_period_returns_annualizes_since_inception():
     points = [
         {"date": "2023-01-02", "twr": 0.0, "benchmark_twr": 0.0},

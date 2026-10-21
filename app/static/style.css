@@ -239,6 +239,14 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
   color: var(--fg); background: color-mix(in srgb, var(--fg) 14%, transparent); }
 
 /* ---- My Assets ---------------------------------------------------------- */
+.year-trades td { background: var(--surface-2); }
+.trade-lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px 32px; }
+.trade-lists h3 { font-size: .78rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); margin: 0 0 4px; }
+.trade-lists ol { list-style: none; margin: 0; padding: 0; }
+.trade-lists li { display: flex; justify-content: space-between; gap: 16px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.trade-lists li:last-child { border-bottom: 0; }
+.trade-lists small { display: block; font-size: .8rem; }
+.trade-lists p { margin: 4px 0; }
 .table tbody.subtotal td { font-weight: 650; border-top: 1px solid var(--border); background: var(--surface-2); }
 .mortgage .kpis { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-bottom: 16px; }
 .mortgage-fields > label { align-content: start; }  /* inputs line up when a neighbour has a hint */

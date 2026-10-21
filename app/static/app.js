@@ -821,16 +821,39 @@
     });
 
     const cell = (v) => `<td class="num ${tone(v)}">${pct(v)}</td>`;
+    // Each year's best and worst sales sit in a row under it, opened by the Sales button.
+    const sale = (s) => `<li>
+      <span><strong>${esc(s.symbol)}</strong>
+        <span class="sym-name">${esc(shortDate(s.date))} · ${qty(s.quantity)} ${s.quantity === 1 ? "share" : "shares"}${s.account ? ` · ${esc(s.account)}` : ""}</span></span>
+      <span class="num nowrap ${tone(s.gain)}">${money(s.gain, BASE, { signed: true })}<small>${pct(s.gain_pct)}</small></span></li>`;
+    const salesTitle = (word, list) => (list.length > 1 ? `${word} ${list.length} sales` : list.length ? `${word} sale` : `${word} sales`);
+    const saleList = (title, list) => `<div><h3>${title}</h3>${list.length
+      ? `<ol>${list.map(sale).join("")}</ol>` : '<p class="muted">No other sales this year.</p>'}</div>`;
+    const sales = (y) => (y.sales
+      ? `<td class="num"><button type="button" class="btn btn-ghost btn-sm notes-toggle" aria-expanded="false" aria-controls="trades-${y.year}">
+          <span class="caret" aria-hidden="true">▾</span><span>${y.sales} ${y.sales === 1 ? "sale" : "sales"}</span></button></td>`
+      : '<td class="num muted">—</td>');
     $("annual-table").innerHTML = `
       <thead><tr><th>Year</th><th class="num">Portfolio</th><th class="num">${esc(benchmark)}</th><th class="num">Difference</th>
-        <th class="num">Start value</th><th class="num">Net contributions</th><th class="num">End value</th><th class="num">Gain</th></tr></thead>
+        <th class="num">Start value</th><th class="num">Net contributions</th><th class="num">End value</th><th class="num">Gain</th>
+        <th class="num">Sales</th></tr></thead>
       <tbody>${[...years].reverse().map((y) => `<tr>
         <td class="nowrap">${esc(label(y))}</td>${cell(y.portfolio)}${cell(y.benchmark)}${cell(diff(y))}
         <td class="num nowrap">${money(y.start_value)}</td>
         <td class="num nowrap">${money(y.contributions, BASE, { signed: true })}</td>
         <td class="num nowrap">${money(y.end_value)}</td>
         <td class="num nowrap ${tone(y.gain)}">${money(y.gain, BASE, { signed: true })}</td>
-      </tr>`).join("")}</tbody>`;
+        ${sales(y)}
+      </tr>${y.sales ? `<tr class="year-trades" id="trades-${y.year}" hidden><td colspan="9">
+        <div class="trade-lists">${saleList(salesTitle("Best", y.best), y.best)}${saleList(salesTitle("Worst", y.worst), y.worst)}</div>
+      </td></tr>` : ""}`).join("")}</tbody>`;
+    $("annual-table").addEventListener("click", (e) => {
+      const b = e.target.closest("button[aria-controls]");
+      if (!b) return;
+      const open = b.getAttribute("aria-expanded") !== "true";
+      b.setAttribute("aria-expanded", String(open));
+      $(b.getAttribute("aria-controls")).hidden = !open;
+    });
   }
 
   // ---- projections (Performance tab) -----------------------------------------------

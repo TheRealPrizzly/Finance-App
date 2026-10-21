@@ -317,6 +317,7 @@ def api_history():
     return jsonify(pf.history(
         load_txns(selected_account_ids()), get_market(),
         current_app.config["BASE_CURRENCY"], current_app.config["BENCHMARK_SYMBOL"],
+        account_labels=account_labels(),
     ))
 
 
