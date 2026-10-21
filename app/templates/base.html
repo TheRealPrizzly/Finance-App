@@ -24,6 +24,7 @@
         <a href="{{ url_for('views.research', **scope_args) }}" {% if ep == 'views.research' %}aria-current="page"{% endif %}>Research</a>
         <a href="{{ url_for('views.assets') }}" {% if 'asset' in ep or 'mortgage' in ep %}aria-current="page"{% endif %}>My Assets</a>
         <a href="{{ url_for('views.portfolios') }}" {% if 'portfolio' in ep or 'account' in ep or 'transaction' in ep or ep == 'views.import_export' %}aria-current="page"{% endif %}>Accounts</a>
+        <a href="{{ url_for('views.budget') }}" {% if 'budget' in ep %}aria-current="page"{% endif %}>Budget</a>
       </nav>
       <div class="user">
         {% set theme_key = g.user.theme if g.user.theme in themes else 'white' %}

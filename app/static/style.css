@@ -267,6 +267,33 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
 .pick[aria-pressed="true"] .dot { background: var(--pick, var(--chart-1)); }
 .chart-title { font-size: .95rem; font-weight: 650; margin: 0; }
 
+/* ---- Budget ------------------------------------------------------------- */
+.pay-day-form { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 16px; }
+.pay-day-form input { width: auto; }
+.budget-wrap { margin: 0 -20px; }
+.budget-table { border-collapse: separate; border-spacing: 0; }
+.budget-table th, .budget-table td { white-space: nowrap; }
+.budget-table thead th small { display: block; font-weight: 400; text-transform: none; letter-spacing: 0; min-height: 1.2em; }
+.budget-table .line-name { position: sticky; left: 0; z-index: 1; background: var(--surface); text-align: left; min-width: 180px; max-width: 240px;
+  font-weight: 600; text-transform: none; letter-spacing: 0; font-size: .88rem; color: var(--text); box-shadow: 1px 0 0 var(--border); }
+.budget-table thead .line-name { font-size: .78rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+.budget-table .line-name .sym-name { font-weight: 400; }
+.budget-table tr.group .line-name { position: static; box-shadow: none; padding-top: 14px; font-size: .78rem; text-transform: uppercase;
+  letter-spacing: .03em; color: var(--muted); background: none; }
+.budget-table tr.subtotal > *, .budget-table tfoot > tr > * { font-weight: 650; background: var(--surface-2); }
+.budget-table tfoot .running > * { font-weight: 400; color: var(--muted); }
+.budget-table tbody tr:hover .line-name { background: var(--surface-2); }
+.budget-table .now { background: var(--accent-soft); }
+.budget-table thead .now { color: var(--accent); }
+.budget-table td:has(.cell-input) { padding: 2px 4px; }
+.cell-input { width: 92px; text-align: right; padding: 5px 6px; border-color: transparent; background: transparent; font-variant-numeric: tabular-nums; }
+.cell-input:hover { border-color: var(--border); }
+.cell-input::placeholder { color: var(--muted); opacity: .6; }
+.cell-input.entered { text-decoration: underline dotted var(--accent); text-underline-offset: 3px; color: var(--accent); }
+.cell-input.invalid { border-color: var(--loss); color: var(--loss); }
+.budget-fields [hidden] { display: none; }
+.budget-fields > label { align-content: start; }
+
 /* ---- Research ------------------------------------------------------------ */
 .symbol-form { display: flex; gap: 8px; align-items: center; }
 .symbol-form input, .compare-form input { width: 220px; }
@@ -558,4 +585,7 @@ details summary { cursor: pointer; font-weight: 600; font-size: .9rem; margin: 1
   .chart-macd { height: 170px; }
   .dropdown-menu { right: auto; left: 0; }
   .theme-picker .dropdown-menu { left: auto; right: 0; }
+  .budget-wrap { margin: 0 -16px; }
+  .budget-table .line-name { min-width: 0; width: 132px; max-width: 132px; white-space: normal; }
+  .budget-table .line-name .sym-name { max-width: 120px; }
 }

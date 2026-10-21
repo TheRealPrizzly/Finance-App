@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
     picture     TEXT,
     theme       TEXT NOT NULL DEFAULT 'white',
     default_scope TEXT NOT NULL DEFAULT '',  -- view the dashboard opens with: '', 'account:<id>' or 'portfolio:<id>'
+    pay_day     TEXT,                        -- any pay day (YYYY-MM-DD); pay comes every 14 days from it
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -119,4 +120,27 @@ CREATE TABLE IF NOT EXISTS mortgages (
     balance              REAL,                       -- balance from a statement, with ...
     balance_date         TEXT,                       -- ... the date of that balance
     created_at           TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- A line of the budget: money coming in (revenue) or going out (expense). Recurring lines have a fixed
+-- amount on a schedule from start_date; lines that vary ('varies') have amounts entered per pay day.
+CREATE TABLE IF NOT EXISTS budget_lines (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind        TEXT NOT NULL,              -- 'revenue' or 'expense'
+    name        TEXT NOT NULL,
+    frequency   TEXT NOT NULL,              -- 'pay', 'weekly', 'monthly', 'quarterly', 'yearly', 'once' or 'varies'
+    amount      REAL,                       -- each time it is due; NULL for lines that vary
+    start_date  TEXT,                       -- YYYY-MM-DD: the first time it is due
+    end_date    TEXT,                       -- YYYY-MM-DD: the last day it can be due, or NULL
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- An amount entered for one pay period of a line: the amount of a line that varies, or a change to
+-- a recurring line's fixed amount for that period.
+CREATE TABLE IF NOT EXISTS budget_entries (
+    line_id     INTEGER NOT NULL REFERENCES budget_lines(id) ON DELETE CASCADE,
+    pay_day     TEXT NOT NULL,              -- YYYY-MM-DD: the pay day that starts the period
+    amount      REAL NOT NULL,
+    PRIMARY KEY (line_id, pay_day)
 );

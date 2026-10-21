@@ -11,6 +11,7 @@ from flask import (
     Blueprint, Response, abort, current_app, flash, g, jsonify, redirect, render_template, request, url_for,
 )
 
+from . import budget as bg
 from . import company as co
 from . import csv_io
 from . import mortgage as mg
@@ -1453,3 +1454,219 @@ def api_mortgages_continued():
     if len(chosen) < 2:
         return jsonify(error="Choose at least two mortgages."), 400
     return jsonify(mg.project_continued(chosen))
+
+
+# -- budget ---------------------------------------------------------------------------------------
+
+
+def user_budget_lines():
+    return get_db().execute(
+        """SELECT * FROM budget_lines WHERE user_id = ?
+           ORDER BY CASE kind WHEN 'revenue' THEN 0 ELSE 1 END, id""", (g.user["id"],)
+    ).fetchall()
+
+
+def get_budget_line_or_404(line_id):
+    row = get_db().execute(
+        "SELECT * FROM budget_lines WHERE id = ? AND user_id = ?", (line_id, g.user["id"])
+    ).fetchone()
+    if row is None:
+        abort(404)
+    return row
+
+
+def budget_plan(today=None):
+    """The next year of the budget by pay day, or None until the user has set a pay day."""
+    if not g.user["pay_day"]:
+        return None
+    entries = {(r["line_id"], r["pay_day"]): r["amount"] for r in get_db().execute(
+        "SELECT e.* FROM budget_entries e JOIN budget_lines l ON l.id = e.line_id WHERE l.user_id = ?",
+        (g.user["id"],),
+    )}
+    return bg.plan(user_budget_lines(), entries, date.fromisoformat(g.user["pay_day"]), today or date.today())
+
+
+def budget_line_form_values(line):
+    """The budget line form, filled in from a saved line."""
+    return {"kind": line["kind"], "name": line["name"], "frequency": line["frequency"], "amount": _num(line["amount"]),
+            "start_date": line["start_date"] or "", "end_date": line["end_date"] or ""}
+
+
+def _parse_budget_line_form(form):
+    """Validate the budget line form. Returns (values, errors)."""
+    errors = []
+    kind = form.get("kind", "")
+    if kind not in bg.KINDS:
+        errors.append("Choose whether this is a revenue or an expense.")
+    name = form.get("name", "").strip()
+    if not name:
+        errors.append("Enter a name, such as Salary or Rent.")
+    frequency = form.get("frequency", "")
+    if frequency not in bg.FREQUENCIES:
+        errors.append("Choose how often it comes.")
+    amount = None
+    raw = form.get("amount", "").strip()
+    if frequency != "varies":
+        if not raw:
+            errors.append("Enter the amount each time, or choose Varies to enter it for each pay day.")
+        else:
+            try:
+                amount = csv_io.parse_number(raw)
+            except ValueError:
+                errors.append("The amount must be a number.")
+            else:
+                if amount <= 0:
+                    errors.append("The amount must be greater than zero.")
+
+    def day(field, label):
+        raw = form.get(field, "").strip()
+        if not raw:
+            return None
+        try:
+            return date.fromisoformat(raw)
+        except ValueError:
+            errors.append(f"Enter a valid {label}.")
+            return None
+
+    start, end = day("start_date", "first date"), day("end_date", "end date")
+    if frequency == "varies":
+        start = end = None
+    elif frequency == "once":
+        end = None
+    if frequency in bg.NEEDS_DATE and not form.get("start_date", "").strip():
+        errors.append("Enter the date it is due." if frequency == "once" else "Enter the first date it is due.")
+    if start and end and end < start:
+        errors.append("The end date can't be before the first date.")
+    values = {"kind": kind, "name": name, "frequency": frequency, "amount": amount,
+              "start_date": start.isoformat() if start else None, "end_date": end.isoformat() if end else None}
+    return values, errors
+
+
+BUDGET_COLUMNS = ("kind", "name", "frequency", "amount", "start_date", "end_date")
+
+
+def render_budget(**extra):
+    kind = request.args.get("kind")
+    return render_template(
+        "budget.html", plan=budget_plan(), kinds=bg.KINDS, frequencies=bg.FREQUENCIES,
+        **{"line_form": {"kind": kind if kind in bg.KINDS else "expense", "frequency": "monthly"}, "line_errors": [],
+           **extra},
+    )
+
+
+@bp.get("/budget")
+@login_required
+def budget():
+    return render_budget()
+
+
+@bp.post("/budget/pay-day")
+@login_required
+def set_pay_day():
+    try:
+        pay_day = date.fromisoformat(request.form.get("pay_day", "").strip())
+    except ValueError:
+        flash("Enter the date of one of your pay days.", "error")
+        return redirect(url_for("views.budget"))
+    db = get_db()
+    db.execute("UPDATE users SET pay_day = ? WHERE id = ?", (pay_day.isoformat(), g.user["id"]))
+    db.commit()
+    flash("Saved your pay day. The budget is planned every two weeks from it.", "success")
+    return redirect(url_for("views.budget"))
+
+
+@bp.post("/budget/lines")
+@login_required
+def new_budget_line():
+    values, errors = _parse_budget_line_form(request.form)
+    if errors:
+        return render_budget(line_form=request.form, line_errors=errors)
+    db = get_db()
+    db.execute(
+        f"INSERT INTO budget_lines (user_id, {', '.join(BUDGET_COLUMNS)}) VALUES (?{', ?' * len(BUDGET_COLUMNS)})",
+        (g.user["id"], *(values[c] for c in BUDGET_COLUMNS)),
+    )
+    db.commit()
+    flash(f"Added {values['name']} to your {'revenues' if values['kind'] == 'revenue' else 'expenses'}.", "success")
+    return redirect(url_for("views.budget", _anchor="budget-plan"))
+
+
+@bp.route("/budget/lines/<int:line_id>/edit", methods=["GET", "POST"])
+@login_required
+def edit_budget_line(line_id):
+    line = get_budget_line_or_404(line_id)
+    if request.method == "POST":
+        values, errors = _parse_budget_line_form(request.form)
+        if not errors:
+            db = get_db()
+            db.execute(
+                f"UPDATE budget_lines SET {', '.join(f'{c} = ?' for c in BUDGET_COLUMNS)} WHERE id = ? AND user_id = ?",
+                (*(values[c] for c in BUDGET_COLUMNS), line_id, g.user["id"]),
+            )
+            db.commit()
+            flash(f"Updated {values['name']}.", "success")
+            return redirect(url_for("views.budget", _anchor="budget-plan"))
+        for e in errors:
+            flash(e, "error")
+        form = request.form
+    else:
+        form = budget_line_form_values(line)
+    return render_template("budget_line_form.html", line=line, line_form=form, kinds=bg.KINDS,
+                           frequencies=bg.FREQUENCIES)
+
+
+@bp.post("/budget/lines/<int:line_id>/delete")
+@login_required
+def delete_budget_line(line_id):
+    line = get_budget_line_or_404(line_id)
+    db = get_db()
+    db.execute("DELETE FROM budget_lines WHERE id = ? AND user_id = ?", (line_id, g.user["id"]))
+    db.commit()
+    flash(f"Deleted {line['name']} from your budget.", "success")
+    return redirect(url_for("views.budget", _anchor="budget-plan"))
+
+
+@bp.get("/api/budget")
+@login_required
+def api_budget():
+    plan = budget_plan()
+    if plan is None:
+        return jsonify(error="Set your pay day first."), 400
+    return jsonify(plan)
+
+
+@bp.post("/api/budget/entries")
+@login_required
+def api_budget_entry():
+    """Enter one pay period's amount for a line ({"line_id", "pay_day", "amount"}). A blank
+    amount removes it, so a recurring line goes back to its fixed amount. Returns the budget."""
+    data = request.get_json(silent=True) or {}
+    if not g.user["pay_day"]:
+        return jsonify(error="Set your pay day first."), 400
+    line = get_db().execute(
+        "SELECT id FROM budget_lines WHERE id = ? AND user_id = ?", (data.get("line_id"), g.user["id"])
+    ).fetchone()
+    if line is None:
+        return jsonify(error="That budget line doesn't exist."), 404
+    try:
+        pay_day = date.fromisoformat(str(data.get("pay_day", "")))
+    except ValueError:
+        pay_day = None
+    if pay_day is None or not bg.is_pay_day(date.fromisoformat(g.user["pay_day"]), pay_day):
+        return jsonify(error="That date isn't one of your pay days."), 400
+    raw = str(data.get("amount") if data.get("amount") is not None else "").strip()
+    db = get_db()
+    if raw:
+        try:
+            amount = csv_io.parse_number(raw)
+        except ValueError:
+            return jsonify(error=f"{raw} isn't an amount."), 400
+        db.execute(
+            """INSERT INTO budget_entries (line_id, pay_day, amount) VALUES (?, ?, ?)
+               ON CONFLICT (line_id, pay_day) DO UPDATE SET amount = excluded.amount""",
+            (line["id"], pay_day.isoformat(), amount),
+        )
+    else:
+        db.execute("DELETE FROM budget_entries WHERE line_id = ? AND pay_day = ?", (line["id"], pay_day.isoformat()))
+    db.commit()
+    return jsonify(budget_plan())

@@ -45,6 +45,8 @@ def migrate(conn):
         conn.execute("ALTER TABLE users ADD COLUMN theme TEXT NOT NULL DEFAULT 'white'")
     if "default_scope" not in user_columns:
         conn.execute("ALTER TABLE users ADD COLUMN default_scope TEXT NOT NULL DEFAULT ''")
+    if "pay_day" not in user_columns:
+        conn.execute("ALTER TABLE users ADD COLUMN pay_day TEXT")
     # Imports before in-kind deposits and withdrawals were recognized stored them as cash
     # deposits and withdrawals, which ignores their shares.
     conn.execute(

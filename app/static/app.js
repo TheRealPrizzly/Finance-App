@@ -3514,6 +3514,154 @@
     loadCompany();
   }
 
-  const pages = { dashboard: () => { dashboardWorth(); if (root) dashboard(); }, performance, position, "txn-form": txnForm, markets, assets: myAssets, "asset-form": assetForms, research };
+  // ---- Budget tab ------------------------------------------------------------------
+  // The line form shows only the fields its frequency uses: no amount or dates for lines that
+  // vary, one date for a one-time line, and an optional start for lines paid every pay day.
+  function budgetFields() {
+    document.querySelectorAll("[data-budget-fields]").forEach((box) => {
+      const freq = box.querySelector('select[name="frequency"]');
+      const update = () => {
+        const f = freq.value, once = f === "once";
+        box.querySelector('[data-for="fixed"]').hidden = f === "varies";
+        box.querySelector('[data-for="dated"]').hidden = f === "varies";
+        box.querySelector('[data-for="ending"]').hidden = f === "varies" || once;
+        box.querySelector("[data-label-once]").hidden = !once;
+        box.querySelector("[data-label-recurring]").hidden = once;
+        box.querySelector("[data-hint-pay]").hidden = f !== "pay";
+        box.querySelector("[data-hint-dated]").hidden = f === "pay" || once;
+        box.querySelector('input[name="start_date"]').required = f !== "pay" && f !== "varies";
+      };
+      freq.addEventListener("change", update);
+      update();
+    });
+  }
+
+  // One column per pay day over the next year: revenues, then expenses, then what's left over.
+  // Every cell is an input: typing changes that pay period's amount, and the totals follow.
+  function budget() {
+    budgetFields();
+    document.querySelector("form[data-errors]")?.scrollIntoView({ block: "start" });
+    const urls = root.dataset;
+    const day = (iso) => new Date(`${iso}T00:00:00`);
+    const short = (iso) => day(iso).toLocaleDateString("en-CA", { month: "short", day: "numeric" });
+    const long = (iso) => day(iso).toLocaleDateString("en-CA", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+    const amountText = (v) => (v == null ? "" : v.toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+    let plan = JSON.parse($("budget-data").textContent);
+
+    function renderKpis() {
+      const { periods, sums, today } = plan;
+      const next = periods.find((p) => p.date >= today) || periods[1];
+      const days = Math.round((day(next.date) - day(today)) / 86_400_000);
+      const perPay = sums.net / periods.length;
+      $("budget-kpis").innerHTML = [
+        kpi("Next pay day", short(next.date), days === 0 ? "Today" : `In ${days} day${days === 1 ? "" : "s"}`),
+        kpi("Revenues", money(sums.revenue), `Over the ${periods.length} pay days shown`),
+        kpi("Expenses", money(sums.expense), `Over the ${periods.length} pay days shown`),
+        kpi("Left over", money(sums.net, BASE, { signed: true }), `${money(perPay, BASE, { signed: true })} a pay day on average`,
+          tone(sums.net) === "loss" ? "loss" : ""),
+      ].join("");
+    }
+
+    function renderTable() {
+      const table = $("budget-table");
+      if (!table) return;
+      const { periods, lines, today } = plan;
+      const current = periods.findIndex((p) => p.date <= today && today <= p.end);
+      const now = (i) => (i === current ? " now" : "");  // the pay period today is in
+      const head = periods.map((p, i) => {
+        const year = i === 0 || p.date.slice(0, 4) !== periods[i - 1].date.slice(0, 4) ? p.date.slice(0, 4) : "";
+        return `<th class="num${now(i)}" title="${esc(`${long(p.date)} to ${long(p.end)}`)}">${esc(short(p.date))}
+          <small>${i === current ? "This pay" : year}</small></th>`;
+      }).join("");
+      const lineRow = (l) => `<tr data-line="${l.id}">
+        <th scope="row" class="line-name"><a href="${esc(urls.editUrl.replace("/0/", `/${l.id}/`))}" title="Edit ${esc(l.name)}">${esc(l.name)}</a>
+          <span class="sym-name" title="${esc(l.schedule)}">${esc(l.schedule)}</span></th>
+        ${l.cells.map((_, i) => `<td class="num${now(i)}"><input class="cell-input" inputmode="decimal" autocomplete="off" data-line="${l.id}"
+          data-index="${i}" aria-label="${esc(`${l.name}, ${short(periods[i].date)}`)}"></td>`).join("")}
+        <td class="num nowrap line-total" data-total="${l.id}"></td></tr>`;
+      const section = (kind, title, totalLabel) => {
+        const rows = lines.filter((l) => l.kind === kind);
+        return `<tbody class="budget-${kind}">
+          <tr class="group"><th scope="rowgroup" class="line-name" colspan="${periods.length + 2}">${title}</th></tr>
+          ${rows.length ? rows.map(lineRow).join("") : `<tr><th scope="row" class="line-name muted">None yet</th><td colspan="${periods.length + 1}"></td></tr>`}
+          <tr class="subtotal"><th scope="row" class="line-name">${totalLabel}</th>${periods.map((_, i) =>
+            `<td class="num nowrap${now(i)}" data-sum="${kind}" data-index="${i}"></td>`).join("")}<td class="num nowrap" data-sum="${kind}" data-index="all"></td></tr>
+        </tbody>`;
+      };
+      table.innerHTML = `<thead><tr><th class="line-name">Pay day</th>${head}<th class="num">12 months</th></tr></thead>
+        ${section("revenue", "Revenues", "Total revenues")}${section("expense", "Expenses", "Total expenses")}
+        <tfoot>
+          <tr><th scope="row" class="line-name">Left over</th>${periods.map((_, i) => `<td class="num nowrap${now(i)}" data-sum="net" data-index="${i}"></td>`).join("")}
+            <td class="num nowrap" data-sum="net" data-index="all"></td></tr>
+          <tr class="running"><th scope="row" class="line-name">Running total</th>${periods.map((_, i) =>
+            `<td class="num nowrap${now(i)}" data-sum="running" data-index="${i}"></td>`).join("")}<td></td></tr>
+        </tfoot>`;
+      fillTable();
+    }
+
+    // Values only, so a cell being typed in keeps its focus and text while the totals change.
+    function fillTable() {
+      const table = $("budget-table");
+      if (!table) return;
+      const byId = new Map(plan.lines.map((l) => [String(l.id), l]));
+      table.querySelectorAll(".cell-input").forEach((input) => {
+        const cell = byId.get(input.dataset.line).cells[input.dataset.index];
+        input.classList.toggle("entered", cell.entered);
+        input.classList.remove("invalid");
+        input.placeholder = cell.scheduled == null ? "—" : "";
+        input.title = cell.entered && cell.scheduled != null
+          ? `Changed from ${money(cell.scheduled)} for this pay day. Clear it to go back.` : "";
+        if (input !== document.activeElement) input.value = amountText(cell.amount);
+        input.dataset.saved = amountText(cell.amount);
+      });
+      table.querySelectorAll("[data-total]").forEach((td) => { td.textContent = money(byId.get(td.dataset.total).total); });
+      table.querySelectorAll("[data-sum]").forEach((td) => {
+        const { sum, index } = td.dataset;
+        const value = index === "all" ? plan.sums[sum] : plan.totals[sum][index];
+        const signed = sum === "net" || sum === "running";
+        td.textContent = money(value, BASE, { signed });
+        td.className = `num nowrap${signed ? ` ${tone(value)}` : ""}${td.classList.contains("now") ? " now" : ""}`;
+      });
+    }
+
+    async function save(input) {
+      const value = input.value.trim();
+      if (value === input.dataset.saved) return;
+      const line = plan.lines.find((l) => String(l.id) === input.dataset.line);
+      try {
+        const res = await fetch(urls.entriesUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-CSRF-Token": document.querySelector('meta[name="csrf-token"]')?.content || "" },
+          body: JSON.stringify({ line_id: line.id, pay_day: plan.periods[input.dataset.index].date, amount: value }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+        plan = data;
+        if (input === document.activeElement) input.value = amountText(plan.lines.find((l) => l.id === line.id).cells[input.dataset.index].amount);
+        renderKpis();
+        fillTable();
+      } catch (err) {
+        input.classList.add("invalid");
+        input.title = `Not saved: ${err.message}`;
+      }
+    }
+
+    const table = $("budget-table");
+    table?.addEventListener("change", (e) => { if (e.target.matches(".cell-input")) save(e.target); });
+    table?.addEventListener("keydown", (e) => {
+      if (!e.target.matches(".cell-input")) return;
+      if (e.key === "Enter") e.target.blur();
+      if (e.key === "Escape") {
+        e.target.value = e.target.dataset.saved;
+        e.target.classList.remove("invalid");
+        e.target.blur();
+      }
+    });
+
+    renderKpis();
+    renderTable();
+  }
+
+  const pages = { dashboard: () => { dashboardWorth(); if (root) dashboard(); }, performance, position, "txn-form": txnForm, markets, assets: myAssets, "asset-form": assetForms, research, budget, "budget-line": budgetFields };
   pages[document.body.dataset.page]?.();
 })();

@@ -1,0 +1,30 @@
+{# Fields of the "Add a line" and "Edit budget line" forms, filled from `line_form`. app.js shows only the
+   fields the chosen frequency uses. #}
+{% set f = line_form %}
+<div class="form-grid budget-fields" data-budget-fields>
+  <label>Type
+    <select name="kind">
+      {% for key, text in kinds.items() %}<option value="{{ key }}" {% if f.get('kind') == key %}selected{% endif %}>{{ text }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Name <input name="name" value="{{ f.get('name', '') }}" placeholder="e.g. Salary, Rent, Groceries" required autocomplete="off"></label>
+  <label>How often
+    <select name="frequency">
+      {% for key, text in frequencies.items() %}<option value="{{ key }}" {% if f.get('frequency') == key %}selected{% endif %}>{{ text }}</option>{% endfor %}
+    </select>
+  </label>
+  <label data-for="fixed">Amount each time ($)
+    <input name="amount" value="{{ f.get('amount', '') }}" inputmode="decimal" placeholder="e.g. 1850" autocomplete="off">
+    <span class="hint">The fixed amount, counted in the pay period it falls in.</span>
+  </label>
+  <label data-for="dated">
+    <span data-label-once hidden>Date</span><span data-label-recurring>First date</span>
+    <input type="date" name="start_date" value="{{ f.get('start_date', '') }}">
+    <span class="hint" data-hint-pay hidden>Optional: when it starts, if not right away.</span>
+    <span class="hint" data-hint-dated>Sets the day it is due, e.g. the 1st of each month.</span>
+  </label>
+  <label data-for="ending">Last date (optional)
+    <input type="date" name="end_date" value="{{ f.get('end_date', '') }}">
+    <span class="hint">When it stops, e.g. the end of a lease.</span>
+  </label>
+</div>

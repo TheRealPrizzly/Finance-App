@@ -10,9 +10,10 @@ A multi-user web app for tracking investments across brokerage accounts in Canad
 - Cash balances per account
 - A breakdown for each position
 - CSV import and export
-- A Markets tab: S&P 500 and Nasdaq futures, pre-market moves by sector, CNN's Fear & Greed Index and the US Treasury yield curve
+- A Markets tab: S&P 500 and Nasdaq futures, pre-market moves by sector, CNN's Fear & Greed Index, 20 years of the Canadian dollar in US dollars and the US Treasury yield curve
 - A Research tab: a price chart for any symbol on Yahoo Finance, from 1 day to its whole history or between two dates. PA (price action) mode draws a line with your buys and sells; TA (technical analysis) mode draws candlesticks with moving averages. Either can switch to candlesticks, a line, a line coloured by direction, or a baseline delta. Badges mark dividends, earnings (beat or missed) and splits. Optional RSI and volume panes, 10/20 EMAs, 200-week average, and other symbols to compare against. Below the chart, a Company section: financial statements, margins and valuation multiples (annual or quarterly), ownership by holder type, holder and insider, and capital returns (share count with EPS, dividends, and ROIC, ROE and ROCE against an estimated WACC)
 - A My Assets tab: net worth from your portfolios, accounts and other assets, minus your mortgages, and a payoff projection for your mortgages, one at a time, side by side or combined
+- A Budget tab: revenues and expenses for each pay day (every two weeks) over the next 12 months. Recurring lines have a fixed amount (every pay day, week, month, 3 months or year, or once); others are entered for each pay day, and any single pay day's amount can be changed
 
 Requirements are tracked in [Project Requirements.md](Project%20Requirements.md).
 
@@ -109,6 +110,7 @@ The app runs at `https://<username>.pythonanywhere.com`. In the steps below, rep
 |------|---------|
 | `app/portfolio.py` | Calculation engine (pure functions) |
 | `app/mortgage.py` | Mortgage payments and payoff projections (pure functions) |
+| `app/budget.py` | Budget by pay period (pure functions) |
 | `app/market.py` | Yahoo Finance client and caching |
 | `app/sec.py` | SEC EDGAR income statements and caching |
 | `app/company.py` | Research tab's Company figures (pure functions) |

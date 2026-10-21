@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Edit budget line · Portfolio Manager{% endblock %}
+{% block page %}budget-line{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a class="back" href="{{ url_for('views.budget', _anchor='budget-plan') }}">← Budget</a>
+    <h1>Edit {{ line.name }}</h1>
+  </div>
+</div>
+<form method="post" class="card form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% include "_budget_line_fields.html" %}
+  <p class="hint">Amounts you typed in the plan for single pay days are kept.</p>
+  <div class="form-actions">
+    <button class="btn btn-primary" type="submit">Save</button>
+    <a class="btn btn-ghost" href="{{ url_for('views.budget', _anchor='budget-plan') }}">Cancel</a>
+  </div>
+</form>
+<form method="post" action="{{ url_for('views.delete_budget_line', line_id=line.id) }}" class="danger-zone"
+      onsubmit="return confirm('Delete this line and the amounts entered for it? This cannot be undone.')">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button class="btn btn-danger" type="submit">Delete line</button>
+</form>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% endblock %}

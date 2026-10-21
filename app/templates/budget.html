@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Budget · Portfolio Manager{% endblock %}
+{% block page %}budget{% endblock %}
+{% set sections = [("budget-plan", "Plan"), ("add-line", "Add a line"), ("pay-schedule", "Pay day")] if plan else [] %}
+{% macro form_errors(errors) %}
+  {% if errors %}
+  <div class="alert alert-error" role="alert">
+    {% if errors|length == 1 %}{{ errors[0] }}{% else %}<ul class="error-items">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+  </div>
+  {% endif %}
+{% endmacro %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Budget</h1>
+    <p class="muted">Your revenues and expenses for each pay day, every two weeks, over the next 12 months. Values in {{ base_currency }}.</p>
+  </div>
+</div>
+
+{% if not plan %}
+<section class="card empty" id="pay-schedule">
+  <h2>When do you get paid?</h2>
+  <p class="muted">The budget has a column for each pay day, every two weeks. Enter the date of any pay day, your last
+    one or your next one, and the rest follow from it.</p>
+  <form method="post" action="{{ url_for('views.set_pay_day') }}" class="pay-day-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="sr-only" for="pay-day">A pay day</label>
+    <input type="date" id="pay-day" name="pay_day" required>
+    <button class="btn btn-primary" type="submit">Start my budget</button>
+  </form>
+</section>
+{% else %}
+<div id="app" data-entries-url="{{ url_for('views.api_budget_entry') }}"
+     data-edit-url="{{ url_for('views.edit_budget_line', line_id=0) }}" data-base="{{ base_currency }}">
+  <section class="kpis" id="budget-kpis" aria-live="polite"></section>
+
+  <section class="card" id="budget-plan">
+    <div class="card-head">
+      <h2>Plan</h2>
+      <div class="toolbar">
+        <a class="btn btn-secondary btn-sm" href="{{ url_for('views.budget', kind='revenue', _anchor='add-line') }}">Add revenue</a>
+        <a class="btn btn-secondary btn-sm" href="{{ url_for('views.budget', kind='expense', _anchor='add-line') }}">Add expense</a>
+      </div>
+    </div>
+    {% if plan.lines %}
+    <div class="table-wrap budget-wrap"><table class="table compact budget-table" id="budget-table"></table></div>
+    <ul class="hint notes">
+      <li>Each column is a pay day and runs until the day before the next one. A line counts in the pay period it falls in.</li>
+      <li>Type in any cell to change that pay period's amount; clear it to go back to the line's fixed amount.
+        Changed amounts are underlined.</li>
+      <li>Running total: what's left over, added up from the first pay day shown.</li>
+    </ul>
+    {% else %}
+    <p class="muted">No revenues or expenses yet. Add your pay and your regular bills below.</p>
+    {% endif %}
+    <script type="application/json" id="budget-data">{{ plan|tojson }}</script>
+  </section>
+
+  <form method="post" action="{{ url_for('views.new_budget_line') }}" class="card form" id="add-line"{% if line_errors %} data-errors{% endif %}>
+    <h2>Add a line</h2>
+    <p class="hint">A revenue or an expense. Recurring ones have a fixed amount; choose Varies to enter the amount for each pay day.</p>
+    {{ form_errors(line_errors) }}
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% include "_budget_line_fields.html" %}
+    <div class="form-actions"><button class="btn btn-primary" type="submit">Add line</button></div>
+  </form>
+
+  <form method="post" action="{{ url_for('views.set_pay_day') }}" class="card form" id="pay-schedule">
+    <h2>Pay day</h2>
+    <p class="hint">You're paid every two weeks, starting from this date. Changing it moves every column; amounts typed for single pay days stay on their old dates.</p>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-grid">
+      <label>A pay day <input type="date" name="pay_day" value="{{ g.user.pay_day }}" required></label>
+    </div>
+    <div class="form-actions"><button class="btn btn-secondary" type="submit">Save pay day</button></div>
+  </form>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% endblock %}
