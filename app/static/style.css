@@ -191,6 +191,7 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
 .legend li { display: grid; grid-template-columns: 12px 1fr auto; gap: 8px; align-items: center; }
 .legend .swatch { width: 12px; height: 12px; border-radius: 3px; }
 .legend .pct { font-variant-numeric: tabular-nums; color: var(--muted); }
+#worth-legend { max-width: 460px; }
 
 /* ---- Markets ------------------------------------------------------------ */
 .group-title { font-size: 1.2rem; margin: 28px 0 12px; }

@@ -461,6 +461,7 @@ def test_my_assets_net_worth(client):
     data = client.get("/api/assets").get_json()
     values = {a["id"]: a["value"] for a in data["assets"]}
     assert values == {1: whole, 2: rrsp, 3: 650000}
+    assert {a["id"]: a["name"] for a in data["assets"]}[3] == "House"  # names label the breakdown chart
     assert data["total_assets"] == whole + rrsp + 650000
     assert len(data["mortgages"]) == 1 and 400000 < data["total_liabilities"] < 500000
     assert data["net_worth"] == data["total_assets"] - data["total_liabilities"]
@@ -469,6 +470,7 @@ def test_my_assets_net_worth(client):
 
     html = client.get("/assets").get_data(as_text=True)
     assert "Portfolio · Retirement" in html and "$650,000.00" in html and 'id="mortgage-1"' in html
+    assert 'id="worth-chart"' in html and '<a href="#asset-breakdown">Breakdown</a>' in html
 
     # Edit: the house is revalued; deleting the portfolio leaves its asset at $0 with a warning.
     assert client.get("/assets/3/edit").status_code == 200

@@ -2,7 +2,7 @@
 {% block title %}My Assets · Portfolio Manager{% endblock %}
 {% block page %}assets{% endblock %}
 {% set sections = [
-  ("net-worth", "My Net Worth", [("asset-list", "Assets"), ("add-asset", "Add an asset")]),
+  ("net-worth", "My Net Worth", ([("asset-breakdown", "Breakdown")] if assets else []) + [("asset-list", "Assets"), ("add-asset", "Add an asset")]),
   ("mortgages", "My Mortgages", mortgage_links + [("add-mortgage", "Add a mortgage")]),
 ] %}
 {% macro kpi(label, value, sub="", tone="") %}
@@ -33,6 +33,17 @@
   <section class="kpis" id="worth-kpis" aria-live="polite">
     {% for _ in range(3) %}<div class="kpi skeleton"></div>{% endfor %}
   </section>
+
+  {% if assets %}
+  <section class="card" id="asset-breakdown">
+    <div class="card-head"><h3>Asset breakdown</h3></div>
+    <div class="alloc">
+      <div class="donut-box"><canvas id="worth-chart" aria-label="Breakdown of your assets" role="img"></canvas></div>
+      <ul class="legend" id="worth-legend"><li class="muted">Loading…</li></ul>
+    </div>
+    <ul class="hint notes" id="worth-note"></ul>
+  </section>
+  {% endif %}
 
   {% if assets or mortgages %}
   <section class="card flush" id="asset-list">

@@ -1474,6 +1474,50 @@
     // A form that came back with errors is further down the page: bring it into view.
     document.querySelector("form[data-errors]")?.scrollIntoView({ block: "start" });
 
+    // Asset breakdown: each asset's share of total assets, updated in place when values refresh.
+    // Mortgages can't be a slice of a doughnut; they're mentioned in the note instead.
+    let worthChart = null;
+    function renderBreakdown(data) {
+      if (!$("worth-chart")) return;
+      const shown = data.assets.filter((a) => a.value > 0).sort((a, b) => b.value - a.value);
+      const total = shown.reduce((sum, a) => sum + a.value, 0);
+      const colors = shown.map((_, i) => SECTOR_COLORS[i % SECTOR_COLORS.length]);
+      $("worth-legend").innerHTML = shown.length
+        ? shown.map((a, i) => `<li><span class="swatch" style="background:${colors[i]}"></span>
+            <span>${esc(a.name)}</span><span class="pct">${money(a.value)} · ${pct(a.value / total, { signed: false })}</span></li>`).join("")
+        : '<li class="muted">None of your assets has a value above zero yet.</li>';
+      const left = data.assets.length - shown.length;
+      setNotes($("worth-note"), [
+        "Each asset's share of your total assets.",
+        left ? `${left} ${left === 1 ? "asset is" : "assets are"} left out: ${left === 1 ? "its value is" : "their values are"} zero or below.` : "",
+        data.mortgages.length ? `Mortgages (${money(data.total_liabilities)}) aren't part of the chart; they're subtracted from your net worth.` : "",
+      ]);
+      const chartData = {
+        labels: shown.map((a) => a.name),
+        datasets: [{ data: shown.map((a) => a.value), backgroundColor: colors, borderColor: cssVar("--surface"), borderWidth: 2 }],
+      };
+      if (worthChart) {
+        worthChart.data = chartData;
+        worthChart.update("none");
+        return;
+      }
+      worthChart = new Chart($("worth-chart"), {
+        type: "doughnut",
+        data: chartData,
+        options: {
+          maintainAspectRatio: false,
+          cutout: "62%",
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: (c) => {
+              const sum = c.dataset.data.reduce((s, v) => s + v, 0);
+              return ` ${c.label}: ${money(c.parsed)} (${pct(c.parsed / sum, { signed: false })})`;
+            } } },
+          },
+        },
+      });
+    }
+
     // Net worth: portfolio and account values are live, so they come from the API.
     async function loadWorth() {
       let data;
@@ -1492,6 +1536,7 @@
       notices(data.warnings.map((w) => ["warning", w]));
 
       $("worth-kpis").innerHTML = worthKpis(data);
+      renderBreakdown(data);
 
       for (const a of data.assets) {
         const row = document.querySelector(`tr[data-asset="${a.id}"]`);

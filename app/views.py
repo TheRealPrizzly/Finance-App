@@ -1219,7 +1219,7 @@ def api_assets():
     for a in user_assets():
         ids = asset_account_ids(a, portfolios, members)
         if ids is None:
-            values.append({"id": a["id"], "kind": a["kind"], "value": a["value"]})
+            values.append({"id": a["id"], "name": a["name"], "kind": a["kind"], "value": a["value"]})
             continue
         if a["kind"] == "portfolio" and a["portfolio_id"] is None:
             warnings.append(f"The portfolio behind {a['name']} was deleted, so it counts as $0. Edit it to choose another.")
@@ -1230,7 +1230,7 @@ def api_assets():
             totals[key] = pf.snapshot(load_txns(ids), labels, market, base)["totals"]["total_value"] if ids else 0.0
         for account_id in ids:
             counted.setdefault(account_id, []).append(a["name"])
-        values.append({"id": a["id"], "kind": a["kind"], "value": totals[key]})
+        values.append({"id": a["id"], "name": a["name"], "kind": a["kind"], "value": totals[key]})
     for account_id, names in counted.items():
         if len(names) > 1:
             warnings.append(f"{labels[account_id]} is part of {_and_list(names)}, so your net worth counts it "
