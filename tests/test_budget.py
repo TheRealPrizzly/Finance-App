@@ -40,6 +40,10 @@ def test_occurrences_by_frequency():
     assert bg.occurrences(line(frequency="monthly", start="2026-01-05"), start, end) == []
     assert bg.occurrences(line(frequency="pay", start=None), start, end) == [start]
     assert bg.occurrences(line(frequency="weekly", start="2026-10-01"), start, end) == [date(2026, 10, 22), date(2026, 10, 29)]
+    # every 2 weeks from its own date, not necessarily a pay day
+    assert bg.occurrences(line(frequency="biweekly", start="2026-10-01"), start, end) == [date(2026, 10, 29)]
+    assert bg.occurrences(line(frequency="biweekly", start="2026-10-08"), start, end) == [date(2026, 10, 22)]
+    assert bg.occurrences(line(frequency="biweekly", start="2026-10-20"), start, end) == [date(2026, 10, 20)]
     assert bg.occurrences(line(frequency="quarterly", start="2026-04-25"), start, end) == [date(2026, 10, 25)]
     assert bg.occurrences(line(frequency="quarterly", start="2026-05-25"), start, end) == []
     assert bg.occurrences(line(frequency="yearly", start="2024-10-18"), start, end) == [date(2026, 10, 18)]
@@ -59,6 +63,7 @@ def test_describe():
     assert bg.describe(line(amount=1850, start="2026-01-01"), TODAY) == "$1,850.00 on the 1st of every month"
     assert bg.describe(line(frequency="pay", amount=2400, start=None), TODAY) == "$2,400.00 every pay day"
     assert bg.describe(line(frequency="weekly", amount=80, start="2026-10-23"), TODAY) == "$80.00 every Friday, from Oct 23, 2026"
+    assert bg.describe(line(frequency="biweekly", amount=45, start="2026-10-08"), TODAY) == "$45.00 every other Thursday"
     assert bg.describe(line(frequency="yearly", amount=120, start="2026-03-03", end="2030-03-03"), TODAY) == \
         "$120.00 every year on Mar 3, until Mar 3, 2030"
     assert bg.describe(line(frequency="once", amount=500, start="2026-12-20"), TODAY) == "$500.00 on Dec 20, 2026"

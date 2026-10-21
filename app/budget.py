@@ -16,6 +16,7 @@ KINDS = {"revenue": "Revenue", "expense": "Expense"}
 FREQUENCIES = {
     "pay": "Every pay day",
     "weekly": "Every week",
+    "biweekly": "Bi-weekly (every 2 weeks)",
     "monthly": "Every month",
     "quarterly": "Every 3 months",
     "yearly": "Every year",
@@ -23,7 +24,7 @@ FREQUENCIES = {
     "varies": "Varies: entered for each pay day",
 }
 MONTH_STEPS = {"monthly": 1, "quarterly": 3, "yearly": 12}
-NEEDS_DATE = ("weekly", "monthly", "quarterly", "yearly", "once")  # the date sets the schedule
+NEEDS_DATE = ("weekly", "biweekly", "monthly", "quarterly", "yearly", "once")  # the date sets the schedule
 
 
 def add_months(d, months):
@@ -63,9 +64,9 @@ def occurrences(line, start, end):
         return []
     if freq == "once":
         dates = [first]
-    elif freq in ("pay", "weekly"):
-        step = PAY_DAYS if freq == "pay" else 7
-        # the first date on or after start: start itself for pay days, else whole weeks after the first
+    elif freq in ("pay", "weekly", "biweekly"):
+        step = 7 if freq == "weekly" else 14
+        # the first date on or after start: start itself for pay days, else whole steps after the first
         d = start if freq == "pay" else first + timedelta(days=max(-(-(start - first).days // step), 0) * step)
         dates = []
         while d < end:
@@ -99,6 +100,7 @@ def describe(line, today):
     text = {
         "pay": f"{amount} every pay day",
         "weekly": f"{amount} every {first:%A}" if first else amount,
+        "biweekly": f"{amount} every other {first:%A}" if first else amount,
         "monthly": f"{amount} on the {ordinal(first.day)} of every month" if first else amount,
         "quarterly": f"{amount} every 3 months, on the {ordinal(first.day)}" if first else amount,
         "yearly": f"{amount} every year on {short_date(first, year=False)}" if first else amount,
