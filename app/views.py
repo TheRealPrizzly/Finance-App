@@ -257,6 +257,12 @@ def api_sentiment():
     return macro_json(get_macro().sentiment)
 
 
+@bp.get("/api/markets/currencies")
+@login_required
+def api_currencies():
+    return macro_json(get_macro().currencies)
+
+
 @bp.get("/api/markets/rates")
 @login_required
 def api_rates():

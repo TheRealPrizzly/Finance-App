@@ -1,8 +1,9 @@
 """Market-wide indicators for the Markets tab: index futures and sector ETFs before the
-open, CNN's Fear & Greed Index and the US Treasury yield curve.
+open, CNN's Fear & Greed Index, the Canadian dollar against the US dollar and the US
+Treasury yield curve.
 
-Futures and sector quotes come from Yahoo Finance through MarketData and share its
-caches. Fear & Greed comes from the JSON feed behind cnn.com/markets/fear-and-greed, and
+Futures, sector quotes and exchange rates come from Yahoo Finance through MarketData and
+share its caches. Fear & Greed comes from the JSON feed behind cnn.com/markets/fear-and-greed, and
 yields from the Treasury's daily par yield curve CSV; both are cached here.
 """
 import csv
@@ -54,6 +55,10 @@ YAHOO_YIELDS = (("^IRX", "3M"), ("^FVX", "5Y"), ("^TNX", "10Y"), ("^TYX", "30Y")
 CURVE_AGES = (("1w", 7), ("1m", 30), ("1y", 365))  # comparison curves: key, days before the latest
 SPREADS = (("10Y", "2Y"), ("10Y", "3M"))  # charted as daily history: long tenor minus short tenor
 SPREAD_YEARS = 5
+
+CAD_USD = "CADUSD=X"  # US dollars per Canadian dollar
+CURRENCY_YEARS = 10
+CURRENCY_AVERAGES = (("10y", "10-year average", 10), ("5y", "5-year average", 5), ("1y", "1-year average", 1))
 
 SENTIMENT_TTL = 10 * 60
 RATES_TTL = 3 * 60 * 60
@@ -209,6 +214,29 @@ def yield_curves(rows):
     }
 
 
+# -- currencies ----------------------------------------------------------------------
+
+
+def years_before(day, years):
+    try:
+        return day.replace(year=day.year - years)
+    except ValueError:  # February 29th
+        return day.replace(year=day.year - years, day=28)
+
+
+def rate_averages(closes):
+    """The average rate over the last 10, 5 and 1 years of {date: rate}, each with the first
+    date it covers. Periods longer than the history average all of it."""
+    days = sorted(closes)
+    out = []
+    for key, label, years in CURRENCY_AVERAGES:
+        since = years_before(days[-1], years)
+        window = [d for d in days if d > since]
+        out.append({"key": key, "label": label, "from": window[0].isoformat(),
+                    "value": round(sum(closes[d] for d in window) / len(window), 6)})
+    return out
+
+
 # -- service -------------------------------------------------------------------------
 
 
@@ -287,6 +315,19 @@ class MacroData:
                           headers={"Referer": "https://www.cnn.com/", "Origin": "https://www.cnn.com"})
         r.raise_for_status()
         return parse_fear_greed(r.json())
+
+    def currencies(self):
+        """Ten years of daily CAD to USD rates and their 10-, 5- and 1-year averages."""
+        start = years_before(date.today(), CURRENCY_YEARS)
+        _, closes = self.market.history(CAD_USD, start)
+        closes = {d: v for d, v in closes.items() if d >= start and v}
+        if not closes:
+            raise Unavailable("The Canadian dollar's exchange rate can't be reached right now.")
+        return {
+            "symbol": CAD_USD,
+            "points": [[d.isoformat(), round(closes[d], 6)] for d in sorted(closes)],
+            "averages": rate_averages(closes),
+        }
 
     def rates(self):
         try:

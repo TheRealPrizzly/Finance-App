@@ -4,6 +4,7 @@
 {% set sections = [
   ("premarket", "Pre-market", [("futures", "Index futures"), ("sector-moves", "Sectors")]),
   ("sentiment", "Market sentiment", [("fear-greed-index", "Fear & Greed Index")]),
+  ("currencies", "Currencies", [("cad-usd", "CAD to USD")]),
   ("rates", "Bonds & rates", [("rate-kpis", "Key rates"), ("yield-curve", "Yield curve")]),
 ] %}
 {% block content %}
@@ -19,6 +20,7 @@
      data-sentiment-url="{{ url_for('views.api_sentiment') }}"
      data-fear-greed-feed="{{ fear_greed_feed }}"
      data-fear-greed-meta='{{ fear_greed_meta|tojson }}'
+     data-currencies-url="{{ url_for('views.api_currencies') }}"
      data-rates-url="{{ url_for('views.api_rates') }}">
 
   <h2 class="group-title" id="premarket">Pre-market</h2>
@@ -52,6 +54,19 @@
     </div>
     <div class="table-wrap"><table class="table compact" id="fg-indicators"></table></div>
     <ul class="hint notes" id="fg-note"></ul>
+  </section>
+
+  <h2 class="group-title" id="currencies">Currencies</h2>
+  <section class="card" id="cad-usd">
+    <div class="card-head">
+      <h3>Canadian dollar in US dollars</h3>
+      <span class="tag" id="cad-usd-now"></span>
+    </div>
+    <div class="chart-box">
+      <canvas id="cad-usd-chart" aria-label="Canadian dollar in US dollars over the past 10 years" role="img"></canvas>
+      <div class="chart-status" id="cad-usd-status">Loading…</div>
+    </div>
+    <ul class="hint notes" id="cad-usd-note"></ul>
   </section>
 
   <h2 class="group-title" id="rates">Bonds &amp; rates</h2>

@@ -7,8 +7,8 @@ import requests
 
 from app import macro
 from app.macro import (
-    MacroData, Unavailable, fear_greed_rating, parse_fear_greed, parse_treasury_csv, session_move, spread_history,
-    tenor_label, yield_curves,
+    MacroData, Unavailable, fear_greed_rating, parse_fear_greed, parse_treasury_csv, rate_averages, session_move,
+    spread_history, tenor_label, yield_curves, years_before,
 )
 from conftest import login
 
@@ -284,6 +284,36 @@ def test_rates_unavailable_everywhere():
         MacroData(Market({}), http=Http({"treasury.gov": requests.ConnectionError})).rates()
 
 
+# -- currencies ----------------------------------------------------------------------
+
+
+def test_rate_averages_cover_ten_five_and_one_year():
+    closes = {date(2016, 10, 21): 0.75, date(2022, 1, 3): 0.79, date(2026, 1, 5): 0.71, date(2026, 10, 20): 0.73}
+    averages = {a["key"]: a for a in rate_averages(closes)}
+    assert averages["10y"]["value"] == pytest.approx(0.745) and averages["10y"]["from"] == "2016-10-21"
+    assert averages["5y"]["value"] == pytest.approx((0.79 + 0.71 + 0.73) / 3) and averages["5y"]["from"] == "2022-01-03"
+    assert averages["1y"]["value"] == pytest.approx(0.72) and averages["1y"]["from"] == "2026-01-05"
+    assert [a["label"] for a in rate_averages(closes)] == ["10-year average", "5-year average", "1-year average"]
+
+
+def test_years_before_a_leap_day():
+    assert years_before(date(2024, 2, 29), 1) == date(2023, 2, 28)
+
+
+def test_currencies():
+    today = date.today()
+    d1, d2 = years_before(today, 11), years_before(today, 2)
+    rates = MacroData(Market({}, history={"CADUSD=X": {d1: 0.9, d2: 0.74, today: 0.72}})).currencies()
+    assert rates["symbol"] == "CADUSD=X"
+    assert rates["points"] == [[d2.isoformat(), 0.74], [today.isoformat(), 0.72]]  # ten years only
+    assert rates["averages"][0]["value"] == pytest.approx(0.73)
+
+
+def test_currencies_unavailable():
+    with pytest.raises(Unavailable):
+        MacroData(Market({})).currencies()
+
+
 # -- pages ----------------------------------------------------------------------------
 
 
@@ -301,7 +331,8 @@ def test_markets_tab(macro_app, client):
     assert '<body data-page="markets" class="has-sidenav">' in html
     assert 'href="/markets" aria-current="page">Markets</a>' in html
     assert "<h1>Markets</h1>" in html and "Macros" not in html
-    for heading in ("Pre-market", "Market sentiment", "Fear &amp; Greed Index", "Bonds &amp; rates", "US Treasury yield curve"):
+    for heading in ("Pre-market", "Market sentiment", "Fear &amp; Greed Index", "Currencies", "Canadian dollar in US dollars",
+                    "Bonds &amp; rates", "US Treasury yield curve"):
         assert heading in html
     assert "https://www.cnn.com/markets/fear-and-greed" in html
     resp = client.get("/macros")  # the tab's old name and address
@@ -319,6 +350,8 @@ def test_macro_apis(macro_app, client):
     assert [f["symbol"] for f in premarket["futures"]] == ["ES=F"]
     assert premarket["session"] == "regular"
     assert client.get("/api/markets/rates").get_json()["source"] == "treasury"
+    resp = client.get("/api/markets/currencies")  # no exchange rates in the fake market
+    assert resp.status_code == 502 and "Canadian dollar" in resp.get_json()["error"]
     resp = client.get("/api/markets/sentiment")
     assert resp.status_code == 502
     assert "Fear & Greed" in resp.get_json()["error"]

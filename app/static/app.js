@@ -964,8 +964,8 @@
   }
 
   // ---- Markets tab -----------------------------------------------------------------
-  // Pre-market futures and sectors (refreshed every minute), CNN's Fear & Greed Index and
-  // the Treasury yield curve. Each section loads on its own, so one slow source can't hold up the rest.
+  // Pre-market futures and sectors (refreshed every minute), CNN's Fear & Greed Index, the
+  // Canadian dollar in US dollars and the Treasury yield curve. Each section loads on its own, so one slow source can't hold up the rest.
   function markets() {
     const urls = root.dataset;
     chartDefaults();
@@ -1159,6 +1159,74 @@
       renderFearGreed(data);
     }
 
+    // CAD to USD -------------------------------------------------------------------
+    // Baseline delta: the rate is green above its 10-year average and red below, shaded to it.
+    // The shorter averages are drawn across the years they cover.
+    const AVERAGES = { "10y": { color: "--muted", dash: [4, 4] }, "5y": { color: "--chart-2", dash: [6, 4] }, "1y": { color: "--chart-1", dash: [6, 4] } };
+    const rate = (v) => (v == null ? "—" : v.toFixed(4));
+
+    function renderCurrencies(data) {
+      const { points, averages } = data;
+      const labels = points.map((p) => p[0]);
+      const base = averages.find((a) => a.key === "10y").value;
+      const up = cssVar("--gain"), down = cssVar("--loss");
+      const last = points[points.length - 1];
+      const vsBase = (v) => `${pct(Math.abs(v / base - 1), { signed: false })} ${v >= base ? "above" : "below"} the 10-year average`;
+      $("cad-usd-now").textContent = `1 CAD = ${rate(last[1])} USD`;
+      $("cad-usd-now").title = `${longDate(last[0])} · ${vsBase(last[1])}`;
+      $("cad-usd-status").hidden = true;
+      new Chart($("cad-usd-chart"), {
+        type: "line",
+        data: {
+          labels,
+          datasets: [
+            {
+              label: "CAD to USD", data: points.map((p) => p[1]), borderColor: up, backgroundColor: up, borderWidth: 1.5,
+              pointRadius: 0, pointHoverRadius: 3, tension: 0,
+              segment: { borderColor: (s) => ((s.p0.parsed.y + s.p1.parsed.y) / 2 >= base ? up : down) },
+              fill: { target: { value: base }, above: withAlpha(up, 0.15), below: withAlpha(down, 0.15) },
+            },
+            ...averages.map((a) => {
+              const color = cssVar(AVERAGES[a.key].color);
+              return {
+                label: `${a.label} · ${rate(a.value)}`, average: true, data: labels.map((d) => (d >= a.from ? a.value : null)),
+                borderColor: color, backgroundColor: color, borderWidth: 1.5, borderDash: AVERAGES[a.key].dash, pointRadius: 0, pointHoverRadius: 0,
+              };
+            }),
+          ],
+        },
+        options: {
+          maintainAspectRatio: false,
+          animation: false,
+          interaction: { mode: "index", intersect: false },
+          scales: { x: { grid: { display: false }, ticks: dateTicks(labels) }, y: { grace: "5%", ticks: { callback: (v) => v.toFixed(2) } } },
+          plugins: {
+            legend: { position: "bottom", labels: { boxWidth: 12, filter: (item, chart) => chart.datasets[item.datasetIndex].average } },
+            tooltip: {
+              filter: (item) => !item.dataset.average,
+              callbacks: {
+                title: (items) => longDate(labels[items[0].dataIndex]),
+                label: (c) => ` 1 CAD = ${rate(c.parsed.y)} USD (${vsBase(c.parsed.y)})`,
+              },
+            },
+          },
+        },
+      });
+      setNotes($("cad-usd-note"), [
+        `Daily closes from Yahoo Finance (${data.symbol}), as of ${longDate(last[0])}: 1 USD = ${rate(1 / last[1])} CAD.`,
+        "The rate is green above its 10-year average (dashed grey) and red below it.",
+        "The 5-year and 1-year averages are drawn across the years they cover.",
+      ]);
+    }
+
+    async function loadCurrencies() {
+      try {
+        renderCurrencies(await getJSON(urls.currenciesUrl));
+      } catch (err) {
+        $("cad-usd-status").textContent = `Couldn't load exchange rates: ${err.message}`;
+      }
+    }
+
     // Treasury yields -------------------------------------------------------------
     const CURVES = {
       latest: { label: "Latest", color: "--chart-1", width: 2.5 },
@@ -1328,6 +1396,7 @@
 
     loadPremarket();
     loadSentiment();
+    loadCurrencies();
     loadRates();
     setInterval(() => { if (!document.hidden) loadPremarket(); }, REFRESH_MS);
     document.addEventListener("visibilitychange", () => { if (!document.hidden) loadPremarket(); });
