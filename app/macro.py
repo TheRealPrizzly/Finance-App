@@ -57,8 +57,8 @@ SPREADS = (("10Y", "2Y"), ("10Y", "3M"))  # charted as daily history: long tenor
 SPREAD_YEARS = 5
 
 CAD_USD = "CADUSD=X"  # US dollars per Canadian dollar
-CURRENCY_YEARS = 10
-CURRENCY_AVERAGES = (("10y", "10-year average", 10), ("5y", "5-year average", 5), ("1y", "1-year average", 1))
+CURRENCY_YEARS = 20
+CURRENCY_AVERAGES = (("20y", "20-year average", 20), ("10y", "10-year average", 10), ("5y", "5-year average", 5), ("1y", "1-year average", 1))
 
 SENTIMENT_TTL = 10 * 60
 RATES_TTL = 3 * 60 * 60
@@ -225,7 +225,7 @@ def years_before(day, years):
 
 
 def rate_averages(closes):
-    """The average rate over the last 10, 5 and 1 years of {date: rate}, each with the first
+    """The average rate over the last 20, 10, 5 and 1 years of {date: rate}, each with the first
     date it covers. Periods longer than the history average all of it."""
     days = sorted(closes)
     out = []
@@ -317,7 +317,7 @@ class MacroData:
         return parse_fear_greed(r.json())
 
     def currencies(self):
-        """Ten years of daily CAD to USD rates and their 10-, 5- and 1-year averages."""
+        """Twenty years of daily CAD to USD rates and their 20-, 10-, 5- and 1-year averages."""
         start = years_before(date.today(), CURRENCY_YEARS)
         _, closes = self.market.history(CAD_USD, start)
         closes = {d: v for d, v in closes.items() if d >= start and v}

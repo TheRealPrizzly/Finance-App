@@ -1160,18 +1160,18 @@
     }
 
     // CAD to USD -------------------------------------------------------------------
-    // Baseline delta: the rate is green above its 10-year average and red below, shaded to it.
+    // Baseline delta: the rate is green above its 20-year average and red below, shaded to it.
     // The shorter averages are drawn across the years they cover.
-    const AVERAGES = { "10y": { color: "--muted", dash: [4, 4] }, "5y": { color: "--chart-2", dash: [6, 4] }, "1y": { color: "--chart-1", dash: [6, 4] } };
+    const AVERAGES = { "20y": { color: "--muted", dash: [4, 4] }, "10y": { color: "--ind-rsi", dash: [6, 4] }, "5y": { color: "--chart-2", dash: [6, 4] }, "1y": { color: "--chart-1", dash: [6, 4] } };
     const rate = (v) => (v == null ? "—" : v.toFixed(4));
 
     function renderCurrencies(data) {
       const { points, averages } = data;
       const labels = points.map((p) => p[0]);
-      const base = averages.find((a) => a.key === "10y").value;
+      const base = averages.find((a) => a.key === "20y").value;
       const up = cssVar("--gain"), down = cssVar("--loss");
       const last = points[points.length - 1];
-      const vsBase = (v) => `${pct(Math.abs(v / base - 1), { signed: false })} ${v >= base ? "above" : "below"} the 10-year average`;
+      const vsBase = (v) => `${pct(Math.abs(v / base - 1), { signed: false })} ${v >= base ? "above" : "below"} the 20-year average`;
       $("cad-usd-now").textContent = `1 CAD = ${rate(last[1])} USD`;
       $("cad-usd-now").title = `${longDate(last[0])} · ${vsBase(last[1])}`;
       $("cad-usd-status").hidden = true;
@@ -1214,8 +1214,8 @@
       });
       setNotes($("cad-usd-note"), [
         `Daily closes from Yahoo Finance (${data.symbol}), as of ${longDate(last[0])}: 1 USD = ${rate(1 / last[1])} CAD.`,
-        "The rate is green above its 10-year average (dashed grey) and red below it.",
-        "The 5-year and 1-year averages are drawn across the years they cover.",
+        "The rate is green above its 20-year average (dashed grey) and red below it.",
+        "The 10-year, 5-year and 1-year averages are drawn across the years they cover.",
       ]);
     }
 

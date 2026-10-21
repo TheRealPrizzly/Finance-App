@@ -287,13 +287,14 @@ def test_rates_unavailable_everywhere():
 # -- currencies ----------------------------------------------------------------------
 
 
-def test_rate_averages_cover_ten_five_and_one_year():
-    closes = {date(2016, 10, 21): 0.75, date(2022, 1, 3): 0.79, date(2026, 1, 5): 0.71, date(2026, 10, 20): 0.73}
+def test_rate_averages_cover_twenty_ten_five_and_one_year():
+    closes = {date(2008, 5, 1): 0.99, date(2016, 10, 21): 0.75, date(2022, 1, 3): 0.79, date(2026, 1, 5): 0.71, date(2026, 10, 20): 0.73}
     averages = {a["key"]: a for a in rate_averages(closes)}
+    assert averages["20y"]["value"] == pytest.approx(0.794) and averages["20y"]["from"] == "2008-05-01"
     assert averages["10y"]["value"] == pytest.approx(0.745) and averages["10y"]["from"] == "2016-10-21"
     assert averages["5y"]["value"] == pytest.approx((0.79 + 0.71 + 0.73) / 3) and averages["5y"]["from"] == "2022-01-03"
     assert averages["1y"]["value"] == pytest.approx(0.72) and averages["1y"]["from"] == "2026-01-05"
-    assert [a["label"] for a in rate_averages(closes)] == ["10-year average", "5-year average", "1-year average"]
+    assert [a["label"] for a in rate_averages(closes)] == ["20-year average", "10-year average", "5-year average", "1-year average"]
 
 
 def test_years_before_a_leap_day():
@@ -302,10 +303,10 @@ def test_years_before_a_leap_day():
 
 def test_currencies():
     today = date.today()
-    d1, d2 = years_before(today, 11), years_before(today, 2)
+    d1, d2 = years_before(today, 21), years_before(today, 2)
     rates = MacroData(Market({}, history={"CADUSD=X": {d1: 0.9, d2: 0.74, today: 0.72}})).currencies()
     assert rates["symbol"] == "CADUSD=X"
-    assert rates["points"] == [[d2.isoformat(), 0.74], [today.isoformat(), 0.72]]  # ten years only
+    assert rates["points"] == [[d2.isoformat(), 0.74], [today.isoformat(), 0.72]]  # twenty years only
     assert rates["averages"][0]["value"] == pytest.approx(0.73)
 
 
