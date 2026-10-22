@@ -1,19 +1,20 @@
 """Personal budget planned by pay period.
 
 Pay arrives every two weeks. Each pay period runs from a pay day to the day before the next
-one, and each revenue or expense line counts in the period its dates fall in. A line is either
+one, and each cash, revenue or expense line counts in the period its dates fall in. A line is either
 recurring, with a fixed amount on a schedule, or varies, with an amount entered for each pay
 period. An amount entered for a recurring line replaces its fixed amount for that one period.
 Expenses can be put in groups (Housing, Taxes, ...), which are subtotalled for each pay period.
 
-Amounts are positive; whether a line is a revenue or an expense gives its direction.
+Amounts are positive. Cash is tracked separately; revenue and expense lines determine the budget
+surplus.
 """
 from calendar import monthrange
 from datetime import date, timedelta
 
 PAY_DAYS = 14
 MONTHS_AHEAD = 12
-KINDS = {"revenue": "Revenue", "expense": "Expense"}
+KINDS = {"cash": "Cash", "revenue": "Revenue", "expense": "Expense"}
 FREQUENCIES = {
     "pay": "Every pay day",
     "weekly": "Every week",
@@ -161,7 +162,7 @@ def plan(lines, entries, anchor, today):
     def column_totals(kind):
         return [sum(r["cells"][i]["amount"] or 0 for r in rows if r["kind"] == kind) for i in range(len(days))]
 
-    revenue, expense = column_totals("revenue"), column_totals("expense")
+    cash, revenue, expense = (column_totals(kind) for kind in ("cash", "revenue", "expense"))
     net = [r - e for r, e in zip(revenue, expense)]
     running, balance = [], 0.0
     for n in net:
@@ -172,6 +173,6 @@ def plan(lines, entries, anchor, today):
         "today": today.isoformat(),
         "lines": rows,
         "groups": expense_groups(rows, len(days)),
-        "totals": {"revenue": revenue, "expense": expense, "net": net, "running": running},
-        "sums": {"revenue": sum(revenue), "expense": sum(expense), "net": sum(net)},
+        "totals": {"cash": cash, "revenue": revenue, "expense": expense, "net": net, "running": running},
+        "sums": {"cash": sum(cash), "revenue": sum(revenue), "expense": sum(expense), "net": sum(net)},
     }

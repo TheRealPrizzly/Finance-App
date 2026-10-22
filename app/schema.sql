@@ -122,12 +122,13 @@ CREATE TABLE IF NOT EXISTS mortgages (
     created_at           TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- A line of the budget: money coming in (revenue) or going out (expense). Recurring lines have a fixed
--- amount on a schedule from start_date; lines that vary ('varies') have amounts entered per pay day.
+-- A line of the budget: cash tracked separately, money coming in (revenue) or going out (expense).
+-- Recurring lines have a fixed amount on a schedule from start_date; lines that vary ('varies') have
+-- amounts entered per pay day.
 CREATE TABLE IF NOT EXISTS budget_lines (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    kind        TEXT NOT NULL,              -- 'revenue' or 'expense'
+    kind        TEXT NOT NULL,              -- 'cash', 'revenue' or 'expense'
     name        TEXT NOT NULL,
     group_name  TEXT NOT NULL DEFAULT '',   -- expenses only: the group it is subtotalled in, e.g. 'Housing'
     frequency   TEXT NOT NULL,              -- 'pay', 'weekly', 'biweekly', 'monthly', 'quarterly', 'yearly', 'once' or 'varies'

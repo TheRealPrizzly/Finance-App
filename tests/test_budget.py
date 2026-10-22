@@ -73,6 +73,7 @@ def test_describe():
 
 def test_plan_totals_and_entered_amounts():
     lines = [
+        line(4, "cash", "pay", 500, None, name="Cash on hand"),
         line(1, "revenue", "pay", 2400, None, name="Salary"),
         line(2, "expense", "monthly", 1850, "2026-01-01"),
         line(3, "expense", "varies", None, None, name="Groceries"),
@@ -82,7 +83,9 @@ def test_plan_totals_and_entered_amounts():
     periods = [p["date"] for p in plan["periods"]]
     assert periods[:3] == ["2026-10-16", "2026-10-30", "2026-11-13"]
     assert plan["periods"][0]["end"] == "2026-10-29"
-    salary, rent, groceries = plan["lines"]
+    cash, salary, rent, groceries = plan["lines"]
+    assert cash["total"] == 500 * 27
+    assert plan["totals"]["cash"] == [500] * 27
     assert all(c["amount"] == 2400 for c in salary["cells"]) and salary["total"] == 2400 * 27
     # Rent on the 1st: none in the first period, Nov 1 in the second (changed to 1,900), Dec 1 in the fourth.
     assert [c["amount"] for c in rent["cells"][:4]] == [None, 1900.0, None, 1850]
@@ -93,6 +96,7 @@ def test_plan_totals_and_entered_amounts():
     assert plan["totals"]["running"][:2] == [2100, 2600]
     assert plan["sums"]["net"] == pytest.approx(plan["sums"]["revenue"] - plan["sums"]["expense"])
     assert plan["sums"]["expense"] == pytest.approx(rent["total"] + groceries["total"])
+    assert plan["sums"]["cash"] == cash["total"]
 
 
 def test_expense_groups_are_subtotalled_with_ungrouped_expenses_last():
@@ -154,21 +158,27 @@ def test_budget_lines_and_entries(client):
     assert add_line(client, token).headers["Location"] == "/budget#budget-plan"
     add_line(client, token, kind="revenue", name="Salary", frequency="pay", amount="2400", start_date="")
     add_line(client, token, name="Groceries", frequency="varies", amount="", start_date="2026-01-01")
+    add_line(client, token, kind="cash", name="Cash on hand", frequency="pay", amount="500", start_date="")
     plan = client.get("/api/budget").get_json()
-    assert [(l["name"], l["kind"]) for l in plan["lines"]] == [("Salary", "revenue"), ("Rent", "expense"), ("Groceries", "expense")]
-    assert plan["lines"][1]["schedule"] == "$1,850.00 on the 1st of every month"
+    assert [(l["name"], l["kind"]) for l in plan["lines"]] == [
+        ("Cash on hand", "cash"), ("Salary", "revenue"), ("Rent", "expense"), ("Groceries", "expense")]
+    assert plan["lines"][2]["schedule"] == "$1,850.00 on the 1st of every month"
     assert 'id="budget-table"' in client.get("/budget").get_data(as_text=True)
+    html = client.get("/budget").get_data(as_text=True)
+    assert 'href="/budget?kind=cash#add-line">Add cash</a>' in html
+    assert plan["sums"]["cash"] == 500 * len(plan["periods"])
+    assert plan["sums"]["net"] == plan["sums"]["revenue"] - plan["sums"]["expense"]
 
     # Enter an amount for a pay day; a blank one removes it again.
     day = plan["periods"][1]["date"]
     entry = {"line_id": 3, "pay_day": day, "amount": "$320.50"}
     resp = client.post("/api/budget/entries", json=entry, headers={"X-CSRF-Token": token})
     assert resp.status_code == 200
-    assert resp.get_json()["lines"][2]["cells"][1] == {"amount": 320.5, "scheduled": None, "entered": True}
+    assert resp.get_json()["lines"][3]["cells"][1] == {"amount": 320.5, "scheduled": None, "entered": True}
     client.post("/api/budget/entries", json={**entry, "amount": "400"}, headers={"X-CSRF-Token": token})
-    assert client.get("/api/budget").get_json()["lines"][2]["cells"][1]["amount"] == 400
+    assert client.get("/api/budget").get_json()["lines"][3]["cells"][1]["amount"] == 400
     resp = client.post("/api/budget/entries", json={**entry, "amount": ""}, headers={"X-CSRF-Token": token})
-    assert resp.get_json()["lines"][2]["cells"][1]["amount"] is None
+    assert resp.get_json()["lines"][3]["cells"][1]["amount"] is None
 
     # Bad requests: not a pay day, not an amount, someone else's line, no CSRF token.
     bad = [({**entry, "pay_day": "2026-10-17"}, 400), ({**entry, "amount": "lots"}, 400), ({**entry, "line_id": 99}, 404)]
@@ -181,12 +191,12 @@ def test_budget_lines_and_entries(client):
     assert 'value="1850"' in html and 'value="2026-01-01"' in html
     client.post("/budget/lines/1/edit", data={"csrf_token": token, "kind": "expense", "name": "Rent", "frequency": "monthly",
                                               "amount": "1900", "start_date": "2026-01-01", "end_date": ""})
-    assert client.get("/api/budget").get_json()["lines"][1]["schedule"].startswith("$1,900.00")
+    assert client.get("/api/budget").get_json()["lines"][2]["schedule"].startswith("$1,900.00")
 
     # Delete: the line and its entries go.
     client.post("/api/budget/entries", json=entry, headers={"X-CSRF-Token": token})
     assert client.post("/budget/lines/3/delete", data={"csrf_token": token}).status_code == 302
-    assert [l["name"] for l in client.get("/api/budget").get_json()["lines"]] == ["Salary", "Rent"]
+    assert [l["name"] for l in client.get("/api/budget").get_json()["lines"]] == ["Cash on hand", "Salary", "Rent"]
     assert client.get("/budget/lines/3/edit").status_code == 404
 
 
@@ -218,7 +228,7 @@ def test_expense_groups_from_the_form(client):
     ({"start_date": ""}, "Enter the first date"),
     ({"frequency": "once", "start_date": ""}, "Enter the date it is due."),
     ({"end_date": "2025-01-01"}, "can&#39;t be before the first date"),
-    ({"kind": "gift"}, "revenue or an expense"),
+    ({"kind": "gift"}, "cash, a revenue or an expense"),
     ({"frequency": "daily"}, "how often"),
 ])
 def test_budget_line_form_errors(client, fields, error):
@@ -251,3 +261,5 @@ def test_add_revenue_and_expense_buttons_pick_the_type(client):
     assert re.search(r'<option value="revenue"\s+selected>', html)
     html = client.get("/budget").get_data(as_text=True)
     assert re.search(r'<option value="expense"\s+selected>', html)
+    html = client.get("/budget?kind=cash").get_data(as_text=True)
+    assert re.search(r'<option value="cash"\s+selected>', html)

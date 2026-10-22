@@ -1464,7 +1464,7 @@ def api_mortgages_continued():
 def user_budget_lines():
     return get_db().execute(
         """SELECT * FROM budget_lines WHERE user_id = ?
-           ORDER BY CASE kind WHEN 'revenue' THEN 0 ELSE 1 END, id""", (g.user["id"],)
+           ORDER BY CASE kind WHEN 'cash' THEN 0 WHEN 'revenue' THEN 1 ELSE 2 END, id""", (g.user["id"],)
     ).fetchall()
 
 
@@ -1512,7 +1512,7 @@ def _parse_budget_line_form(form):
     errors = []
     kind = form.get("kind", "")
     if kind not in bg.KINDS:
-        errors.append("Choose whether this is a revenue or an expense.")
+        errors.append("Choose whether this is cash, a revenue or an expense.")
     name = form.get("name", "").strip()
     if not name:
         errors.append("Enter a name, such as Salary or Rent.")
@@ -1605,7 +1605,8 @@ def new_budget_line():
         (g.user["id"], *(values[c] for c in BUDGET_COLUMNS)),
     )
     db.commit()
-    flash(f"Added {values['name']} to your {'revenues' if values['kind'] == 'revenue' else 'expenses'}.", "success")
+    section = {"cash": "cash", "revenue": "revenues", "expense": "expenses"}[values["kind"]]
+    flash(f"Added {values['name']} to your {section}.", "success")
     return redirect(url_for("views.budget", _anchor="budget-plan"))
 
 

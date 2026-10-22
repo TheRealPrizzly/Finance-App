@@ -3541,7 +3541,7 @@
     });
   }
 
-  // One column per pay day over the next year: revenues, then expenses, then what's left over.
+  // One column per pay day over the next year: cash, revenues, expenses, then what's left over.
   // Every cell is an input: typing changes that pay period's amount, and the totals follow.
   function budget() {
     budgetFields();
@@ -3609,7 +3609,7 @@
         </tbody>`;
       };
       table.innerHTML = `<thead><tr><th class="line-name">Pay day</th>${head}<th class="num">12 months</th></tr></thead>
-        ${section("revenue", "Revenues", "Total revenues")}${section("expense", "Expenses", "Total expenses")}
+        ${section("cash", "Cash", "Total cash")}${section("revenue", "Revenues", "Total revenues")}${section("expense", "Expenses", "Total expenses")}
         <tfoot>
           <tr><th scope="row" class="line-name">Left over</th>${periods.map((_, i) => `<td class="num nowrap${now(i)}" data-sum="net" data-index="${i}"></td>`).join("")}
             <td class="num nowrap" data-sum="net" data-index="all"></td></tr>

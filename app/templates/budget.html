@@ -13,7 +13,7 @@
 <div class="page-head">
   <div>
     <h1>Budget</h1>
-    <p class="muted">Your revenues and expenses for each pay day, every two weeks, over the next 12 months. Values in {{ base_currency }}.</p>
+    <p class="muted">Your cash, revenues and expenses for each pay day, every two weeks, over the next 12 months. Values in {{ base_currency }}.</p>
   </div>
 </div>
 
@@ -38,6 +38,7 @@
     <div class="card-head">
       <h2>Plan</h2>
       <div class="toolbar">
+        <a class="btn btn-secondary btn-sm" href="{{ url_for('views.budget', kind='cash', _anchor='add-line') }}">Add cash</a>
         <a class="btn btn-secondary btn-sm" href="{{ url_for('views.budget', kind='revenue', _anchor='add-line') }}">Add revenue</a>
         <a class="btn btn-secondary btn-sm" href="{{ url_for('views.budget', kind='expense', _anchor='add-line') }}">Add expense</a>
       </div>
@@ -49,17 +50,18 @@
       <li>Type in any cell to change that pay period's amount; clear it to go back to the line's fixed amount.
         Changed amounts are underlined.</li>
       <li>Expenses in a group are subtotalled on the group's row; click a group's name to hide or show its lines.</li>
+      <li>Cash is tracked separately; it does not change revenue, expenses, or left over.</li>
       <li>Running total: what's left over, added up from the first pay day shown.</li>
     </ul>
     {% else %}
-    <p class="muted">No revenues or expenses yet. Add your pay and your regular bills below.</p>
+    <p class="muted">No budget lines yet. Add cash, your pay, or your regular bills below.</p>
     {% endif %}
     <script type="application/json" id="budget-data">{{ plan|tojson }}</script>
   </section>
 
   <form method="post" action="{{ url_for('views.new_budget_line') }}" class="card form" id="add-line"{% if line_errors %} data-errors{% endif %}>
     <h2>Add a line</h2>
-    <p class="hint">A revenue or an expense. Recurring ones have a fixed amount; choose Varies to enter the amount for each pay day.</p>
+    <p class="hint">Cash is tracked separately from revenues and expenses. Recurring lines have a fixed amount; choose Varies to enter the amount for each pay day.</p>
     {{ form_errors(line_errors) }}
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% include "_budget_line_fields.html" %}
