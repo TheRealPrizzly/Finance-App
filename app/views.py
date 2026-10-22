@@ -1658,15 +1658,24 @@ def api_budget():
 @login_required
 def api_budget_entry():
     """Enter one pay period's amount for a line ({"line_id", "pay_day", "amount"}). A blank
-    amount removes it, so a recurring line goes back to its fixed amount. Returns the budget."""
+    amount removes it, so a recurring line goes back to its fixed amount. Returns the budget.
+
+    {"kind": "cash"} in place of a line id enters it on the user's first cash line, creating a
+    "Cash" line that varies when there is none yet."""
     data = request.get_json(silent=True) or {}
     if not g.user["pay_day"]:
         return jsonify(error="Set your pay day first."), 400
-    line = get_db().execute(
-        "SELECT id FROM budget_lines WHERE id = ? AND user_id = ?", (data.get("line_id"), g.user["id"])
-    ).fetchone()
-    if line is None:
-        return jsonify(error="That budget line doesn't exist."), 404
+    db = get_db()
+    new_cash = data.get("line_id") is None and data.get("kind") == "cash"
+    if new_cash:
+        line = db.execute("SELECT id FROM budget_lines WHERE user_id = ? AND kind = 'cash' ORDER BY id",
+                          (g.user["id"],)).fetchone()
+    else:
+        line = db.execute(
+            "SELECT id FROM budget_lines WHERE id = ? AND user_id = ?", (data.get("line_id"), g.user["id"])
+        ).fetchone()
+        if line is None:
+            return jsonify(error="That budget line doesn't exist."), 404
     try:
         pay_day = date.fromisoformat(str(data.get("pay_day", "")))
     except ValueError:
@@ -1674,18 +1683,21 @@ def api_budget_entry():
     if pay_day is None or not bg.is_pay_day(date.fromisoformat(g.user["pay_day"]), pay_day):
         return jsonify(error="That date isn't one of your pay days."), 400
     raw = str(data.get("amount") if data.get("amount") is not None else "").strip()
-    db = get_db()
     if raw:
         try:
             amount = csv_io.parse_number(raw)
         except ValueError:
             return jsonify(error=f"{raw} isn't an amount."), 400
+        if line is None:
+            cur = db.execute("INSERT INTO budget_lines (user_id, kind, name, frequency) VALUES (?, 'cash', 'Cash', 'varies')",
+                             (g.user["id"],))
+            line = {"id": cur.lastrowid}
         db.execute(
             """INSERT INTO budget_entries (line_id, pay_day, amount) VALUES (?, ?, ?)
                ON CONFLICT (line_id, pay_day) DO UPDATE SET amount = excluded.amount""",
             (line["id"], pay_day.isoformat(), amount),
         )
-    else:
+    elif line is not None:
         db.execute("DELETE FROM budget_entries WHERE line_id = ? AND pay_day = ?", (line["id"], pay_day.isoformat()))
     db.commit()
     return jsonify(budget_plan())

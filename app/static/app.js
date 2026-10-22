@@ -3556,6 +3556,12 @@
     const COLLAPSED_KEY = "budgetCollapsedGroups";
     let collapsed;
     try { collapsed = new Set(JSON.parse(localStorage.getItem(COLLAPSED_KEY)) || []); } catch { collapsed = new Set(); }
+    // With no cash line yet, the Cash section still has a row to type in; the first amount creates the line.
+    const NEW_CASH = "new-cash";
+    const allLines = () => (plan.lines.some((l) => l.kind === "cash") ? plan.lines : [{
+      id: NEW_CASH, kind: "cash", name: "Cash", schedule: "Amount entered for each pay day", total: 0,
+      cells: plan.periods.map(() => ({ amount: null, scheduled: null, entered: false })),
+    }, ...plan.lines]);
 
     function renderKpis() {
       const { periods, sums, today } = plan;
@@ -3574,7 +3580,7 @@
     function renderTable() {
       const table = $("budget-table");
       if (!table) return;
-      const { periods, lines, today } = plan;
+      const { periods, today } = plan, lines = allLines();
       const current = periods.findIndex((p) => p.date <= today && today <= p.end);
       const now = (i) => (i === current ? " now" : "");  // the pay period today is in
       const head = periods.map((p, i) => {
@@ -3583,7 +3589,8 @@
           <small>${i === current ? "This pay" : year}</small></th>`;
       }).join("");
       const lineRow = (l, group = null) => `<tr data-line="${l.id}"${group == null ? "" : ` class="in-group" data-group-of="${group}"`}>
-        <th scope="row" class="line-name"><a href="${esc(urls.editUrl.replace("/0/", `/${l.id}/`))}" title="Edit ${esc(l.name)}">${esc(l.name)}</a>
+        <th scope="row" class="line-name">${l.id === NEW_CASH ? esc(l.name)
+          : `<a href="${esc(urls.editUrl.replace("/0/", `/${l.id}/`))}" title="Edit ${esc(l.name)}">${esc(l.name)}</a>`}
           <span class="sym-name" title="${esc(l.schedule)}">${esc(l.schedule)}</span></th>
         ${l.cells.map((_, i) => `<td class="num${now(i)}"><input class="cell-input" inputmode="decimal" autocomplete="off" data-line="${l.id}"
           data-index="${i}" aria-label="${esc(`${l.name}, ${short(periods[i].date)}`)}"></td>`).join("")}
@@ -3623,7 +3630,7 @@
     function fillTable() {
       const table = $("budget-table");
       if (!table) return;
-      const byId = new Map(plan.lines.map((l) => [String(l.id), l]));
+      const byId = new Map(allLines().map((l) => [String(l.id), l]));
       table.querySelectorAll(".cell-input").forEach((input) => {
         const cell = byId.get(input.dataset.line).cells[input.dataset.index];
         input.classList.toggle("entered", cell.entered);
@@ -3652,18 +3659,31 @@
     async function save(input) {
       const value = input.value.trim();
       if (value === input.dataset.saved) return;
-      const line = plan.lines.find((l) => String(l.id) === input.dataset.line);
+      const line = allLines().find((l) => String(l.id) === input.dataset.line);
       try {
         const res = await fetch(urls.entriesUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-CSRF-Token": document.querySelector('meta[name="csrf-token"]')?.content || "" },
-          body: JSON.stringify({ line_id: line.id, pay_day: plan.periods[input.dataset.index].date, amount: value }),
+          body: JSON.stringify({ ...(line.id === NEW_CASH ? { kind: "cash" } : { line_id: line.id }),
+            pay_day: plan.periods[input.dataset.index].date, amount: value }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
         plan = data;
-        if (input === document.activeElement) input.value = amountText(plan.lines.find((l) => l.id === line.id).cells[input.dataset.index].amount);
         renderKpis();
+        if (line.id === NEW_CASH) {
+          // The row is now a saved line: draw the table again, keeping the cell being typed in.
+          const a = document.activeElement;
+          const typing = a?.matches?.(".cell-input") ? { line: a.dataset.line, index: a.dataset.index, value: a.value } : null;
+          renderTable();
+          if (typing) {
+            const id = typing.line === NEW_CASH ? String(allLines().find((l) => l.kind === "cash").id) : typing.line;
+            const cell = $("budget-table").querySelector(`.cell-input[data-line="${id}"][data-index="${typing.index}"]`);
+            if (cell) { cell.value = typing.value; cell.focus(); }
+          }
+          return;
+        }
+        if (input === document.activeElement) input.value = amountText(plan.lines.find((l) => l.id === line.id).cells[input.dataset.index].amount);
         fillTable();
       } catch (err) {
         input.classList.add("invalid");

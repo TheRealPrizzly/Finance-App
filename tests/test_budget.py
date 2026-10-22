@@ -263,3 +263,28 @@ def test_add_revenue_and_expense_buttons_pick_the_type(client):
     assert re.search(r'<option value="expense"\s+selected>', html)
     html = client.get("/budget?kind=cash").get_data(as_text=True)
     assert re.search(r'<option value="cash"\s+selected>', html)
+
+
+def test_typing_cash_creates_the_cash_line(client):
+    token = login(client)
+    set_pay_day(client, token)
+    assert 'id="budget-table"' in client.get("/budget").get_data(as_text=True)  # a row to type cash in, even with no lines
+    plan = client.get("/api/budget").get_json()
+    day, headers = plan["periods"][1]["date"], {"X-CSRF-Token": token}
+
+    # A blank amount with no cash line changes nothing.
+    resp = client.post("/api/budget/entries", json={"kind": "cash", "pay_day": day, "amount": ""}, headers=headers)
+    assert resp.status_code == 200 and resp.get_json()["lines"] == []
+
+    # The first amount creates a "Cash" line that varies; the next ones go on that same line.
+    resp = client.post("/api/budget/entries", json={"kind": "cash", "pay_day": day, "amount": "1,200"}, headers=headers)
+    (cash,) = resp.get_json()["lines"]
+    assert (cash["name"], cash["kind"], cash["frequency"]) == ("Cash", "cash", "varies")
+    assert cash["cells"][1]["amount"] == 1200 and resp.get_json()["sums"]["cash"] == 1200
+    plan = client.post("/api/budget/entries", json={"kind": "cash", "pay_day": plan["periods"][2]["date"], "amount": "900"},
+                       headers=headers).get_json()
+    assert [l["id"] for l in plan["lines"]] == [cash["id"]] and plan["sums"]["cash"] == 2100
+    assert plan["sums"]["net"] == 0  # cash doesn't count as revenue
+
+    resp = client.post("/api/budget/entries", json={"kind": "cash", "pay_day": day, "amount": "lots"}, headers=headers)
+    assert resp.status_code == 400
