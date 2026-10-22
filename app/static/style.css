@@ -290,7 +290,6 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
 .cell-input:hover { border-color: var(--border); }
 .cell-input::placeholder { color: var(--muted); opacity: .6; }
 .cell-input.entered { text-decoration: underline dotted var(--accent); text-underline-offset: 3px; color: var(--accent); }
-.cell-input.entered::placeholder { color: var(--accent); opacity: 1; font-style: italic; }
 .cell-input.invalid { border-color: var(--loss); color: var(--loss); }
 .budget-fields [hidden] { display: none; }
 .budget-table tr.budget-group > * { font-weight: 650; border-top: 1px solid var(--border); }

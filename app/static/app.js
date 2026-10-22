@@ -3637,9 +3637,9 @@
       table.querySelectorAll(".cell-input").forEach((input) => {
         const cell = byId.get(input.dataset.line).cells[input.dataset.index];
         const cleared = isCleared(cell);
-        input.classList.toggle("entered", cell.entered);
+        input.classList.toggle("entered", cell.entered && !cleared);  // a cleared cell looks like any empty one
         input.classList.remove("invalid");
-        input.placeholder = cleared ? "Cleared" : cell.scheduled == null ? "—" : "";
+        input.placeholder = cleared || cell.scheduled == null ? "—" : "";
         input.title = !cell.entered || cell.scheduled == null ? ""
           : `${cleared ? "Cleared" : `Changed from ${money(cell.scheduled)}`} for this pay day. Type ${amountText(cell.scheduled)} to go back.`;
         if (input !== document.activeElement) input.value = cellText(cell);
