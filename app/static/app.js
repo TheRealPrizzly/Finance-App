@@ -3551,6 +3551,9 @@
     const short = (iso) => day(iso).toLocaleDateString("en-CA", { month: "short", day: "numeric" });
     const long = (iso) => day(iso).toLocaleDateString("en-CA", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
     const amountText = (v) => (v == null ? "" : v.toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+    // A recurring line's cell cleared for one pay day: 0 instead of the fixed amount, shown empty.
+    const isCleared = (cell) => cell.entered && cell.amount === 0 && cell.scheduled != null;
+    const cellText = (cell) => (isCleared(cell) ? "" : amountText(cell.amount));
     let plan = JSON.parse($("budget-data").textContent);
     // Expense groups folded away, remembered in this browser.
     const COLLAPSED_KEY = "budgetCollapsedGroups";
@@ -3633,13 +3636,14 @@
       const byId = new Map(allLines().map((l) => [String(l.id), l]));
       table.querySelectorAll(".cell-input").forEach((input) => {
         const cell = byId.get(input.dataset.line).cells[input.dataset.index];
+        const cleared = isCleared(cell);
         input.classList.toggle("entered", cell.entered);
         input.classList.remove("invalid");
-        input.placeholder = cell.scheduled == null ? "—" : "";
-        input.title = cell.entered && cell.scheduled != null
-          ? `Changed from ${money(cell.scheduled)} for this pay day. Clear it to go back.` : "";
-        if (input !== document.activeElement) input.value = amountText(cell.amount);
-        input.dataset.saved = amountText(cell.amount);
+        input.placeholder = cleared ? "Cleared" : cell.scheduled == null ? "—" : "";
+        input.title = !cell.entered || cell.scheduled == null ? ""
+          : `${cleared ? "Cleared" : `Changed from ${money(cell.scheduled)}`} for this pay day. Type ${amountText(cell.scheduled)} to go back.`;
+        if (input !== document.activeElement) input.value = cellText(cell);
+        input.dataset.saved = cellText(cell);
       });
       table.querySelectorAll("[data-total]").forEach((td) => { td.textContent = money(byId.get(td.dataset.total).total); });
       table.querySelectorAll("[data-group-sum]").forEach((td) => {
@@ -3683,7 +3687,7 @@
           }
           return;
         }
-        if (input === document.activeElement) input.value = amountText(plan.lines.find((l) => l.id === line.id).cells[input.dataset.index].amount);
+        if (input === document.activeElement) input.value = cellText(plan.lines.find((l) => l.id === line.id).cells[input.dataset.index]);
         fillTable();
       } catch (err) {
         input.classList.add("invalid");

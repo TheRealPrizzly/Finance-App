@@ -3,7 +3,8 @@
 Pay arrives every two weeks. Each pay period runs from a pay day to the day before the next
 one, and each cash, revenue or expense line counts in the period its dates fall in. A line is either
 recurring, with a fixed amount on a schedule, or varies, with an amount entered for each pay
-period. An amount entered for a recurring line replaces its fixed amount for that one period.
+period. An amount entered for a recurring line replaces its fixed amount for that one period;
+clearing it enters 0, and entering the fixed amount again goes back to the schedule.
 Expenses can be put in groups (Housing, Taxes, ...), which are subtotalled for each pay period.
 
 Amounts are positive. Cash is tracked separately; revenue and expense lines determine the budget
@@ -87,6 +88,13 @@ def occurrences(line, start, end):
     return [d for d in dates if start <= d < end and (first is None or d >= first) and (last is None or d <= last)]
 
 
+def scheduled(line, start):
+    """The fixed amount a line's schedule gives the pay period starting on pay day ``start``, or
+    None when nothing is due in it."""
+    due = occurrences(line, start, start + timedelta(days=PAY_DAYS))
+    return line["amount"] * len(due) if due else None
+
+
 def ordinal(n):
     return f"{n}{'th' if 11 <= n % 100 <= 13 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
 
@@ -147,11 +155,10 @@ def plan(lines, entries, anchor, today):
     rows = []
     for line in lines:
         cells = []
-        for start, end in zip(bounds, bounds[1:]):
-            due = occurrences(line, start, end)
-            scheduled = line["amount"] * len(due) if due else None
+        for start in days:
+            fixed = scheduled(line, start)
             entered = entries.get((line["id"], start.isoformat()))
-            cells.append({"amount": entered if entered is not None else scheduled, "scheduled": scheduled,
+            cells.append({"amount": entered if entered is not None else fixed, "scheduled": fixed,
                           "entered": entered is not None})
         rows.append({
             "id": line["id"], "kind": line["kind"], "name": line["name"], "frequency": line["frequency"],

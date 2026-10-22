@@ -288,3 +288,30 @@ def test_typing_cash_creates_the_cash_line(client):
 
     resp = client.post("/api/budget/entries", json={"kind": "cash", "pay_day": day, "amount": "lots"}, headers=headers)
     assert resp.status_code == 400
+
+
+def test_clearing_a_recurring_cell_leaves_nothing_that_pay_day(client):
+    token = login(client)
+    set_pay_day(client, token)
+    add_line(client, token, kind="revenue", name="Salary", frequency="pay", amount="2400", start_date="")
+    plan = client.get("/api/budget").get_json()
+    day, headers = plan["periods"][1]["date"], {"X-CSRF-Token": token}
+    post = lambda amount: client.post("/api/budget/entries", json={"line_id": 1, "pay_day": day, "amount": amount},
+                                      headers=headers).get_json()
+
+    # Cleared: 0 for that pay day, not the fixed amount.
+    plan = post("")
+    assert plan["lines"][0]["cells"][1] == {"amount": 0, "scheduled": 2400, "entered": True}
+    assert plan["totals"]["revenue"][1] == 0 and plan["lines"][0]["cells"][2]["amount"] == 2400
+    assert post("")["lines"][0]["cells"][1]["amount"] == 0  # clearing again keeps it cleared
+
+    # A different amount replaces it; the fixed amount again goes back to the schedule.
+    assert post("2,000")["lines"][0]["cells"][1] == {"amount": 2000, "scheduled": 2400, "entered": True}
+    assert post("2400.00")["lines"][0]["cells"][1] == {"amount": 2400, "scheduled": 2400, "entered": False}
+
+    # A pay day with nothing scheduled: clearing an entered amount removes it.
+    add_line(client, token, name="Groceries", frequency="varies", amount="", start_date="")
+    entry = {"line_id": 2, "pay_day": day}
+    client.post("/api/budget/entries", json={**entry, "amount": "300"}, headers=headers)
+    cell = client.post("/api/budget/entries", json={**entry, "amount": ""}, headers=headers).get_json()["lines"][1]["cells"][1]
+    assert cell == {"amount": None, "scheduled": None, "entered": False}
