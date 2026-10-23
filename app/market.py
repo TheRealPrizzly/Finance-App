@@ -102,6 +102,15 @@ def next_earnings(quote, now=None):
             "estimated": bool(quote.get("isEarningsDateEstimate"))}
 
 
+def last_earnings(quote, now=None):
+    """When the latest earnings report in a Yahoo quote came out (unix seconds), or None if the
+    quote's date is still ahead. Yahoo keeps the last report's date until the next one is set,
+    and has it before it posts the reported EPS."""
+    now = time.time() if now is None else now
+    t = quote.get("earningsTimestamp")
+    return t if t and t <= now else None
+
+
 def _web_url(url):
     """A link Yahoo lists, if it's an ordinary web address."""
     url = (url or "").strip()
@@ -519,6 +528,7 @@ class MarketData:
             "quote_type": q.get("quoteType"),
             "market_state": q.get("marketState"),
             "earnings": next_earnings(q),
+            "last_earnings": last_earnings(q),
         }
         with self._lock:
             self._quotes[data["symbol"]] = (time.time(), data)

@@ -481,6 +481,29 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
 .tag-withdrawal, .tag-fee { background: var(--warn-bg); color: var(--warn-text); }
 .badge { font-size: .7rem; font-weight: 600; padding: 0 6px; border-radius: 4px; background: var(--warn-bg); color: var(--warn-text); margin-left: 4px; vertical-align: middle; }
 
+/* ---- Earnings (dashboard) ----------------------------------------------- */
+.earn-group + .earn-group { margin-top: 20px; }
+.earn-group h3 { font-size: .78rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); margin: 0 0 4px; }
+.earn-group h3 .muted { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.earn-group > p { margin: 8px 0 0; }
+.earn-list { list-style: none; margin: 0; padding: 0; font-variant-numeric: tabular-nums; }
+.earn-row { display: grid; grid-template-columns: 36px minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr); gap: 4px 14px; align-items: center;
+  padding: 10px 12px; margin: 0 -12px; border-bottom: 1px solid var(--border); border-radius: 8px; }
+.earn-row:last-child { border-bottom: 0; }
+.earn-row:hover { background: var(--surface-2); }
+.earn-row small { display: block; color: var(--muted); font-size: .8rem; }
+.earn-result { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; text-align: right; }
+.earn-value { text-align: right; }
+.earn-when { white-space: nowrap; }
+/* Logos sit on white in every theme: many are dark marks on a transparent background. */
+.co-logo { position: relative; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 8px; overflow: hidden;
+  background: #fff; border: 1px solid var(--border); color: #5b6372; font-size: .72rem; font-weight: 700; }
+.co-logo img { position: absolute; inset: 3px; width: calc(100% - 6px); height: calc(100% - 6px); object-fit: contain; background: #fff; }
+.earn-chip { display: inline-block; font-size: .78rem; font-weight: 600; padding: 1px 8px; border-radius: 999px; white-space: nowrap;
+  background: var(--surface-2); color: var(--muted); }
+.earn-chip.beat { background: var(--ok-bg); color: var(--ok-text); }
+.earn-chip.miss { background: var(--err-bg); color: var(--err-text); }
+
 /* ---- Forms & buttons ---------------------------------------------------- */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font: inherit; font-weight: 600; font-size: .92rem; padding: 8px 14px; border-radius: 8px; border: 1px solid transparent; cursor: pointer; text-decoration: none; white-space: nowrap; }
 .btn:hover { text-decoration: none; }
@@ -595,4 +618,10 @@ details summary { cursor: pointer; font-weight: 600; font-size: .9rem; margin: 1
   .budget-wrap { margin: 0 -16px; }
   .budget-table .line-name { min-width: 0; width: 132px; max-width: 132px; white-space: normal; }
   .budget-table .line-name .sym-name { max-width: 120px; }
+  .earn-row { grid-template-columns: 36px minmax(0, 1fr) auto; }
+  .earn-row .co-logo { grid-row: span 2; }
+  .earn-when { text-align: right; }
+  .earn-result { grid-column: 2 / -1; justify-content: flex-start; text-align: left; }
+  .earn-value { text-align: left; }
+  .earn-value small { display: inline; margin-left: 6px; }
 }

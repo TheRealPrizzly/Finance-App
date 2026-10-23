@@ -276,7 +276,7 @@
     const allocCharts = {};
     let holdings = [];
     let sort = { key: "market_value", dir: -1 };
-    // Holdings and Upcoming earnings show their first PREVIEW_ROWS rows until "Show all" is clicked.
+    // Holdings and upcoming earnings show their first PREVIEW_ROWS rows until "Show all" is clicked.
     const PREVIEW_ROWS = 5;
     let holdingsExpanded = false;
     let earningsExpanded = false;
@@ -325,6 +325,7 @@
       holdings = p.holdings;
       renderHoldings();
       renderEarnings(p.holdings);
+      loadRecentEarnings(p.holdings);
       renderAlloc("sector", p.sectors.map((s) => ({ label: s.sector, value: s.value, change: s.day_change_pct })));
       renderAlloc("equity", [
         ...p.holdings.map((h) => ({ label: h.symbol, value: h.market_value, change: h.day_change_pct })),
@@ -391,42 +392,115 @@
       renderHoldings();
     });
 
-    // Upcoming earnings ---------------------------------------------------------
-    // Dates are shown in New York time, the exchange's calendar day.
+    // Earnings ------------------------------------------------------------------
+    // Holdings that reported in the last two weeks, then the upcoming reports. Dates are shown in
+    // New York time, the exchange's calendar day.
     const MARKET_TZ = "America/New_York";
+    const DAY_MS = 86_400_000;
     const marketDay = (ms) => new Date(`${new Date(ms).toLocaleDateString("en-CA", { timeZone: MARKET_TZ })}T00:00:00Z`);
-    const earningsDate = (ts) => new Date(ts * 1000).toLocaleDateString("en-CA", {
-      weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: MARKET_TZ,
+    const earningsDate = (ts, { weekday = true } = {}) => new Date(ts * 1000).toLocaleDateString("en-CA", {
+      weekday: weekday ? "short" : undefined, month: "short", day: "numeric", timeZone: MARKET_TZ,
     });
+    const isoDay = (iso) => new Date(`${iso}T00:00:00Z`);
+    const reportDate = (iso) => isoDay(iso).toLocaleDateString("en-CA", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
+    // Logos come from Financial Modeling Prep by Yahoo symbol; companies it has none for keep their initials.
+    const LOGO_URL = "https://financialmodelingprep.com/image-stock/";
+    const missingLogos = new Set();
+    let recentReports = null;  // Yahoo symbol -> {date, estimate, actual}; null until loaded
+    let recentFailed = false;
+
+    async function loadRecentEarnings(list) {
+      const symbols = list.filter((h) => h.quote_type === "EQUITY" && h.yahoo_symbol).map((h) => h.yahoo_symbol);
+      if (!symbols.length) {
+        recentReports = {};
+      } else {
+        try {
+          const data = await getJSON(`${urls.earningsUrl}?symbols=${encodeURIComponent(symbols.join(","))}`);
+          recentReports = Object.fromEntries(data.reports.map((r) => [r.symbol, r]));
+          recentFailed = false;
+        } catch {
+          recentFailed = recentReports === null;
+        }
+      }
+      renderEarnings();
+    }
+
+    function logo(h) {
+      const ysym = h.yahoo_symbol || h.symbol;
+      const initials = esc(h.symbol.replace(/[^A-Z0-9]/gi, "").slice(0, 2));
+      const img = missingLogos.has(ysym) ? ""
+        : `<img src="${LOGO_URL}${encodeURIComponent(ysym)}.png" alt="" loading="lazy" data-logo="${esc(ysym)}">`;
+      return `<span class="co-logo" aria-hidden="true"><span>${initials}</span>${img}</span>`;
+    }
+
+    function earningsRow(h, when, result) {
+      const href = urls.positionUrl.replace("__SYMBOL__", encodeURIComponent(h.symbol));
+      return `<li class="earn-row">
+        ${logo(h)}
+        <div class="earn-co"><a class="sym" href="${href}">${esc(h.symbol)}</a><span class="sym-name">${esc(h.name)}</span></div>
+        <div class="earn-when">${when}</div>
+        <div class="earn-result">${result}</div>
+      </li>`;
+    }
+
+    function epsResult(r) {
+      if (r.actual == null) return '<span class="muted">Results pending</span>';
+      const eps = (v) => v.toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      if (r.estimate == null) return `<span class="earn-eps">EPS ${eps(r.actual)}</span>`;
+      const surprise = r.estimate ? (r.actual - r.estimate) / Math.abs(r.estimate) : null;
+      const [label, cls] = Math.abs(r.actual - r.estimate) < 0.005 ? ["In line", ""]
+        : r.actual > r.estimate ? ["Beat", "beat"] : ["Missed", "miss"];
+      const chip = `<span class="earn-chip ${cls}">${label}${surprise != null && cls ? ` ${pct(surprise)}` : ""}</span>`;
+      return `${chip}<span class="earn-eps">EPS ${eps(r.actual)} <small>vs ${eps(r.estimate)} est.</small></span>`;
+    }
 
     function renderEarnings(list = earningsList) {
       earningsList = list;
       const today = marketDay(Date.now());
-      const rows = list
+      const reports = recentReports || {};
+      const reported = list
+        .filter((h) => h.yahoo_symbol && reports[h.yahoo_symbol])
+        .map((h) => ({ h, r: reports[h.yahoo_symbol], days: Math.round((today - isoDay(reports[h.yahoo_symbol].date)) / DAY_MS) }))
+        .sort((a, b) => a.days - b.days || b.h.market_value - a.h.market_value);
+      const upcoming = list
         .filter((h) => h.earnings)
-        .map((h) => ({ h, e: h.earnings, days: Math.round((marketDay(h.earnings.start * 1000) - today) / 86_400_000) }))
-        .filter((r) => r.days >= 0)
+        .map((h) => ({ h, e: h.earnings, days: Math.round((marketDay(h.earnings.start * 1000) - today) / DAY_MS) }))
+        // A report that's out is listed under Reported, not as "Today" here as well.
+        .filter((u) => u.days >= 0 && !reported.some(({ h, r }) => h === u.h && Math.abs(isoDay(r.date) - marketDay(u.e.start * 1000)) <= 5 * DAY_MS))
         .sort((a, b) => a.e.start - b.e.start);
-      const missing = list.filter((h) => h.quote_type === "EQUITY" && !rows.some((r) => r.h === h)).map((h) => h.symbol);
-      const when = (d) => (d === 0 ? "Today" : d === 1 ? "Tomorrow" : `In ${d} days`);
+      const missing = list.filter((h) => h.quote_type === "EQUITY" && !upcoming.some((u) => u.h === h) && !reported.some((r) => r.h === h))
+        .map((h) => h.symbol);
+      const ago = (d) => (d <= 0 ? "Today" : d === 1 ? "Yesterday" : `${d} days ago`);
+      const until = (d) => (d === 0 ? "Today" : d === 1 ? "Tomorrow" : `In ${d} days`);
 
-      $("earnings").innerHTML = rows.length
-        ? `<table class="table"><thead><tr><th>Symbol</th><th>Date</th><th class="num">When</th><th class="num">Value</th></tr></thead>
-          <tbody>${(earningsExpanded ? rows : rows.slice(0, PREVIEW_ROWS)).map(({ h, e, days }) => {
-            const href = urls.positionUrl.replace("__SYMBOL__", encodeURIComponent(h.symbol));
-            const date = e.end ? `${earningsDate(e.start)} – ${earningsDate(e.end)}` : earningsDate(e.start);
-            const badge = e.estimated ? '<span class="badge" title="Estimated by Yahoo; not yet confirmed by the company">estimated</span>' : "";
-            return `<tr>
-              <td><a class="sym" href="${href}">${esc(h.symbol)}</a><span class="sym-name">${esc(h.name)}</span></td>
-              <td class="nowrap">${esc(date)}${badge}</td>
-              <td class="num nowrap">${when(days)}</td>
-              <td class="num nowrap">${money(h.market_value)}</td>
-            </tr>`;
-          }).join("")}</tbody></table>`
+      const reportedHtml = recentReports === null
+        ? `<p class="muted">${recentFailed ? "Couldn't load recent reports." : "Checking recent reports…"}</p>`
+        : reported.length
+          ? `<ul class="earn-list">${reported.map(({ h, r, days }) => earningsRow(h,
+            `${esc(reportDate(r.date))}<small>${ago(days)}</small>`, epsResult(r))).join("")}</ul>`
+          : '<p class="muted">None of your holdings reported in the last two weeks.</p>';
+      const upcomingHtml = upcoming.length
+        ? `<ul class="earn-list">${(earningsExpanded ? upcoming : upcoming.slice(0, PREVIEW_ROWS)).map(({ h, e, days }) => {
+          const date = e.end ? `${earningsDate(e.start, { weekday: false })} – ${earningsDate(e.end, { weekday: false })}` : earningsDate(e.start);
+          const badge = e.estimated ? '<span class="badge" title="Estimated by Yahoo; not yet confirmed by the company">estimated</span>' : "";
+          return earningsRow(h, `${esc(date)}${badge}<small>${until(days)}</small>`,
+            `<span class="earn-value">${money(h.market_value)}<small>${pct(h.weight, { signed: false })} of portfolio</small></span>`);
+        }).join("")}</ul>`
         : '<p class="muted">No upcoming earnings dates for your holdings.</p>';
-      $("earnings-more").innerHTML = moreButton(rows.length, earningsExpanded, "earnings", "upcoming reports");
+
+      $("earnings").innerHTML = `
+        <div class="earn-group"><h3>Reported <span class="muted">· last 2 weeks</span></h3>${reportedHtml}</div>
+        <div class="earn-group"><h3>Upcoming</h3>${upcomingHtml}</div>`;
+      $("earnings-more").innerHTML = moreButton(upcoming.length, earningsExpanded, "earnings", "upcoming reports");
       setNotes($("earnings-note"), [missing.length && `No date announced yet for ${missing.join(", ")}.`, "ETFs and funds don't report earnings."]);
     }
+
+    // Image errors don't bubble, so this listens in the capture phase.
+    $("earnings").addEventListener("error", (e) => {
+      if (!e.target.matches("img[data-logo]")) return;
+      missingLogos.add(e.target.dataset.logo);
+      e.target.remove();
+    }, true);
 
     $("earnings-more").addEventListener("click", (e) => {
       if (!e.target.closest("button")) return;

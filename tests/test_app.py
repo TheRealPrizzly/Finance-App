@@ -640,6 +640,23 @@ def test_research(client, market):
     assert client.get("/api/research/AAPL?span=2D").status_code == 400
 
 
+def test_recent_earnings(client, market):
+    from datetime import date, datetime, timedelta, timezone
+
+    today = date.today()
+    market._earnings["AAPL"] = [(today - timedelta(days=100), 1.5, 1.6), (today - timedelta(days=3), 1.75, 1.85)]
+    market._earnings["MSFT"] = [(today - timedelta(days=40), 3.9, 4.1)]  # outside the two weeks
+    # SHOP's report is out but Yahoo has no results for it yet
+    market.last_earnings["SHOP"] = int(datetime.combine(today - timedelta(days=1), datetime.min.time(), timezone.utc).timestamp()) + 72000
+    login(client)
+    data = client.get("/api/earnings/recent?symbols=aapl,MSFT,SHOP,NOPE,BAD%20SYMBOL").get_json()
+    assert sorted(data["reports"], key=lambda r: r["symbol"]) == [
+        {"symbol": "AAPL", "date": (today - timedelta(days=3)).isoformat(), "estimate": 1.75, "actual": 1.85},
+        {"symbol": "SHOP", "date": (today - timedelta(days=1)).isoformat(), "estimate": None, "actual": None},
+    ]
+    assert client.get("/api/earnings/recent").get_json() == {"reports": []}
+
+
 def test_research_key_stats(client, market):
     market.stats["AAPL"] = {"currency": "USD", "price": 250.0, "market_cap": 5.0e12, "beta": 1.07, "pe": 39.4,
                             "earnings": {"start": 1793649600, "end": None, "estimated": False},

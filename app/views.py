@@ -3,7 +3,7 @@
 Every query is scoped to ``g.user`` so users only ever see their own data.
 """
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from fractions import Fraction
 from urllib.parse import urlsplit
 
@@ -310,6 +310,36 @@ def api_portfolio():
     data["warnings"] = visible_warnings(data["warnings"])
     data["as_of"] = datetime.now().isoformat(timespec="seconds")
     return jsonify(data)
+
+
+RECENT_EARNINGS = timedelta(days=14)  # how long the dashboard lists a holding's last report
+MAX_EARNINGS_SYMBOLS = 200
+
+
+@bp.get("/api/earnings/recent")
+@login_required
+def api_recent_earnings():
+    """Earnings reports from the last two weeks for ?symbols= (comma-separated Yahoo symbols), with
+    the reported EPS and analysts' estimate. A report Yahoo hasn't posted results for yet comes from
+    the quote's earnings date, with no EPS."""
+    symbols = [s for s in dict.fromkeys(request.args.get("symbols", "").upper().split(","))
+               if SYMBOL_RE.match(s)][:MAX_EARNINGS_SYMBOLS]
+    market = get_market()
+    since = date.today() - RECENT_EARNINGS
+    quotes = market.quotes(symbols)
+
+    def latest(ysym):
+        reports = [r for r in market.earnings(ysym) if r[0] >= since]
+        if reports:
+            day, estimate, actual = reports[-1]
+            return {"symbol": ysym, "date": day.isoformat(), "estimate": estimate, "actual": actual}
+        ts = (quotes.get(ysym) or {}).get("last_earnings")
+        day = ts and datetime.fromtimestamp(ts, timezone.utc).date()
+        if day and day >= since:
+            return {"symbol": ysym, "date": day.isoformat(), "estimate": None, "actual": None}
+        return None
+
+    return jsonify(reports=[r for r in pf._parallel_map(latest, symbols) if r])
 
 
 @bp.get("/api/history")

@@ -1,6 +1,6 @@
 import pytest
 
-from app.market import next_earnings
+from app.market import last_earnings, next_earnings
 
 DAY = 86400
 NOW = 1_790_000_000  # a fixed "now" in unix seconds
@@ -31,6 +31,12 @@ def test_past_report_with_next_window_announced():
 
 def test_no_earnings_fields():
     assert next_earnings({"symbol": "VFV.TO"}, NOW) is None
+    assert last_earnings({"symbol": "VFV.TO"}, NOW) is None
+
+
+def test_last_earnings_is_the_quotes_date_once_it_has_passed():
+    assert last_earnings({"earningsTimestamp": NOW - 3 * DAY, "earningsTimestampStart": NOW + 60 * DAY}, NOW) == NOW - 3 * DAY
+    assert last_earnings({"earningsTimestamp": NOW + 3600}, NOW) is None
 
 
 def test_candles_parse_ohlc_minor_units_and_splits():

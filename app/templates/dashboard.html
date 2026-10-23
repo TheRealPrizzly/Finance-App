@@ -4,7 +4,7 @@
 {% set sections = ([("my-assets", "My Assets"), ("portfolio", "Portfolio")] if has_assets else [])
                  + [("kpis", "Overview"), ("performance", "Performance"), ("allocation", "Allocation"),
                    ("cash-balances", "Cash balances"), ("holdings-section", "Holdings"),
-                   ("earnings-section", "Upcoming earnings")] if has_transactions else [] %}
+                   ("earnings-section", "Earnings")] if has_transactions else [] %}
 {% block content %}
 {% if has_assets %}
 <div class="page-head" id="my-assets">
@@ -39,6 +39,7 @@
 <div id="app"
      data-portfolio-url="{{ url_for('views.api_portfolio', account=account_id or None, portfolio=portfolio_id or None) }}"
      data-history-url="{{ url_for('views.api_history', account=account_id or None, portfolio=portfolio_id or None) }}"
+     data-earnings-url="{{ url_for('views.api_recent_earnings') }}"
      data-position-url="{{ url_for('views.position', symbol='__SYMBOL__', account=account_id or None, portfolio=portfolio_id or None, all=1 if all_selected else None) }}"
      data-benchmark="{{ benchmark }}" data-base="{{ base_currency }}">
 
@@ -106,8 +107,8 @@
   </section>
 
   <section class="card" id="earnings-section">
-    <h2>Upcoming earnings</h2>
-    <div class="table-wrap" id="earnings"></div>
+    <h2>Earnings</h2>
+    <div id="earnings"></div>
     <div class="table-more" id="earnings-more"></div>
     <ul class="hint notes" id="earnings-note"></ul>
   </section>

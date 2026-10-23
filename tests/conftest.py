@@ -27,6 +27,7 @@ class FakeMarket:
         self.fundamentals_by_symbol = fundamentals or {}  # symbol -> as from market.parse_timeseries()
         self.facts = facts or {}  # symbol -> as from market.company_facts()
         self.estimates_by_symbol = {}  # symbol -> as from market.parse_estimates()
+        self.last_earnings = {}  # symbol -> unix seconds of the quote's last earnings date
 
     def resolve(self, symbol, currency):
         return symbol if symbol in self._quotes or symbol in self._history else None
@@ -37,7 +38,7 @@ class FakeMarket:
             if s in self._quotes:
                 price, prev, cur = self._quotes[s]
                 out[s] = {"symbol": s, "price": price, "prev_close": prev, "currency": cur, "name": f"{s} Inc.",
-                          "quote_type": "EQUITY"}
+                          "quote_type": "EQUITY", "last_earnings": self.last_earnings.get(s)}
         return out
 
     def history(self, symbol, start, as_traded=False):
