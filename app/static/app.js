@@ -57,6 +57,25 @@
     }));
   }
 
+  // Company logos come from Financial Modeling Prep by Yahoo symbol; companies it has none for keep their
+  // initials. Pages pass image errors to dropMissingLogo; they don't bubble, so it listens in the capture phase.
+  const LOGO_URL = "https://financialmodelingprep.com/image-stock/";
+  const missingLogos = new Set();
+
+  function logo(symbol, yahooSymbol = symbol) {
+    const ysym = yahooSymbol || symbol;
+    const initials = esc(symbol.replace(/\.[A-Z]+$/, "").replace(/[^A-Z0-9]/gi, "").slice(0, 2));
+    const img = missingLogos.has(ysym) ? ""
+      : `<img src="${LOGO_URL}${encodeURIComponent(ysym)}.png" alt="" loading="lazy" data-logo="${esc(ysym)}">`;
+    return `<span class="co-logo" aria-hidden="true"><span>${initials}</span>${img}</span>`;
+  }
+
+  const dropMissingLogo = (e) => {
+    if (!e.target.matches("img[data-logo]")) return;
+    missingLogos.add(e.target.dataset.logo);
+    e.target.remove();
+  };
+
   async function getJSON(url) {
     const res = await fetch(url, { headers: { Accept: "application/json" } });
     if (res.status === 401) {
@@ -334,25 +353,6 @@
       renderCash(p.cash, p.holdings_only);
     }
 
-    // Company logos (Holdings and Earnings) ------------------------------------
-    // Logos come from Financial Modeling Prep by Yahoo symbol; companies it has none for keep their initials.
-    const LOGO_URL = "https://financialmodelingprep.com/image-stock/";
-    const missingLogos = new Set();
-
-    function logo(h) {
-      const ysym = h.yahoo_symbol || h.symbol;
-      const initials = esc(h.symbol.replace(/[^A-Z0-9]/gi, "").slice(0, 2));
-      const img = missingLogos.has(ysym) ? ""
-        : `<img src="${LOGO_URL}${encodeURIComponent(ysym)}.png" alt="" loading="lazy" data-logo="${esc(ysym)}">`;
-      return `<span class="co-logo" aria-hidden="true"><span>${initials}</span>${img}</span>`;
-    }
-
-    // Image errors don't bubble, so this listens in the capture phase.
-    const dropMissingLogo = (e) => {
-      if (!e.target.matches("img[data-logo]")) return;
-      missingLogos.add(e.target.dataset.logo);
-      e.target.remove();
-    };
     $("holdings").addEventListener("error", dropMissingLogo, true);
     $("earnings").addEventListener("error", dropMissingLogo, true);
 
@@ -384,7 +384,7 @@
         const href = urls.positionUrl.replace("__SYMBOL__", encodeURIComponent(h.symbol));
         const stale = h.live ? "" : '<span class="badge" title="No live quote; using last trade price">stale</span>';
         return `<tr>
-          <td><div class="sym-cell">${logo(h)}<div><a class="sym" href="${href}">${esc(h.symbol)}</a>${stale}<span class="sym-name">${esc(h.name)}</span></div></div></td>
+          <td><div class="sym-cell">${logo(h.symbol, h.yahoo_symbol)}<div><a class="sym" href="${href}">${esc(h.symbol)}</a>${stale}<span class="sym-name">${esc(h.name)}</span></div></div></td>
           <td class="num">${qty(h.quantity)}</td>
           <td class="num nowrap">${money(h.avg_cost, h.cost_currency)}</td>
           <td class="num nowrap">${money(h.price, h.currency)}</td>
@@ -447,7 +447,7 @@
     function earningsRow(h, when, result) {
       const href = urls.positionUrl.replace("__SYMBOL__", encodeURIComponent(h.symbol));
       return `<li class="earn-row">
-        ${logo(h)}
+        ${logo(h.symbol, h.yahoo_symbol)}
         <div class="earn-co"><a class="sym" href="${href}">${esc(h.symbol)}</a><span class="sym-name">${esc(h.name)}</span></div>
         <div class="earn-when">${when}</div>
         <div class="earn-result">${result}</div>
@@ -1972,6 +1972,7 @@
     const isoDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     const dayText = (iso, opts = { dateStyle: "medium" }) => new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString("en-CA", opts);
     const menu = $("ta-menu");
+    $("r-logo").addEventListener("error", dropMissingLogo, true);
 
     const saved = {};
     try {
@@ -2049,6 +2050,8 @@
         state.main = null;
         clearCharts();
         $("r-title").textContent = state.symbol;
+        $("r-logo").innerHTML = "";
+        delete $("r-logo").dataset.symbol;
         $("r-price").textContent = "";
         status(`Couldn't load ${state.symbol}: ${main.reason.message}`);
         return;
@@ -2227,6 +2230,10 @@
       if (!d) return;
       const { rows, ind, unit, startClose } = series(d);
       $("r-title").textContent = d.name && d.name !== d.symbol ? `${d.name} (${d.symbol})` : d.symbol;
+      if ($("r-logo").dataset.symbol !== d.symbol) {  // draw() runs often; keep the image from reloading
+        $("r-logo").innerHTML = logo(d.symbol);
+        $("r-logo").dataset.symbol = d.symbol;
+      }
       document.title = `${d.symbol} · Research · Portfolio Manager`;
 
       const q = d.quote;
