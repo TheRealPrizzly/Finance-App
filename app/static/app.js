@@ -334,6 +334,28 @@
       renderCash(p.cash, p.holdings_only);
     }
 
+    // Company logos (Holdings and Earnings) ------------------------------------
+    // Logos come from Financial Modeling Prep by Yahoo symbol; companies it has none for keep their initials.
+    const LOGO_URL = "https://financialmodelingprep.com/image-stock/";
+    const missingLogos = new Set();
+
+    function logo(h) {
+      const ysym = h.yahoo_symbol || h.symbol;
+      const initials = esc(h.symbol.replace(/[^A-Z0-9]/gi, "").slice(0, 2));
+      const img = missingLogos.has(ysym) ? ""
+        : `<img src="${LOGO_URL}${encodeURIComponent(ysym)}.png" alt="" loading="lazy" data-logo="${esc(ysym)}">`;
+      return `<span class="co-logo" aria-hidden="true"><span>${initials}</span>${img}</span>`;
+    }
+
+    // Image errors don't bubble, so this listens in the capture phase.
+    const dropMissingLogo = (e) => {
+      if (!e.target.matches("img[data-logo]")) return;
+      missingLogos.add(e.target.dataset.logo);
+      e.target.remove();
+    };
+    $("holdings").addEventListener("error", dropMissingLogo, true);
+    $("earnings").addEventListener("error", dropMissingLogo, true);
+
     const HOLDING_COLUMNS = [
       { key: "symbol", label: "Symbol" },
       { key: "quantity", label: "Quantity", num: true },
@@ -362,7 +384,7 @@
         const href = urls.positionUrl.replace("__SYMBOL__", encodeURIComponent(h.symbol));
         const stale = h.live ? "" : '<span class="badge" title="No live quote; using last trade price">stale</span>';
         return `<tr>
-          <td><a class="sym" href="${href}">${esc(h.symbol)}</a>${stale}<span class="sym-name">${esc(h.name)}</span></td>
+          <td><div class="sym-cell">${logo(h)}<div><a class="sym" href="${href}">${esc(h.symbol)}</a>${stale}<span class="sym-name">${esc(h.name)}</span></div></div></td>
           <td class="num">${qty(h.quantity)}</td>
           <td class="num nowrap">${money(h.avg_cost, h.cost_currency)}</td>
           <td class="num nowrap">${money(h.price, h.currency)}</td>
@@ -403,9 +425,6 @@
     });
     const isoDay = (iso) => new Date(`${iso}T00:00:00Z`);
     const reportDate = (iso) => isoDay(iso).toLocaleDateString("en-CA", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
-    // Logos come from Financial Modeling Prep by Yahoo symbol; companies it has none for keep their initials.
-    const LOGO_URL = "https://financialmodelingprep.com/image-stock/";
-    const missingLogos = new Set();
     let recentReports = null;  // Yahoo symbol -> {date, estimate, actual}; null until loaded
     let recentFailed = false;
 
@@ -423,14 +442,6 @@
         }
       }
       renderEarnings();
-    }
-
-    function logo(h) {
-      const ysym = h.yahoo_symbol || h.symbol;
-      const initials = esc(h.symbol.replace(/[^A-Z0-9]/gi, "").slice(0, 2));
-      const img = missingLogos.has(ysym) ? ""
-        : `<img src="${LOGO_URL}${encodeURIComponent(ysym)}.png" alt="" loading="lazy" data-logo="${esc(ysym)}">`;
-      return `<span class="co-logo" aria-hidden="true"><span>${initials}</span>${img}</span>`;
     }
 
     function earningsRow(h, when, result) {
@@ -494,13 +505,6 @@
       $("earnings-more").innerHTML = moreButton(upcoming.length, earningsExpanded, "earnings", "upcoming reports");
       setNotes($("earnings-note"), [missing.length && `No date announced yet for ${missing.join(", ")}.`, "ETFs and funds don't report earnings."]);
     }
-
-    // Image errors don't bubble, so this listens in the capture phase.
-    $("earnings").addEventListener("error", (e) => {
-      if (!e.target.matches("img[data-logo]")) return;
-      missingLogos.add(e.target.dataset.logo);
-      e.target.remove();
-    }, true);
 
     $("earnings-more").addEventListener("click", (e) => {
       if (!e.target.closest("button")) return;

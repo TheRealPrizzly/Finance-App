@@ -499,6 +499,8 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
 .co-logo { position: relative; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 8px; overflow: hidden;
   background: #fff; border: 1px solid var(--border); color: #5b6372; font-size: .72rem; font-weight: 700; }
 .co-logo img { position: absolute; inset: 3px; width: calc(100% - 6px); height: calc(100% - 6px); object-fit: contain; background: #fff; }
+.sym-cell { display: flex; align-items: center; gap: 10px; }
+.sym-cell .co-logo { flex: none; width: 32px; height: 32px; }
 .earn-chip { display: inline-block; font-size: .78rem; font-weight: 600; padding: 1px 8px; border-radius: 999px; white-space: nowrap;
   background: var(--surface-2); color: var(--muted); }
 .earn-chip.beat { background: var(--ok-bg); color: var(--ok-text); }
