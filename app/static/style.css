@@ -281,7 +281,8 @@ code { font-size: .9em; background: var(--surface-2); padding: .1em .35em; borde
 .budget-table tr.group .line-name { position: static; box-shadow: none; padding-top: 14px; font-size: .78rem; text-transform: uppercase;
   letter-spacing: .03em; color: var(--muted); background: none; }
 .budget-table tr.subtotal > *, .budget-table tfoot > tr > * { font-weight: 650; background: var(--surface-2); }
-.budget-table tfoot .running > * { font-weight: 400; color: var(--muted); }
+.budget-table tfoot .running > * { font-weight: 400; }
+.budget-table tfoot .running > :not(.gain):not(.loss) { color: var(--muted); }
 .budget-table tbody tr:hover .line-name { background: var(--surface-2); }
 .budget-table .now { background: var(--accent-soft); }
 .budget-table thead .now { color: var(--accent); }
