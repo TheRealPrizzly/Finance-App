@@ -8,7 +8,7 @@ clearing it enters 0, and entering the fixed amount again goes back to the sched
 Expenses can be put in groups (Housing, Taxes, ...), which are subtotalled for each pay period.
 
 Amounts are positive. Cash is tracked separately; revenue and expense lines determine the budget
-surplus.
+surplus, and the running total adds the cash to it.
 """
 from calendar import monthrange
 from datetime import date, timedelta
@@ -172,8 +172,8 @@ def plan(lines, entries, anchor, today):
     cash, revenue, expense = (column_totals(kind) for kind in ("cash", "revenue", "expense"))
     net = [r - e for r, e in zip(revenue, expense)]
     running, balance = [], 0.0
-    for n in net:
-        balance += n
+    for c, n in zip(cash, net):
+        balance += c + n
         running.append(balance)
     return {
         "periods": [{"date": s.isoformat(), "end": (e - timedelta(days=1)).isoformat()} for s, e in zip(bounds, bounds[1:])],

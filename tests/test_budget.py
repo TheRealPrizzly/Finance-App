@@ -93,7 +93,7 @@ def test_plan_totals_and_entered_amounts():
     assert groceries["cells"][0] == {"amount": 300.0, "scheduled": None, "entered": True}
     assert plan["totals"]["revenue"][0] == 2400 and plan["totals"]["expense"][:2] == [300, 1900]
     assert plan["totals"]["net"][:2] == [2100, 500]
-    assert plan["totals"]["running"][:2] == [2100, 2600]
+    assert plan["totals"]["running"][:2] == [2600, 3600]  # cash plus what's left over
     assert plan["sums"]["net"] == pytest.approx(plan["sums"]["revenue"] - plan["sums"]["expense"])
     assert plan["sums"]["expense"] == pytest.approx(rent["total"] + groceries["total"])
     assert plan["sums"]["cash"] == cash["total"]
