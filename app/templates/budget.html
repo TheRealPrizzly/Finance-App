@@ -47,14 +47,18 @@
     <p class="muted">No budget lines yet. Type your cash below, or add your pay and your regular bills.</p>
     {% endif %}
     <div class="table-wrap budget-wrap"><table class="table compact budget-table" id="budget-table"></table></div>
-    <ul class="hint notes">
-      <li>Each column is a pay day and runs until the day before the next one. A line counts in the pay period it falls in.</li>
-      <li>Type in any cell to change that pay period's amount, or clear it for nothing that pay day.
-        Changed amounts are underlined; type the line's fixed amount again to go back to it.</li>
-      <li>Expenses in a group are subtotalled on the group's row; click a group's name to hide or show its lines.</li>
-      <li>Cash is tracked separately; it does not change revenue, expenses, or left over. Type it in the Cash row for any pay day.</li>
-      <li>Running total: your cash plus what's left over, added up from the first pay day shown.</li>
-    </ul>
+    <div class="chart-notes">
+      <button type="button" class="btn btn-ghost btn-sm notes-toggle" id="budget-notes" aria-expanded="true" aria-controls="budget-note">
+        <span class="caret" aria-hidden="true">▾</span>Notes</button>
+      <ul class="hint notes" id="budget-note">
+        <li>Each column is a pay day and runs until the day before the next one. A line counts in the pay period it falls in.</li>
+        <li>Type in any cell to change that pay period's amount, or clear it for nothing that pay day.
+          Changed amounts are underlined; type the line's fixed amount again to go back to it.</li>
+        <li>Expenses in a group are subtotalled on the group's row; click a group's name to hide or show its lines.</li>
+        <li>Cash is tracked separately; it does not change revenue, expenses, or left over. Type it in the Cash row for any pay day.</li>
+        <li>Running total: your cash plus what's left over, added up from the first pay day shown.</li>
+      </ul>
+    </div>
     <script type="application/json" id="budget-data">{{ plan|tojson }}</script>
   </section>
 

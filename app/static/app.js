@@ -3803,6 +3803,19 @@
       }
     });
 
+    // The notes under the table, shown until hidden; remembered in this browser.
+    const NOTES_KEY = "budgetNotesHidden";
+    const showNotes = (open) => {
+      $("budget-note").hidden = !open;
+      $("budget-notes").setAttribute("aria-expanded", String(open));
+    };
+    try { showNotes(localStorage.getItem(NOTES_KEY) !== "1"); } catch { /* shown */ }
+    $("budget-notes").addEventListener("click", () => {
+      const open = $("budget-note").hidden;
+      showNotes(open);
+      try { localStorage.setItem(NOTES_KEY, open ? "0" : "1"); } catch { /* not remembered */ }
+    });
+
     renderKpis();
     renderTable();
   }
